@@ -42,7 +42,7 @@ Create a repository and push this folder.
 
 ### 4. Create the game database
 1. Open the Supabase dashboard (Vercel → Storage → your database → **Open in Supabase**).
-2. **SQL Editor → New query** → paste the whole of [`supabase/setup.sql`](supabase/setup.sql) → **Run**. It creates every table, the game engine, the map and the 145-mission library. Re-running it later is safe (it updates in place).
+2. **SQL Editor → New query** → paste [`supabase/setup/part-1.sql`](supabase/setup/part-1.sql) → **Run**. Then do the same, in order, for `part-2.sql`, `part-3.sql` and `part-4.sql` (the editor accepts at most 100,000 characters per query, so the setup is split). Together they create every table, the game engine, the map and the 145-mission library. Re-running them later is safe (they update in place).
    - With the Supabase CLI instead: `supabase link` then `supabase db push` (uses `supabase/migrations/`).
 3. **Realtime:** Project Settings → Realtime → make sure **public channels are allowed** (do not enable "private channels only"). The game only sends tiny "something changed" pings on public channels — never game data — and falls back to polling if Realtime is unavailable.
 
@@ -73,16 +73,16 @@ Against a real Supabase project: copy `.env.example` → `.env.local`, fill in t
 |---|---|
 | `npm test` | 21 engine tests on the real SQL in embedded Postgres (joining, PIN lockout, race-safe roles, captain-only rules, answer secrecy, idempotent scoring, battles, recovery, airdrop races, relay fallback, chat limits, alliances, pause/resume, zone, finale, reveal gating, permissions) |
 | `npm run build` | Type-check and build for production |
-| `npm run content` | Regenerate the map/mission seed (`0005_content.sql`) from `content/*.mjs` |
-| `npm run db:bundle` | Rebuild `supabase/setup.sql` from the migrations |
+| `npm run content` | Regenerate the map/mission seed (`0005`–`0010` content migrations) from `content/*.mjs` |
+| `npm run db:bundle` | Rebuild `supabase/setup/part-*.sql` from the migrations |
 | `npm run loadtest` | Simulate squads × 4 phones (`SUPABASE_URL`, `SUPABASE_KEY`, `SQUADS`, `MINUTES`) |
 | `npm run local` | Offline game server for rehearsals |
 
 ## Project layout
 
 ```
-supabase/migrations/   0001 schema · 0002 core engine & tick · 0003 player/captain API · 0004 host & projector API · 0005 content (generated)
-supabase/setup.sql     everything above in one paste-able file
+supabase/migrations/   0001 schema · 0002 core engine & tick · 0003 player/captain API · 0004 host & projector API · 0005–0010 content (generated)
+supabase/setup/        the migrations packed into 4 paste-able parts (run in order)
 content/               editable campus map, items and the mission generator
 src/pages/             Join, Play (four role views), Host console, Screen (projector)
 src/components/        CampusMap (pan/zoom/zone/airdrops), shared HUD components
