@@ -12,7 +12,8 @@
     "db:bundle": "node scripts/bundle-sql.mjs",
     "loadtest": "node scripts/loadtest.mjs",
     "local": "node scripts/local-server.mjs",
-    "dev:local": "VITE_SUPABASE_URL=http://localhost:54321 VITE_SUPABASE_ANON_KEY=local vite"
+    "dev:local": "VITE_SUPABASE_URL=http://localhost:54321 VITE_SUPABASE_ANON_KEY=local vite",
+    "db:setup": "node scripts/db-setup.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.118.0",
@@ -27,6 +28,7 @@
     "@types/react": "^18.3.3",
     "@types/react-dom": "^18.3.0",
     "@vitejs/plugin-react": "^4.3.1",
+    "pg": "^8.23.1",
     "typescript": "^5.5.4",
     "vite": "^5.4.0"
   }
