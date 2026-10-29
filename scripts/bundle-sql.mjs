@@ -7,6 +7,8 @@ import { readFileSync, readdirSync, writeFileSync, mkdirSync, rmSync } from 'nod
 
 // 18k: some copy paths (file previews, clipboards) silently cut text at 20,000 characters.
 const LIMIT = 18000;
+// Upgrade parts are kept small (one or two functions each) so a slow dashboard connection can't drop them.
+const UP_LIMIT = 7000;
 
 // Remove -- comments and collapse whitespace, never touching '…' strings or "…" identifiers.
 export function minify(sql) {
@@ -93,7 +95,7 @@ const upParts = [];
 let upCur = '';
 for (const f of files.filter((f) => Number(f.slice(0, 4)) >= 100)) {
   for (const st of statements(minify(readFileSync(new URL(f, dir), 'utf8')))) {
-    if (upCur.length + st.length + 1 > LIMIT && upCur) { upParts.push(upCur); upCur = ''; }
+    if (upCur.length + st.length + 1 > UP_LIMIT && upCur) { upParts.push(upCur); upCur = ''; }
     upCur += st + ' ';
   }
 }
