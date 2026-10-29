@@ -85,6 +85,25 @@ for (const f of files) {
   }
 }
 if (cur) parts.push(cur);
+// Upgrade bundle: only the incremental migrations (0100+), for databases that already ran the original setup.
+const upDir = new URL('../supabase/upgrade/', import.meta.url);
+rmSync(upDir, { recursive: true, force: true });
+mkdirSync(upDir, { recursive: true });
+const upParts = [];
+let upCur = '';
+for (const f of files.filter((f) => Number(f.slice(0, 4)) >= 100)) {
+  for (const st of statements(minify(readFileSync(new URL(f, dir), 'utf8')))) {
+    if (upCur.length + st.length + 1 > LIMIT && upCur) { upParts.push(upCur); upCur = ''; }
+    upCur += st + ' ';
+  }
+}
+if (upCur) upParts.push(upCur);
+upParts.forEach((p, i) => {
+  const text = `/* HEXA BATTLEGROUNDS upgrade — PART ${i + 1} OF ${upParts.length}. Only for databases that already ran setup part-01…; run in order. Safe to re-run. */ ${p.trim()}\n`;
+  writeFileSync(new URL(`upgrade-${String(i + 1).padStart(2, '0')}.sql`, upDir), text);
+  console.log(`supabase/upgrade/upgrade-${String(i + 1).padStart(2, '0')}.sql  ${text.length.toLocaleString()} characters`);
+});
+
 parts.forEach((p, i) => {
   const text = `/* HEXA BATTLEGROUNDS setup — PART ${i + 1} OF ${parts.length}. Run parts in order. Safe to re-run. */ ${p.trim()}\n`;
   writeFileSync(new URL(`part-${String(i + 1).padStart(2, "0")}.sql`, outDir), text);

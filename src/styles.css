@@ -288,3 +288,90 @@ table.tbl { width: 100%; border-collapse: collapse; font-size: 13px; }
 
 html.reduced-motion *, html.reduced-motion *::before, html.reduced-motion *::after { animation-duration: 0.001s !important; animation-iteration-count: 1 !important; transition-duration: 0.001s !important; }
 html.reduced-motion .confetti { display: none; }
+
+/* ── P0: map layers, route and zone animation ── */
+.map-filters { position: absolute; left: 8px; top: 8px; z-index: 2; display: flex; gap: 6px; flex-wrap: wrap; max-width: calc(100% - 60px); }
+.map-filters .chip { cursor: pointer; opacity: 0.55; min-height: 30px; }
+.map-filters .chip.on { opacity: 1; border-color: var(--cyan); color: var(--cyan); }
+.node-label.strong { fill: #fff; font-weight: 700; }
+.route-flow { animation: dash 0.9s linear infinite; }
+.zone-next { animation: dash 1.6s linear infinite; }
+.radar { animation: radar 2.4s ease-out infinite; transform-box: fill-box; transform-origin: center; }
+.drop-in { animation: dropin 0.9s cubic-bezier(.2,.9,.3,1.2); }
+@keyframes dash { to { stroke-dashoffset: -32; } }
+@keyframes radar { 0% { transform: scale(0.4); opacity: 0.9; } 100% { transform: scale(1.3); opacity: 0; } }
+@keyframes dropin { from { transform: translateY(-80px); opacity: 0; } }
+.loc-list { display: flex; flex-direction: column; gap: 6px; max-height: 42vh; overflow: auto; }
+.loc-row { display: grid; grid-template-columns: 14px 1fr auto; gap: 10px; align-items: center; padding: 10px; border: 1px solid var(--line); border-radius: 8px; background: rgba(5, 10, 20, 0.6); text-align: left; cursor: pointer; min-height: 48px; color: var(--text); font: inherit; }
+.loc-row.reach { border-color: rgba(62, 240, 255, 0.45); }
+.loc-row.sel { border-color: #fff; }
+.loc-row .sw { width: 12px; height: 12px; border-radius: 3px; }
+
+/* ── P0: bus lobby & shuttle ── */
+.depart-board { background: #07090d; border: 2px solid #2a2f3a; border-radius: 10px; padding: 10px 12px; font-family: var(--font-mono); box-shadow: inset 0 0 30px rgba(255, 170, 40, 0.06); }
+.depart-board .db-row { display: flex; justify-content: space-between; gap: 10px; padding: 4px 0; border-bottom: 1px dashed #1b2029; font-size: 13px; }
+.depart-board .db-row:last-child { border-bottom: 0; }
+.depart-board .db-row span { color: #6f7a8c; letter-spacing: 0.1em; }
+.depart-board .db-row b { color: #ffb341; letter-spacing: 0.08em; text-align: right; text-shadow: 0 0 8px rgba(255, 179, 65, 0.45); }
+.depart-board .db-row b.ok { color: var(--green); text-shadow: 0 0 8px rgba(93, 255, 158, 0.4); }
+.depart-board .blink { animation: pulse 1.2s infinite; }
+.depart-board.compact .db-row { font-size: 14px; }
+.db-ticker { overflow: hidden; white-space: nowrap; color: #ffb341; font-size: 13px; margin-top: 6px; }
+.db-ticker span { display: inline-block; padding-left: 100%; animation: ticker 14s linear infinite; }
+@keyframes ticker { to { transform: translateX(-100%); } }
+.bus-shell { position: relative; border-radius: 22px 22px 14px 14px; background: linear-gradient(180deg, #ffcf55, #d99410); padding: 10px; box-shadow: 0 10px 30px rgba(0, 0, 0, 0.45); }
+.bus-windows { position: relative; height: 70px; border-radius: 12px; overflow: hidden; display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; padding: 6px; background: #3a2600; }
+.bus-pane { position: relative; z-index: 1; border-radius: 6px; box-shadow: inset 0 0 0 2px rgba(0, 0, 0, 0.35); }
+.bus-scenery { position: absolute; inset: 6px; border-radius: 6px; background:
+  linear-gradient(180deg, transparent 55%, #1c2f55 55% 60%, #11151f 60%),
+  repeating-linear-gradient(90deg, #13224a 0 30px, #1b2f63 30px 46px, transparent 46px 70px),
+  linear-gradient(180deg, #0a1630, #3b2a3e);
+  background-size: auto, 140px 60%, auto; background-repeat: no-repeat, repeat-x, no-repeat; background-position: 0 0, 0 30%, 0 0;
+  animation: scenery 30s linear infinite; }
+.bus-scenery.idle { animation-duration: 90s; }
+@keyframes scenery { to { background-position: 0 0, -1400px 30%, 0 0; } }
+.bus-cabin { margin-top: 10px; background: #1a1f2b; border-radius: 12px; padding: 10px; }
+.bus-front { display: flex; align-items: center; gap: 8px; font-family: var(--font-head); letter-spacing: 0.2em; font-size: 11px; padding-bottom: 8px; border-bottom: 1px dashed #2f3746; margin-bottom: 10px; }
+.bus-driver { font-size: 22px; color: #ffc23d; }
+.seat-rows { display: flex; flex-direction: column; gap: 10px; }
+.seat-row { display: grid; grid-template-columns: 1fr 1fr; gap: 26px; }
+.seat { position: relative; min-height: 88px; border-radius: 14px 14px 8px 8px; border: 2px dashed #3a4357; background: #11151f; padding: 10px; display: flex; flex-direction: column; gap: 3px; transition: background 0.4s, border-color 0.4s; }
+.seat.taken { border-style: solid; border-color: #3ea5ff; background: linear-gradient(180deg, #16294a, #0f1a2e); animation: pop 0.45s ease-out; }
+.seat.me { box-shadow: 0 0 0 2px var(--gold), 0 0 20px rgba(255, 194, 61, 0.35); }
+.seat-no { font-family: var(--font-mono); font-size: 11px; color: #8ea3bf; letter-spacing: 0.1em; }
+.seat-name { font-family: var(--font-head); font-weight: 700; font-size: 18px; letter-spacing: 0.04em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.seat:not(.taken) .seat-name { color: #4a5568; }
+.seat-role { font-size: 12px; color: var(--muted); }
+.seat .aisle { position: absolute; right: -19px; top: 10%; bottom: 10%; width: 12px; border-left: 2px dotted #2f3746; }
+.road-wrap { border-radius: var(--radius); overflow: hidden; border: 1px solid var(--line); background: #050912; }
+.road-wrap svg { display: block; width: 100%; height: 210px; }
+.road-wrap.big svg { height: 62vh; }
+.road-hud { display: flex; align-items: center; gap: 10px; padding: 10px 12px; background: rgba(6, 10, 18, 0.95); font-size: 13px; }
+.road-wrap.big .road-hud { font-size: 22px; padding: 16px 22px; }
+.bus-card { border-radius: 14px; padding: 14px; background: linear-gradient(180deg, rgba(255, 207, 85, 0.12), rgba(255, 207, 85, 0.03)); border: 1px solid rgba(255, 207, 85, 0.45); }
+.bus-card .seats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 5px; margin-top: 6px; }
+.bus-card .seats i { height: 14px; border-radius: 4px; background: #1d2433; }
+.bus-card .seats i.on { background: var(--gold); box-shadow: 0 0 8px rgba(255, 194, 61, 0.6); }
+.phase-banner { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 10px; border: 1px solid var(--line-strong); background: linear-gradient(90deg, rgba(62, 165, 255, 0.16), rgba(62, 240, 255, 0.04)); }
+.phase-banner .ph-n { font-family: var(--font-head); font-weight: 700; font-size: 26px; color: var(--cyan); line-height: 1; }
+.phase-track { display: flex; gap: 4px; }
+.phase-track i { flex: 1; height: 5px; border-radius: 3px; background: rgba(255, 255, 255, 0.08); }
+.phase-track i.done { background: var(--blue); }
+.phase-track i.now { background: var(--cyan); box-shadow: 0 0 8px var(--cyan); }
+.trial-ribbon { position: fixed; z-index: 75; top: 0; right: 0; background: repeating-linear-gradient(45deg, #ffc23d 0 10px, #1a1200 10px 20px); color: #000; font-family: var(--font-head); font-weight: 700; letter-spacing: 0.2em; padding: 2px 10px; font-size: 11px; border-bottom-left-radius: 8px; }
+.trial-ribbon span { background: #ffc23d; padding: 0 6px; }
+
+/* ── P0: roster cards and printing ── */
+.roster-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 10px; }
+.roster-card { display: flex; gap: 12px; align-items: center; padding: 10px; border: 1px solid var(--line); border-radius: 10px; background: rgba(5, 10, 20, 0.6); break-inside: avoid; }
+.print-only { display: none; }
+@media print {
+  body { background: #fff !important; color: #000 !important; }
+  .host-nav, .no-print, .toasts, .host-main > .row:first-child { display: none !important; }
+  .host { display: block; }
+  .print-only { display: block; }
+  .panel { border: 0 !important; background: none !important; }
+  .panel::before, .panel::after { display: none; }
+  .roster-card { border: 1px solid #999; color: #000; background: #fff; }
+  .roster-card .muted, .roster-card .dim { color: #333 !important; }
+}

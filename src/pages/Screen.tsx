@@ -6,6 +6,8 @@ import { msUntil, progress, secondsLeft, useNow, fmtClock } from '../lib/time';
 import { feedText, FINALE_STAGES, KIND_LABEL, MapData, useMapData, ZONE_TEXT } from '../lib/game';
 import { sfx, unlockAudio, audioReady } from '../lib/sound';
 import CampusMap from '../components/CampusMap';
+import { RoadScene, busCode, shuttleStage } from '../components/Shuttle';
+import { PhaseBanner, TrialRibbon } from '../components/Phase';
 import { Countdown, FeedList, HostOverlays, Loading, QR, ThreatMeter } from '../components/ui';
 
 export default function Screen() {
@@ -31,6 +33,7 @@ export default function Screen() {
   return (
     <div style={{ position: 'fixed', inset: 0 }} onClick={() => { unlockAudio(); setArmed(true); }}>
       <HostOverlays overlay={s.arena.overlay} paused={s.arena.paused} />
+      <TrialRibbon on={!!s.arena.overlay?.trial || String(s.event?.name || '').startsWith('TRIAL')} />
       {!armed && (
         <button className="btn ghost sm" style={{ position: 'fixed', right: 12, bottom: 12, zIndex: 99 }}
           onClick={() => { unlockAudio(); setArmed(true); document.documentElement.requestFullscreen?.().catch(() => {}); sfx.gate(); }}>
@@ -139,33 +142,49 @@ function LobbyScreen({ s }: { s: any }) {
 }
 
 function ShuttleScreen({ s }: { s: any }) {
-  useNow(100);
+  useNow(500);
   const buses = useMemo(() => {
-    const m: Record<number, number[]> = {};
-    s.squads.filter((q: any) => q.ready && q.bus).forEach((q: any) => (m[q.bus] ||= []).push(q.number));
+    const m: Record<number, any[]> = {};
+    s.squads.filter((q: any) => q.bus).forEach((q: any) => (m[q.bus] ||= []).push(q));
     return Object.entries(m).map(([b, sq]) => ({ bus: Number(b), squads: sq })).sort((a, b) => a.bus - b.bus);
   }, [s.squads]);
-  const p = s.arena.phase === 'shuttle' ? progress(s.arena.shuttle_departed_at, s.arena.shuttle_arrive_at) : 0;
-  return (
-    <div className="screen-full">
-      <div className="up muted" style={{ fontSize: 22 }}>SIPCOT Entrance → Gate 1</div>
-      <div className="mega">{s.arena.phase === 'shuttle' ? 'En route' : 'Boarding'}</div>
-      {s.arena.phase === 'shuttle' && <div className="huge-timer">{secondsLeft(s.arena.shuttle_arrive_at)}</div>}
-      <div style={{ width: '92vw', position: 'relative', marginTop: 20 }}>
-        <div className="row between up" style={{ fontSize: 20 }}><span>SIPCOT</span><span style={{ color: 'var(--gold)' }}>Gate 1 ▶</span></div>
-        <div className="col" style={{ gap: 14, marginTop: 10 }}>
-          {buses.map((b, i) => (
-            <div key={b.bus} style={{ position: 'relative', height: 64, borderBottom: '3px dashed rgba(110,170,255,0.3)' }}>
-              <div className="bus row" style={{ position: 'absolute', bottom: 6, left: `calc(${Math.min(1, p * (1 + i * 0.04)) * 82}% )`, gap: 10, transition: 'left 0.1s linear' }}>
-                <span style={{ fontSize: 46 }} aria-hidden>🚌</span>
-                <div className="col" style={{ gap: 0, textAlign: 'left' }}>
-                  <b className="up" style={{ fontSize: 20 }}>Bus {b.bus}</b>
-                  <span className="muted mono" style={{ fontSize: 15 }}>Squads {b.squads.join(', ')}</span>
-                </div>
-              </div>
-            </div>
-          ))}
+  const ready = s.squads.filter((q: any) => q.ready).length;
+  if (s.arena.phase === 'shuttle') {
+    const st = shuttleStage(s.arena.shuttle_departed_at, s.arena.shuttle_arrive_at);
+    return (
+      <div className="screen-full" style={{ justifyContent: 'flex-start', paddingTop: '3vh', gap: '2vh' }}>
+        <div className="row between" style={{ width: '94vw' }}>
+          <span className="up" style={{ fontSize: 26, color: 'var(--orange)' }}>SIPCOT → Operation Siruseri · {s.arena.name}</span>
+          <span className="mega" style={{ fontSize: 'clamp(30px,4vw,64px)' }}>{st.doors ? 'Doors closing' : st.arriving ? 'Arriving at Gate 1' : 'En route'}</span>
         </div>
+        <div style={{ width: '94vw' }}>
+          <RoadScene big start={s.arena.shuttle_departed_at} end={s.arena.shuttle_arrive_at}
+            buses={buses.filter((b) => b.squads.some((q: any) => q.ready)).map((b) => ({ bus: b.bus, label: b.squads.filter((q: any) => q.ready).map((q: any) => q.name).join(' · ') }))} />
+        </div>
+        <div className="row wrap" style={{ gap: 12, justifyContent: 'center' }}>
+          {buses.map((b) => <span key={b.bus} className="chip gold" style={{ fontSize: 18, padding: '8px 14px' }}>{busCode(b.bus)}: {b.squads.filter((q: any) => q.ready).map((q: any) => `#${q.number}`).join(' ')}</span>)}
+        </div>
+      </div>
+    );
+  }
+  return (
+    <div className="screen-full" style={{ justifyContent: 'flex-start', paddingTop: '4vh' }}>
+      <div className="up muted" style={{ fontSize: 24 }}>SIPCOT shuttle terminal · {s.arena.name}</div>
+      <div className="mega">Boarding</div>
+      <div className="up" style={{ fontSize: 22, color: 'var(--green)' }}>{ready} / {s.squads.length} squads ready · doors open</div>
+      <div className="squad-grid" style={{ width: '92vw', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', marginTop: 12 }}>
+        {buses.map((b) => (
+          <div key={b.bus} className="bus-card">
+            <div className="row between"><b className="up" style={{ fontSize: 26, color: 'var(--gold)' }}>🚌 {busCode(b.bus)}</b>
+              <span className="chip">{b.squads.filter((q: any) => q.ready).length}/{b.squads.length} squads</span></div>
+            {b.squads.map((q: any) => (
+              <div key={q.number} style={{ marginTop: 10, textAlign: 'left' }}>
+                <div className="row between"><span style={{ fontSize: 17 }}><b>#{q.number}</b> {q.name}</span><span className={`chip ${q.ready ? 'good' : ''}`}>{q.players}/4</span></div>
+                <div className="seats">{[0, 1, 2, 3].map((i) => <i key={i} className={i < q.players ? 'on' : ''} />)}</div>
+              </div>
+            ))}
+          </div>
+        ))}
       </div>
     </div>
   );
@@ -197,15 +216,22 @@ function PlayScreen({ s, map }: { s: any; map: MapData }) {
       <div className="screen-main">
         <CampusMap map={map} zoneStage={s.arena.zone_stage} zoneWarning={zoneWarn} interactive={false} height="100%" bigLabels
           squads={s.squads.filter((q: any) => q.ready)} airdrops={s.airdrops} battles={s.battles} />
-        <div className="panel" style={{ position: 'absolute', left: 12, top: 12, maxWidth: 420 }}>
-          <div className="up" style={{ fontSize: 14 }}>{ZONE_TEXT[s.arena.zone_stage]}</div>
-        </div>
+
       </div>
       <div className="screen-side">
-        <div className="panel"><ThreatMeter value={s.arena.threat} /></div>
+        <PhaseBanner overlay={s.arena.overlay} />
+        <div className="panel" style={{ padding: '10px 14px' }}>
+          <span className="up" style={{ fontSize: 13 }}>☢ {ZONE_TEXT[s.arena.zone_stage]}</span>
+          <div style={{ marginTop: 8 }}><ThreatMeter value={s.arena.threat} /></div>
+        </div>
         <div className="panel" style={{ minHeight: 0, flex: '1 1 50%', overflow: 'hidden' }}>
           <div className="panel-title">Leaderboard</div>
-          <div className="col" style={{ gap: 6 }}>
+          {s.arena.overlay?.hide_rankings ? (
+            <div className="center col" style={{ gap: 10, padding: '30px 0' }}>
+              <div className="mega" style={{ fontSize: 40 }}>Rankings sealed</div>
+              <div className="muted">The host will reveal the standings.</div>
+            </div>
+          ) : <div className="col" style={{ gap: 6 }}>
             {board.slice(0, 10).map((q: any, i: number) => (
               <div key={q.number} className={`leader-row top${i + 1}`}>
                 <span className="rk">{i + 1}</span>
@@ -213,7 +239,7 @@ function PlayScreen({ s, map }: { s: any; map: MapData }) {
                 <b className="mono">{q.points ?? 0}</b>
               </div>
             ))}
-          </div>
+          </div>}
         </div>
         <div className="panel" style={{ flex: '1 1 40%', minHeight: 0, overflow: 'hidden' }}>
           <div className="panel-title">Live feed</div>

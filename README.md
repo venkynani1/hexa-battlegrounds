@@ -42,7 +42,8 @@ Create a repository and push this folder.
 
 ### 4. Create the game database
 1. Open the Supabase dashboard (Vercel → Storage → your database → **Open in Supabase**).
-2. **SQL Editor → New query** → paste [`supabase/setup/part-01.sql`](supabase/setup) → **Run**, then repeat for `part-02.sql` … `part-19.sql` **in order** (a new query each time is fine). Each part is a single line under 18,000 characters, because the editor accepts at most 100,000 characters per query and some copy paths cut text at 20,000. Together they create every table, the game engine, the map and the 145-mission library. Re-running them is safe.
+2. **SQL Editor → New query** → paste [`supabase/setup/part-01.sql`](supabase/setup) → **Run**, then repeat for `part-02.sql` … `part-20.sql` **in order** (a new query each time is fine). Each part is a single line under 18,000 characters, because the editor accepts at most 100,000 characters per query and some copy paths cut text at 20,000. Together they create every table, the game engine, the map and the 145-mission library. Re-running them is safe.
+   - **Already ran the earlier setup (part-01 … part-19)?** You only need [`supabase/upgrade/upgrade-01.sql`](supabase/upgrade) and `upgrade-02.sql`, in order. They add match phases, trial mode and squad preparation without touching your data.
    - **No SQL Editor? Use one command from your laptop:** copy `POSTGRES_URL_NON_POOLING` from Vercel → Settings → Environment Variables, then in this folder run `npm install` and `DATABASE_URL="<that value>" npm run db:setup` (Windows PowerShell: `$env:DATABASE_URL="<value>"; npm run db:setup`).
    - Vercel's own query box runs one statement at a time and will fail with "cannot insert multiple commands into a prepared statement" — use Supabase's SQL Editor or `npm run db:setup` instead.
    - With the Supabase CLI instead: `supabase link` then `supabase db push` (uses `supabase/migrations/`).
@@ -73,7 +74,7 @@ Against a real Supabase project: copy `.env.example` → `.env.local`, fill in t
 
 | Command | What it does |
 |---|---|
-| `npm test` | 21 engine tests on the real SQL in embedded Postgres (joining, PIN lockout, race-safe roles, captain-only rules, answer secrecy, idempotent scoring, battles, recovery, airdrop races, relay fallback, chat limits, alliances, pause/resume, zone, finale, reveal gating, permissions) |
+| `npm test` | 34 tests on the real SQL in embedded Postgres: the 21 original engine tests (joining, PIN lockout, race-safe roles, captain-only rules, answer secrecy, idempotent scoring, battles, recovery, airdrops, relays, chat, alliances, pause/resume, zone, finale, permissions) plus 13 P0 tests (phases and duel lock, phase-driven zone, auto pacing, timer scaling, PINs and reset, CSV validation, trial isolation, simulated squads, cross-map isolation, identical finale across maps) |
 | `npm run build` | Type-check and build for production |
 | `npm run content` | Regenerate the map/mission seed (`0005`–`0010` content migrations) from `content/*.mjs` |
 | `npm run db:bundle` | Rebuild `supabase/setup/part-*.sql` from the migrations |
@@ -83,8 +84,9 @@ Against a real Supabase project: copy `.env.example` → `.env.local`, fill in t
 ## Project layout
 
 ```
-supabase/migrations/   0001 schema · 0002 core engine & tick · 0003 player/captain API · 0004 host & projector API · 0005–0010 content (generated)
-supabase/setup/        the migrations packed into 19 paste-able parts (run in order)
+supabase/migrations/   0100 P0 (match phases, trial mode, squad prep) · 0001 schema · 0002 core engine & tick · 0003 player/captain API · 0004 host & projector API · 0005–0010 content (generated)
+supabase/setup/        all migrations packed into 20 paste-able parts (fresh install, run in order)
+supabase/upgrade/      only the incremental migrations (0100+) for existing databases
 content/               editable campus map, items and the mission generator
 src/pages/             Join, Play (four role views), Host console, Screen (projector)
 src/components/        CampusMap (pan/zoom/zone/airdrops), shared HUD components
@@ -98,5 +100,7 @@ docs/                  architecture, game design, host manual
 - [Architecture, data model, API & realtime contract](docs/ARCHITECTURE.md)
 - [Game design, economy & 120-minute run-sheet](docs/GAME_DESIGN.md)
 - [Host manual, rehearsal checklist, recovery procedures, known limitations](docs/HOST_MANUAL.md)
+- [Trial manual: rehearse with simulated squads and fast-forward](docs/TRIAL_MANUAL.md)
+- [Feature audit and P0 status](docs/AUDIT.md)
 
 All sounds are synthesised in the browser and all content is original — no PUBG assets, branding, maps or audio.

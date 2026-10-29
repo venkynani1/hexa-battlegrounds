@@ -4,9 +4,10 @@ import { useLive } from '../lib/live';
 import { msUntil, useNow } from '../lib/time';
 import { FINALE_STAGES, KIND_LABEL, locName, MapData, ROLE_ORDER, ROLES, Role, TIER_COLOR, useMapData, ZONE_TEXT } from '../lib/game';
 import CampusMap from '../components/CampusMap';
+import { PacingPanel, PhaseControls, RosterPanel, TrialPanel } from './HostP0';
 import { Countdown, FeedList, Modal, QR, toast } from '../components/ui';
 
-type Section = 'control' | 'squads' | 'map' | 'missions' | 'production' | 'finale' | 'links' | 'settings' | 'log';
+type Section = 'control' | 'squads' | 'map' | 'missions' | 'production' | 'finale' | 'links' | 'trial' | 'settings' | 'log';
 const PHASES = ['lobby', 'boarding', 'shuttle', 'roles', 'play', 'finale', 'results', 'ended'];
 
 export default function Host() {
@@ -17,7 +18,7 @@ export default function Host() {
 
 // ── Login / create ─────────────────────────────────────────────────────
 function HostLogin({ onLogin }: { onLogin: (t: string) => void }) {
-  const [mode, setMode] = useState<'login' | 'create'>('login');
+  const [mode, setMode] = useState<'login' | 'create' | 'trial'>('login');
   const [code, setCode] = useState(store.get('hb_host_code') || '');
   const [name, setName] = useState('Hexaware Battlegrounds × Operation Siruseri');
   const [secret, setSecret] = useState('');
@@ -30,7 +31,9 @@ function HostLogin({ onLogin }: { onLogin: (t: string) => void }) {
     try {
       const r = mode === 'login'
         ? await rpc('host_login', { p_code: code, p_secret: secret })
-        : await rpc('host_create_event', { p_code: code, p_name: name, p_secret: secret, p_arenas: maps });
+        : mode === 'trial'
+          ? await rpc('host_create_trial', { p_code: code, p_name: name, p_secret: secret, p_arenas: maps })
+          : await rpc('host_create_event', { p_code: code, p_name: name, p_secret: secret, p_arenas: maps });
       store.set('hb_host_code', r.code);
       onLogin(r.token);
     } catch (ex) { setErr(friendly(ex)); } finally { setBusy(false); }
@@ -44,11 +47,12 @@ function HostLogin({ onLogin }: { onLogin: (t: string) => void }) {
         <div className="row">
           <button className={`btn grow ${mode === 'login' ? 'primary' : 'ghost'}`} onClick={() => setMode('login')}>Log in</button>
           <button className={`btn grow ${mode === 'create' ? 'primary' : 'ghost'}`} onClick={() => setMode('create')}>Create event</button>
+          <button className={`btn grow ${mode === 'trial' ? 'warn' : 'ghost'}`} onClick={() => setMode('trial')}>Trial</button>
         </div>
         <form className="panel col" onSubmit={submit} style={{ gap: 14 }}>
           <div className="field"><label htmlFor="c">Event code</label>
             <input id="c" className="input mono" value={code} onChange={(e) => setCode(e.target.value.toUpperCase())} placeholder="HEXA26" required /></div>
-          {mode === 'create' && <>
+          {mode !== 'login' && <>
             <div className="field"><label htmlFor="n">Event name</label><input id="n" className="input" value={name} onChange={(e) => setName(e.target.value)} /></div>
             <div className="field"><label htmlFor="m">Parallel maps (max 15 squads = 60 players each)</label>
               <select id="m" className="input" value={maps} onChange={(e) => setMaps(Number(e.target.value))}>
@@ -58,7 +62,8 @@ function HostLogin({ onLogin }: { onLogin: (t: string) => void }) {
           <div className="field"><label htmlFor="s">Host password</label>
             <input id="s" className="input" type="password" value={secret} onChange={(e) => setSecret(e.target.value)} minLength={6} required autoComplete="current-password" /></div>
           {err && <div className="chip bad" style={{ whiteSpace: 'normal', padding: 10 }}>{err}</div>}
-          <button className="btn primary big" disabled={busy}>{mode === 'login' ? 'Enter control room' : 'Create event'}</button>
+          <button className="btn primary big" disabled={busy}>{mode === 'login' ? 'Enter control room' : mode === 'trial' ? 'Create trial event' : 'Create event'}</button>
+          {mode === 'trial' && <p className="muted" style={{ margin: 0, fontSize: 13 }}>A trial is a separate rehearsal event, labelled TRIAL everywhere, with Quick demo pacing, simulated squads and fast-forward. It can never affect a live event.</p>}
           {mode === 'create' && <p className="muted" style={{ margin: 0, fontSize: 13 }}>Share the host password only with your co-host. Anyone with it controls the game.</p>}
         </form>
       </div>
@@ -107,13 +112,13 @@ function Dashboard({ token, onLogout }: { token: string; onLogout: () => void })
   const selArena = arenas.find((a: any) => a.id === arena) || null;
   const teams = d.teams.filter((t: any) => arena === 'all' || t.arena_id === arena);
   const nav: [Section, string][] = [['control', 'Game control'], ['squads', 'Squads'], ['map', 'Map & zone'], ['missions', 'Missions'],
-    ['production', 'Suspense'], ['finale', 'Finale & results'], ['links', 'Links & PINs'], ['settings', 'Settings'], ['log', 'Logs']];
+    ['production', 'Suspense'], ['finale', 'Finale & results'], ['links', 'Links & PINs'], ['trial', 'Trial mode'], ['settings', 'Settings'], ['log', 'Logs']];
 
   return (
     <div className="host">
       <aside className="host-nav">
         <div className="col" style={{ gap: 2, padding: '4px 8px 12px' }}>
-          <span className="up" style={{ fontSize: 20 }}>{d.event.code}</span>
+          <span className="up" style={{ fontSize: 20 }}>{d.event.code}{String(d.event.name).startsWith('TRIAL') && <span className="chip gold" style={{ marginLeft: 6, fontSize: 11 }}>TRIAL</span>}</span>
           <span className="muted" style={{ fontSize: 12 }}>{d.event.name}</span>
         </div>
         {nav.map(([id, label]) => <button key={id} className={section === id ? 'on' : ''} onClick={() => setSection(id)}>{label}{id === 'log' && d.reports > 0 ? ` (${d.reports})` : ''}</button>)}
@@ -133,13 +138,15 @@ function Dashboard({ token, onLogout }: { token: string; onLogout: () => void })
             {d.metrics.host_errors > 0 && <span className="chip bad">{d.metrics.host_errors} refused cmds</span>}
           </div>
         </div>
-        {section === 'control' && <Control d={d} arenas={arenas} arena={arena} cmd={cmd} />}
+        {section === 'control' && <PacingPanel d={d} token={token} refresh={live.refresh} arena={selArena || arenas.find((a: any) => a.phase === 'play') || arenas[0] || null} />}
+        {section === 'control' && <Control d={d} arenas={arenas} arena={arena} cmd={cmd} map={map} />}
         {section === 'squads' && <Squads d={d} teams={teams} arenas={arenas} cmd={cmd} token={token} map={map} />}
         {section === 'map' && map && <MapControl d={d} arenas={arenas} selArena={selArena} setArena={setArena} cmd={cmd} map={map} reloadMap={() => setMapKey((k) => k + 1)} />}
         {section === 'missions' && <Missions token={token} />}
         {section === 'production' && <Production arena={arena === 'all' ? null : arena} cmd={cmd} />}
         {section === 'finale' && <Finale d={d} arenas={arenas} arena={arena} cmd={cmd} />}
         {section === 'links' && <Links d={d} token={token} refresh={live.refresh} cmd={cmd} />}
+        {section === 'trial' && <TrialPanel d={d} token={token} cmd={cmd} map={map} arena={arena} onLogout={onLogout} />}
         {section === 'settings' && <Settings d={d} token={token} refresh={live.refresh} />}
         {section === 'log' && <Logs d={d} token={token} arenas={arenas} cmd={cmd} map={map} />}
       </main>
@@ -150,7 +157,7 @@ function Dashboard({ token, onLogout }: { token: string; onLogout: () => void })
 type Cmd = (arenaId: string | null, command: string, args?: any, reason?: string, quiet?: boolean) => Promise<any>;
 
 // ── Control ─────────────────────────────────────────────────────────────
-function Control({ d, arenas, arena, cmd }: { d: any; arenas: any[]; arena: string; cmd: Cmd }) {
+function Control({ d, arenas, arena, cmd, map }: { d: any; arenas: any[]; arena: string; cmd: Cmd; map: MapData | null }) {
   useNow(500);
   const list = arena === 'all' ? arenas : arenas.filter((a: any) => a.id === arena);
   return (
@@ -173,7 +180,7 @@ function Control({ d, arenas, arena, cmd }: { d: any; arenas: any[]; arena: stri
       <div className="grid2">
         {list.map((a: any) => <ArenaCard key={a.id} a={a} d={d} cmd={cmd} />)}
       </div>
-      <div className="panel"><div className="panel-title">Live feed (all maps)</div><FeedList feed={d.feed} map={null} limit={14} /></div>
+      <div className="panel"><div className="panel-title">Live feed (all maps)</div><FeedList feed={d.feed} map={map} limit={14} /></div>
     </>
   );
 }
@@ -209,6 +216,7 @@ function ArenaCard({ a, d, cmd }: { a: any; d: any; cmd: Cmd }) {
           Reset map
         </button>
       </div>
+      <PhaseControls a={a} cmd={cmd} />
       {a.phase === 'lobby' && ready < teams.length && <p className="muted" style={{ fontSize: 12, marginBottom: 0 }}>Incomplete squads stay in the lobby and are not boarded. Resolve them in Squads.</p>}
     </div>
   );
@@ -647,29 +655,9 @@ function Finale({ d, arenas, arena, cmd }: { d: any; arenas: any[]; arena: strin
 // ── Links, QR and squad PINs ────────────────────────────────────────────
 function Links({ d, token, refresh, cmd }: { d: any; token: string; refresh: () => void; cmd: Cmd }) {
   const joinUrl = `${window.location.origin}/join?e=${d.event.code}`;
-  const [count, setCount] = useState(15);
-  const [pins, setPins] = useState<any[] | null>(null);
-  const [csv, setCsv] = useState('');
-  async function generate() {
-    try { const r = await rpc('host_generate_teams', { p_token: token, p_count: count }); setPins(r); refresh(); }
-    catch (e) { toast(friendly(e), 'bad'); }
-  }
-  async function importCsv() {
-    const rows = csv.split(/\r?\n/).map((l) => l.trim()).filter(Boolean).filter((l) => !/^number/i.test(l)).map((l) => {
-      const [number, name, pin, map] = l.split(',').map((x) => x.trim());
-      return { number: Number(number), name, pin, map: map ? Number(map) : null };
-    });
-    try { const r = await rpc('host_import_teams', { p_token: token, p_teams: rows }); toast(`Imported ${r.imported} squads`, 'good'); setCsv(''); refresh(); }
-    catch (e) { toast(friendly(e), 'bad'); }
-  }
-  function download() {
-    const body = 'squad,pin,map\n' + pins!.map((p) => `${p.number},${p.pin},${p.map}`).join('\n');
-    const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([body], { type: 'text/csv' }));
-    a.download = `${d.event.code}-squad-pins.csv`; a.click();
-  }
   return (
     <>
-      <div className="grid2">
+      <div className="grid2 no-print">
         <div className="panel col" style={{ alignItems: 'center' }}>
           <div className="panel-title" style={{ alignSelf: 'flex-start' }}>Player join link (no secrets inside)</div>
           <QR value={joinUrl} size={200} />
@@ -691,27 +679,7 @@ function Links({ d, token, refresh, cmd }: { d: any; token: string; refresh: () 
           );
         })}
       </div>
-      <div className="grid2">
-        <div className="panel col">
-          <div className="panel-title">Generate squads with random PINs</div>
-          <div className="row"><input className="input" type="number" min={1} max={120} style={{ width: 110 }} value={count} onChange={(e) => setCount(Number(e.target.value))} />
-            <button className="btn primary grow" onClick={generate}>Create {count} squads</button></div>
-          <p className="muted" style={{ fontSize: 12, margin: 0 }}>Maps fill in order, 15 squads each. PINs are stored hashed — download or print them now, they cannot be shown again.</p>
-          {pins && (
-            <>
-              <div className="row"><button className="btn sm gold" onClick={download}>Download CSV</button><button className="btn sm" onClick={() => window.print()}>Print</button></div>
-              <table className="tbl"><thead><tr><th>Squad</th><th>PIN</th><th>Map</th></tr></thead>
-                <tbody>{pins.map((p) => <tr key={p.number}><td>{p.number}</td><td className="mono"><b>{p.pin}</b></td><td>{p.map}</td></tr>)}</tbody></table>
-            </>
-          )}
-        </div>
-        <div className="panel col">
-          <div className="panel-title">…or import organiser-approved squads</div>
-          <textarea className="input" value={csv} onChange={(e) => setCsv(e.target.value)} placeholder={'number,name,pin,map\n1,Code Falcons,4821,1\n2,Bug Busters,9930,1'} style={{ minHeight: 160 }} />
-          <button className="btn" disabled={!csv.trim()} onClick={importCsv}>Import / update squads</button>
-          <p className="muted" style={{ fontSize: 12, margin: 0 }}>Re-importing a squad number updates its name and PIN. Map is optional.</p>
-        </div>
-      </div>
+      <RosterPanel d={d} token={token} cmd={cmd} refresh={refresh} />
     </>
   );
 }
@@ -727,14 +695,16 @@ const SETTING_HELP: Record<string, string> = {
   zone_warning: 'Zone warning (s)', airdrop_window: 'Airdrop claim window (s)', airdrop_interval: 'Auto airdrop every N minutes (0 = host only)',
   intel_fallback: 'Codeword backup to Intel after (s)', relay_chance: 'Chance (%) a mission is a cross-team relay', hint_cost: 'Hint cost (coins)',
   alliance_minutes: 'Alliance duration (min)', alliance_cost: 'Alliance cost (coins each)', chat_limit: 'Captain messages per 30 s',
-  drop_seconds: 'First drop flight (s)', visit_missions: 'Missions per location visit', zone_auto: 'Automatic zone schedule (1 = on)',
-  zone_schedule: 'Zone stage times (minutes after play starts)', sync_seconds: 'Default finale round length (0 = per template)',
+  drop_seconds: 'First drop flight (s)', visit_missions: 'Missions per location visit', zone_auto: 'Legacy automatic zone schedule (1 = on)',
+  zone_schedule: 'Legacy zone times (minutes, used when “Automatic zone schedule” = 1)', sync_seconds: 'Default finale round length (0 = per template)',
+  auto_pacing: 'Automatic match phases (1 = on)', phase_schedule: 'Phase 1–4 start (minutes after play starts)', duel_phase: 'Duels unlock in phase',
+  mission_time_pct: 'Mission timer scale (%)', pin_length: 'Digits in generated PINs (4–8)',
 };
 function Settings({ d, token, refresh }: { d: any; token: string; refresh: () => void }) {
   const [vals, setVals] = useState<any>(d.event.settings);
   async function save() {
     const changed = Object.fromEntries(Object.entries(vals).filter(([k, v]) => String(v) !== String(d.event.settings[k]))
-      .map(([k, v]) => [k, k === 'zone_schedule' ? String(v) : Number(v)]));
+      .map(([k, v]) => [k, k === 'zone_schedule' || k === 'phase_schedule' ? String(v) : Number(v)]));
     if (!Object.keys(changed).length) return toast('No changes', 'info');
     try { await rpc('host_settings', { p_token: token, p_settings: changed }); toast('Settings saved', 'good'); refresh(); }
     catch (e) { toast(friendly(e), 'bad'); }

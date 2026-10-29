@@ -7,7 +7,15 @@
 | Co-host (recommended) | laptop or tablet | `/host` (same event code + password) — squads, disputes, chat moderation |
 | Projector operator, one per map | PC on the projector | `/screen/<token>` from Host → Links. Click **Enable sound & fullscreen** once. |
 
-## Before the event
+## Before the event (days ahead)
+1. **Create the event** at `/host` → Create event, with 1 map per 60 players.
+2. **Links & PINs → Create squads**: codenames, buses and 6-digit PINs are generated. Click **Print squad cards** (one card per squad with its own QR code that pre-fills the squad number, plus the PIN) or **Download CSV**. PINs are stored hashed and shown only in this browser session; **Issue new PIN** on any card replaces one securely.
+   Or paste an organiser CSV (`number,name,pin,map`; leave PIN empty to generate one). The whole file is validated first.
+3. **Game control → Match pacing**: pick *Full event* (or tune in Settings) and a shuttle length.
+4. Rehearse in a separate **trial event** — see [TRIAL_MANUAL.md](TRIAL_MANUAL.md).
+5. On event day just log in with the same code and password: squads, PINs and settings are already there.
+
+## Earlier notes
 1. **Create the event** at `/host` → Create event. Pick the number of maps: 1 map per 60 players.
 2. **Create squads** in Links & PINs: *Create N squads* (random PINs) or paste an organiser CSV (`number,name,pin,map`). Download/print the PIN sheet immediately — PINs are stored hashed and cannot be shown again (re-import a squad to reset its PIN).
 3. **Distribute** squad number + PIN privately to each squad (email, slip of paper). Show the join QR on the projector; it contains only the event code.
@@ -21,8 +29,12 @@
 - [ ] Projector: fullscreen, sound on, readable from the back row, correct map.
 - [ ] Test **Pause/Resume**, **Broadcast**, **Countdown**, **Blackout**, a **Squad 00 transmission**, **Zone warning**.
 - [ ] Test a disconnect: close a phone browser, reopen `/play` — it must resume the same role.
+- [ ] Run the guided trial ([TRIAL_MANUAL.md](TRIAL_MANUAL.md)) in a separate trial event.
 - [ ] Reset the rehearsal map: Game control → **Reset map** (type `RESET`) — squads and players stay, gameplay is wiped. Or create a fresh event code for the real game.
 - [ ] Print the PIN sheet and keep a spare laptop logged into `/host`.
+
+## Running the game — phases
+Each map card shows the current **match phase** with *◀ / Next phase ▶* and *Hide rankings*. With automatic pacing the phases advance on the timeline shown in Match pacing; the zone contracts by itself toward each phase's target (*Cancel* holds it). Duels are locked until Phase 2. *Hide rankings* seals the leaderboard on the projector and on phones without changing any score.
 
 ## Running the game
 Follow the run-sheet in [GAME_DESIGN.md](GAME_DESIGN.md#120-minute-run-sheet-per-map-parallel-maps-run-the-same-sheet). Typical sequence per map (or *All maps*):
@@ -57,6 +69,9 @@ Follow the run-sheet in [GAME_DESIGN.md](GAME_DESIGN.md#120-minute-run-sheet-per
 - To restart a map after an aborted run: Game control → **Reset map** (keeps squads/players) or create a new event code.
 
 ## Known limitations and backlog
+- **Not yet built (P1/P2 of the expansion brief):** new mission categories and structures, squad levels and badges, tactical role abilities, bounties/control points/world events, comeback missions, finale redesign, host scene switching and commentary cues.
+- **Fog of war** is not implemented; every squad sees the whole map (other squads' positions follow the existing visibility rules).
+- **Simulated players** run in the host's browser tab and stop if it is closed.
 - **Realtime:** public pings only (no data). If Realtime is blocked by the network, the game still works by polling (2–8 s).
 - **Capacity:** designed for ≤ 60 players per map and ≤ 3 maps on the free tier (≈ 200 Realtime connections). For more, upgrade Supabase or run a second free project per extra map pair.
 - **Registration** is one step (name + squad number + PIN + consent). There is no separate pre-registration form or employee ID field (not collected by design).

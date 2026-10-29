@@ -3,9 +3,11 @@ import { useNavigate } from 'react-router-dom';
 import { friendly, GameError, newKey, rpc, store } from '../lib/api';
 import { useLive } from '../lib/live';
 import { msUntil, progress, secondsLeft, useNow, fmtClock, serverTime } from '../lib/time';
-import { FINALE_STAGES, KIND_LABEL, locName, MapData, neighbors, ROLE_ORDER, ROLES, Role, TIER_COLOR, useMapData, ZONE_TEXT } from '../lib/game';
+import { FINALE_STAGES, MATCH_PHASES, KIND_LABEL, locName, MapData, neighbors, ROLE_ORDER, ROLES, Role, TIER_COLOR, useMapData, ZONE_TEXT } from '../lib/game';
 import { buzz, sfx, unlockAudio } from '../lib/sound';
-import CampusMap from '../components/CampusMap';
+import CampusMap, { SHORT, shortestRoute } from '../components/CampusMap';
+import { BusInterior, ShuttleJourney } from '../components/Shuttle';
+import { PhaseBanner, TrialRibbon } from '../components/Phase';
 import { Countdown, FeedList, HostOverlays, HpBar, Loading, SettingsSheet, Sheet, TimerBar, toast, ZoneChip } from '../components/ui';
 
 type Tab = 'mission' | 'map' | 'squad' | 'comms';
@@ -58,6 +60,7 @@ export default function Play() {
   return (
     <div className="app" onClick={() => unlockAudio()}>
       <HostOverlays overlay={s.arena.overlay} paused={s.arena.paused} />
+      <TrialRibbon on={!!s.arena.overlay?.trial || String(s.event?.name || '').startsWith('TRIAL')} />
       <TopBar s={s} onSettings={() => setSettings(true)} connected={live.connected} />
       <main className="content">
         {phase === 'lobby' && <Lobby s={s} />}
@@ -65,6 +68,7 @@ export default function Play() {
         {phase === 'shuttle' && <Shuttle s={s} />}
         {phase === 'roles' && <Roles s={s} token={token} refresh={live.refresh} />}
         {inGame && <RoleReveal s={s} />}
+        {inGame && phase === 'play' && <PhaseBanner overlay={s.arena.overlay} />}
         {inGame && phase === 'finale' && <FinaleBanner s={s} />}
         {inGame && tab === 'mission' && <MissionTab s={s} token={token} map={map} refresh={live.refresh} goMap={() => setTab('map')} goComms={() => setTab('comms')} />}
         {inGame && tab === 'map' && map && <MapTab s={s} token={token} map={map} refresh={live.refresh} />}
@@ -108,6 +112,8 @@ function useGameEffects(s: any, map: MapData | null) {
       if (s.arena.phase === 'play') sfx.go();
       if (s.arena.phase === 'finale') { sfx.reveal(); toast('FINALE — Training Room 14', 'warn'); }
     }
+    const pm = p.arena.overlay?.match?.phase; const sm = s.arena.overlay?.match?.phase;
+    if (sm !== undefined && pm !== undefined && sm !== pm && sm < 5) { sfx.reveal(); buzz([120, 60, 120]); toast(`▶ PHASE ${sm}: ${MATCH_PHASES[sm]?.name.toUpperCase()}`, 'warn'); }
     if (s.mission?.id && s.mission.id !== p.mission?.id) { sfx.mission(); buzz(60); }
     if (s.battle?.id && s.battle.id !== p.battle?.id) {
       sfx.enemy(); buzz([200, 100, 200]);
@@ -175,25 +181,9 @@ function TopBar({ s, onSettings, connected }: { s: any; onSettings: () => void; 
 
 // ── Pre-game phases ─────────────────────────────────────────────────────
 function Lobby({ s }: { s: any }) {
-  const n = s.roster.length;
   return (
     <>
-      <div className="panel">
-        <div className="panel-title">Squad lobby</div>
-        <div className="row between"><h2 style={{ fontSize: 28 }}>{s.team.name}</h2><span className={`chip ${n === 4 ? 'good' : 'warn'}`}>{n}/4</span></div>
-        <div className="list" style={{ marginTop: 12 }}>
-          {[0, 1, 2, 3].map((i) => (
-            <div key={i} className="list-item">
-              <span className={`dot ${s.roster[i]?.online ? 'on' : ''}`} />
-              <span className="grow">{s.roster[i] ? s.roster[i].name : <span className="dim">Waiting for player…</span>}</span>
-              {s.roster[i]?.me && <span className="chip">You</span>}
-            </div>
-          ))}
-        </div>
-      </div>
-      <div className="panel">
-        <p style={{ margin: 0 }}>{n < 4 ? 'Your squad needs exactly 4 players. Ask your teammates to join with the same squad number and PIN.' : 'Squad ready! Waiting for the host to open the shuttles.'}</p>
-      </div>
+      <BusInterior s={s} />
       <HowToPlay />
     </>
   );
@@ -216,31 +206,11 @@ function HowToPlay() {
 }
 
 function Boarding({ s }: { s: any }) {
-  return (
-    <div className="panel center col" style={{ alignItems: 'center', padding: 24 }}>
-      <div className="panel-title">SIPCOT Entrance</div>
-      <div style={{ fontSize: 64 }} aria-hidden>🚌</div>
-      <div className="mega" style={{ fontSize: 56 }}>BUS {s.team.bus ?? '—'}</div>
-      <div className="muted">Squad {s.team.number} · {s.roster.map((r: any) => r.name).join(', ')}</div>
-      <span className="chip warn">Boarded · awaiting departure</span>
-    </div>
-  );
+  return <BusInterior s={s} />;
 }
 
 function Shuttle({ s }: { s: any }) {
-  useNow(100);
-  const p = progress(s.arena.shuttle_departed_at, s.arena.shuttle_arrive_at);
-  return (
-    <div className="panel col" style={{ padding: 22 }}>
-      <div className="panel-title">Shuttle {s.team.bus} en route</div>
-      <div className="row between up" style={{ fontSize: 13 }}><span>SIPCOT</span><span>Gate 1</span></div>
-      <div style={{ position: 'relative', height: 60, borderBottom: '3px dashed var(--line-strong)' }}>
-        <div style={{ position: 'absolute', left: `calc(${p * 100}% - 30px)`, bottom: 4, fontSize: 44, transition: 'left 0.1s linear' }} aria-hidden>🚌</div>
-      </div>
-      <div className="center timer-big">{secondsLeft(s.arena.shuttle_arrive_at)}s</div>
-      <p className="center muted" style={{ margin: 0 }}>Get ready: at Gate 1 you must claim your role — fast!</p>
-    </div>
-  );
+  return <ShuttleJourney s={s} />;
 }
 
 function Roles({ s, token, refresh }: { s: any; token: string; refresh: () => void }) {
@@ -369,6 +339,8 @@ function Idle({ s, token, map, refresh, goMap, goComms }: { s: any; token: strin
   const weapons = Object.entries(s.inventory || {}).filter(([k]) => ['pistol', 'smg', 'sniper'].includes(k));
   const left = (s.team.visit_limit ?? 2) - (s.team.visit_missions ?? 0);
   const cooldown = s.team.attack_cooldown_until && msUntil(s.team.attack_cooldown_until) > 0;
+  const duelPhase = s.arena.overlay?.match?.duel_phase ?? 2;
+  const duelsLocked = (s.arena.overlay?.match?.phase ?? 99) < duelPhase;
 
   async function act(fn: string, args: any, ok?: string) {
     setBusy(true);
@@ -415,9 +387,9 @@ function Idle({ s, token, map, refresh, goMap, goComms }: { s: any; token: strin
                     <select className="input" style={{ minHeight: 38, padding: 6, width: 'auto', flex: 1 }} value={weapon} onChange={(e) => setWeapon(e.target.value)} aria-label="Weapon">
                       {weapons.map(([k, q]) => <option key={k} value={k}>{k.toUpperCase()}{k !== 'pistol' ? ` ×${q}` : ''}</option>)}
                     </select>
-                    <button className="btn sm danger" disabled={busy || x.protected || x.in_battle || cooldown}
+                    <button className="btn sm danger" disabled={busy || x.protected || x.in_battle || cooldown || duelsLocked} title={duelsLocked ? `Duels unlock in Phase ${duelPhase}` : undefined}
                       onClick={() => { sfx.weapon(); act('captain_attack', { p_target: x.id, p_weapon: weapon }); }}>
-                      {cooldown ? <>Cooldown <Countdown to={s.team.attack_cooldown_until} /></> : x.allied ? 'Betray' : 'Engage'}
+                      {duelsLocked ? `Duels: Phase ${duelPhase}` : cooldown ? <>Cooldown <Countdown to={s.team.attack_cooldown_until} /></> : x.allied ? 'Betray' : 'Engage'}
                     </button>
                     {!x.allied && <button className="btn sm ghost" disabled={busy} onClick={() => act('captain_alliance', { p_action: 'propose', p_team: x.number, p_alliance: null }, 'Alliance proposed')}>Ally</button>}
                     <button className="btn sm ghost" onClick={goComms}>Message</button>
@@ -560,12 +532,14 @@ function MapTab({ s, token, map, refresh }: { s: any; token: string; map: MapDat
   const sameBuilding = loc?.building ? map.locations.filter((l) => l.building === loc.building) : [];
   return (
     <>
-      <CampusMap map={map} zoneStage={s.arena.zone_stage} zoneWarning={zoneWarn} squads={squads}
-        airdrops={s.airdrops} selected={sel} onSelect={(id) => { sfx.tap(); setSel(id); }} reachable={isCaptain ? reachable : undefined} height="58vh" />
+      <CampusMap map={map} zoneStage={s.arena.zone_stage} zoneWarning={zoneWarn} squads={squads} toolbar
+        airdrops={s.airdrops} selected={sel} onSelect={(id) => { sfx.tap(); setSel(id); }} reachable={reachable}
+        from={s.team.state === 'traveling' ? s.team.travel_to : s.team.location} height="56vh" />
       <div className="row wrap" style={{ gap: 6 }}>
         <span className="chip">☢ {ZONE_TEXT[s.arena.zone_stage]}</span>
-        {isCaptain && s.team.state === 'idle' && s.arena.phase === 'play' && <span className="chip" style={{ borderColor: 'var(--cyan)' }}>Dashed ring = reachable</span>}
+        {s.team.state === 'idle' && s.arena.phase === 'play' && <span className="chip" style={{ borderColor: 'var(--cyan)' }}>Dashed ring = one move away</span>}
       </div>
+      <LocationList map={map} s={s} reachable={reachable} selected={sel} onSelect={(id) => { sfx.tap(); setSel(id); }} />
       <Sheet open={!!loc} onClose={() => setSel(null)} title={loc?.name}>
         {loc && (
           <div className="col">
@@ -592,12 +566,63 @@ function MapTab({ s, token, map, refresh }: { s: any; token: string; map: MapDat
             {isCaptain && s.arena.phase === 'play' && (
               reachable.has(loc.id)
                 ? <button className="btn primary big block" disabled={busy} onClick={go}>Deploy · {reachable.get(loc.id)}s</button>
-                : <div className="notice">{loc.id === s.team.location ? 'You are here.' : s.team.state !== 'idle' ? 'Finish your current action first.' : 'Not directly reachable from here — move to a neighbouring location first.'}</div>
+                : (() => {
+                    const plan = s.team.state === 'idle' && loc.id !== s.team.location && s.team.dropped ? shortestRoute(map, s.team.location, loc.id, s.arena.zone_stage) : null;
+                    const first = plan?.path[1];
+                    return plan && first && reachable.has(first) ? (
+                      <div className="col" style={{ gap: 8 }}>
+                        <div className="notice">Route: {plan.path.map((id) => SHORT[id] || id).join(' → ')} · about {plan.seconds}s in total.</div>
+                        <button className="btn primary big block" disabled={busy} onClick={() => setSel(first)}>Plan first stop: {SHORT[first] || first} · {reachable.get(first)}s</button>
+                      </div>
+                    ) : null;
+                  })() || <div className="notice">{loc.id === s.team.location ? 'You are here.' : s.team.state !== 'idle' ? 'Finish your current action first.' : 'Not directly reachable from here — move to a neighbouring location first.'}</div>
             )}
           </div>
         )}
       </Sheet>
     </>
+  );
+}
+
+function LocationList({ map, s, reachable, selected, onSelect }: { map: MapData; s: any; reachable: Map<string, number>; selected: string | null; onSelect: (id: string) => void }) {
+  const [q, setQ] = useState('');
+  const [open, setOpen] = useState(false);
+  const stage = s.arena.zone_stage;
+  const drops = new Set((s.airdrops || []).map((a: any) => a.location));
+  const here: Record<string, number> = {};
+  for (const x of s.squads || []) if (x.location) here[x.location] = (here[x.location] || 0) + 1;
+  const list = map.locations
+    .filter((l) => l.kind !== 'start' && (!q || (l.name + ' ' + (SHORT[l.id] || '') + ' ' + (l.building || '')).toLowerCase().includes(q.toLowerCase())))
+    .sort((a, b) => Number(reachable.has(b.id)) - Number(reachable.has(a.id)) || Number(b.collapse > stage) - Number(a.collapse > stage) || a.name.localeCompare(b.name));
+  return (
+    <div className="panel col" style={{ gap: 8 }}>
+      <div className="row between">
+        <div className="panel-title" style={{ margin: 0 }}>Locations</div>
+        <button className="btn xs ghost" onClick={() => setOpen((o) => !o)} aria-expanded={open}>{open ? 'Hide list' : 'Show list'}</button>
+      </div>
+      {open && (
+        <>
+          <input className="input" placeholder="Search: Costa, TR14, EB3…" value={q} onChange={(e) => setQ(e.target.value)} aria-label="Search locations" />
+          <div className="loc-list">
+            {list.map((l) => {
+              const danger = l.collapse <= stage;
+              return (
+                <button key={l.id} className={`loc-row ${reachable.has(l.id) ? 'reach' : ''} ${selected === l.id ? 'sel' : ''}`} onClick={() => onSelect(l.id)}>
+                  <span className="sw" style={{ background: danger ? 'var(--red)' : l.id === 'tr14' ? 'var(--gold)' : l.collapse === stage + 1 ? 'var(--orange)' : 'var(--blue)' }} aria-hidden />
+                  <span>
+                    <b>{SHORT[l.id] || l.name}</b>
+                    <span className="muted" style={{ fontSize: 12, display: 'block' }}>
+                      {l.name}{l.id === s.team.location ? ' · you are here' : ''}{drops.has(l.id) ? ' · ✈ airdrop' : ''}{here[l.id] ? ` · ${here[l.id]} squad${here[l.id] > 1 ? 's' : ''}` : ''}
+                    </span>
+                  </span>
+                  <span className={`chip ${danger ? 'bad' : reachable.has(l.id) ? '' : ''}`}>{danger ? 'Danger' : reachable.has(l.id) ? `${reachable.get(l.id)}s` : l.reward}</span>
+                </button>
+              );
+            })}
+          </div>
+        </>
+      )}
+    </div>
   );
 }
 
@@ -709,7 +734,7 @@ function SquadTab({ s, token, map, refresh }: { s: any; token: string; map: MapD
         </div>
       )}
 
-      {s.leaderboard && (
+      {s.leaderboard && !s.arena.overlay?.hide_rankings && (
         <div className="panel">
           <div className="panel-title">Leaderboard · you are #{myRank || '—'}</div>
           <div className="list">

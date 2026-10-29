@@ -2,9 +2,11 @@ import { supabase } from './supabase';
 
 export class GameError extends Error {
   code: string;
-  constructor(code: string) {
+  detail: string;
+  constructor(code: string, detail?: string) {
     super(code);
     this.code = code;
+    this.detail = detail || code;
   }
 }
 
@@ -71,11 +73,17 @@ const MESSAGES: Record<string, string> = {
   BAD_CODE: 'Event code: 3–12 letters or digits.',
   ALL_MAPS_FULL: 'All maps are full (15 squads each). Create the event with more maps.',
   NETWORK: 'Connection problem — retrying…',
+  DUELS_LOCKED: 'Duels are locked until Phase 2 — First Contact.',
+  TRIAL_ONLY: 'That control only works in a trial event.',
+  BAD_PHASE: 'Choose a phase between 0 and 4. The finale starts with Begin finale.',
+  BAD_ROW: 'The squad file has a problem.',
   NOT_CONFIGURED: 'The game server is not configured yet (missing Supabase environment variables).',
 };
 
 export function friendly(e: unknown): string {
   const code = e instanceof GameError ? e.code : String((e as any)?.message || e);
+  // messages such as "BAD_ROW: row 3 — squad 4 appears twice" carry a useful detail after the code
+  if (e instanceof GameError && e.detail.startsWith(code + ':')) return e.detail.slice(code.length + 1).trim();
   return MESSAGES[code] || code.replace(/_/g, ' ').toLowerCase();
 }
 
@@ -89,9 +97,9 @@ function parseCode(message: string): string {
 export async function rpc<T = any>(fn: string, args: Record<string, unknown> = {}): Promise<T> {
   if (!supabase) throw new GameError('NOT_CONFIGURED');
   const { data, error } = await supabase.rpc(fn, args);
-  if (error) throw new GameError(parseCode(error.message));
+  if (error) throw new GameError(parseCode(error.message), error.message);
   if (data && typeof data === 'object' && (data as any).error && (data as any).ok === undefined) {
-    throw new GameError((data as any).error);
+    throw new GameError(parseCode((data as any).error), (data as any).error);
   }
   return data as T;
 }

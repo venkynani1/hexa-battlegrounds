@@ -76,7 +76,20 @@ Relay missions need a **codeword held by another squad's captain**, plus the squ
 Alliances need both captains, cost 10 coins each, last 10 minutes, give +10 trust and permanent mutual map visibility. Attacking an ally is allowed but is a **betrayal**: alliance broken, −20 trust, threat +1, announced on the projector.
 **Squad 00** is the engine's fictional antagonist. The host sends scripted transmissions and timed **bargains** (coins now, minus trust, plus threat). Squad 00 never touches Battle Points. In finale stage D the projector replays recorded choices (bargains accepted/refused, betrayals, codewords shared) and delivers one of three endings based on the final threat level.
 
-## Zone
+## Match phases and zone
+The match runs through six named phases. The current phase, its rules and the time to the next one are shown on every phone and on the projector; the server enforces the rules.
+
+| Phase | Theme | What changes | Zone stage it contracts to |
+|---|---|---|---|
+| 0 Deployment | Arrival and reconnaissance | Starts when role claims close. Intro (standard-difficulty) missions. **Duels locked.** | 0 — whole campus |
+| 1 Exploration | Explore and collect | Standard missions, first airdrops. Duels still locked. | 0 |
+| 2 First Contact | Competition begins | **Puzzle duels unlock** (setting `duel_phase`). First contraction announced. | 1 |
+| 3 Conflict & Intelligence | Risk versus reward | Mission picker prefers hard missions (150 points). Two contractions. | 3 |
+| 4 Final Convergence | High-stakes comeback | Only Hexavarsity stays safe; last chance for points before the finale. | 4 |
+| 5 Training Room 14 | Final showdown | Started only by *Begin finale*; synchronized rounds A–F. | 5 |
+
+Phases advance automatically on the `phase_schedule` (minutes after play starts) when `auto_pacing` = 1, or manually with *Next phase*. Whenever the zone is below the current phase's target, the server announces the next contraction `zone_warning` seconds ahead (orange dashed **next-zone preview** on every map), then collapses it. *Cancel zone* holds contraction until the host acts again.
+
 | Stage | Dangerous | Safe |
 |---|---|---|
 | 0 | — | whole campus |
@@ -86,7 +99,14 @@ Alliances need both captains, cost 10 coins each, last 10 minutes, give +10 trus
 | 4 | central amenities | Hexavarsity + central steps |
 | 5 | everything but TR14 | **Training Room 14** |
 
-Warning (default 60 s) → collapse. Squads still inside take 15 damage once per stage and are evacuated along the map graph to the nearest safe node. Reaching safety in time earns 40 points. TR14 never closes and every node has a route to it (tested).
+Squads still outside a collapsing area take `dmg_zone` (15) damage **once per stage** and are evacuated along the map graph to the nearest safe location; reaching safety before the collapse earns 40 points. 0 HP means Recovery, never elimination. TR14 never closes and every location has a route to it (tested). The safe zone is drawn as a glowing boundary around the safe locations with the danger area hatched.
+
+### Pacing presets
+| Preset | Phases 1–4 start (min) | Zone warning | Shuttle | Mission timers | Typical length |
+|---|---|---|---|---|---|
+| Quick demo | 1, 3, 5, 7 | 30 s | 12 s | 70 % | 8–12 min |
+| Rehearsal | 2, 7, 13, 19 | 45 s | 20 s | 85 % | 20–30 min |
+| Full event | 3, 20, 40, 58 | 90 s | 30 s | 100 % | 60–90 min |
 
 ## Finale (all squads simultaneously)
 | Stage | Round | Max points |
@@ -122,3 +142,7 @@ Round score = max × (0.5 + 0.5 × time remaining ÷ round length), so early sol
 | 1:50 | Close | Export event summary |
 
 `zone_auto = 1` with `zone_schedule = 20,40,55,70,85` automates the zone timeline. All values are starting points — tune them after the rehearsal in Host → Settings.
+
+## Arrival experience
+- **Bus lobby:** after joining, each phone shows its squad's bus interior: departure board (bus `HBX-nn`, destination, squad codename, map, status), four seats filling as teammates join, live online dots, readiness bar and host announcements on a ticker. Roles are claimed at Gate 1, so seats show "Role at Gate 1" until then.
+- **Shuttle:** doors close (about 3 s countdown), the bus drives a stylised road past signs and streetlights to the Gate 1 arch, while phones rotate through the four role briefings. The projector shows the whole convoy. Duration is a setting (Short 12 s / Cinematic 30 s). All motion is computed from server departure and arrival times, so a refresh resumes at the same moment and no phone arrives early.

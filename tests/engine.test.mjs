@@ -200,6 +200,12 @@ test('battle: squads at the same location duel; damage, rewards, cooldowns', asy
   await db.query(`update teams set location_id = 'fountain', dropped = true, state = 'idle' where id = $1`, [squads[2].id]);
   await db.query(`update mission_instances set status = 'cancelled' where team_id in ($1, $2) and status = 'active'`, [squads[1].id, squads[2].id]);
   await db.query(`delete from inventory where team_id = $1 and item_id = 'sniper'`, [squads[1].id]);
+  // Phase 0/1: duels are locked server-side; host advances to Phase 2 (First Contact)
+  await fails(call('captain_attack', a.captain, squads[2].id, 'pistol'), 'DUELS_LOCKED');
+  assert.equal((await one(`select count(*)::int n from inventory where team_id = $1 and item_id = 'pistol' and qty = 1`, [squads[1].id])).n, 1, 'locked duel consumes nothing');
+  const ph = await call('host_command', host.token, arena1, 'set_phase', { phase: 2 }, null);
+  assert.equal(ph.ok, true);
+  await call('host_command', host.token, arena1, 'zone_cancel', {}, null); // keep this test focused on battles
   await fails(call('captain_attack', a.captain, squads[2].id, 'sniper'), 'NO_ITEM');
   const bt = await call('captain_attack', a.captain, squads[2].id, 'pistol');
   assert.ok(bt.battle);

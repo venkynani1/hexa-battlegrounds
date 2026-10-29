@@ -8,7 +8,7 @@ export default function Join() {
   const [params] = useSearchParams();
   const [code, setCode] = useState(params.get('e') || store.get('hb_event') || '');
   const [name, setName] = useState(store.get('hb_name') || '');
-  const [team, setTeam] = useState('');
+  const [team, setTeam] = useState(params.get('s')?.replace(/\D/g, '') || '');
   const [pin, setPin] = useState('');
   const [consent, setConsent] = useState(false);
   const [rules, setRules] = useState(false);

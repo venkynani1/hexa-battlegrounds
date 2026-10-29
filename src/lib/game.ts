@@ -30,6 +30,15 @@ export const ZONE_TEXT = [
   'Training Room 14 is the last safe zone',
 ];
 
+export const MATCH_PHASES = [
+  { name: 'Deployment', theme: 'Arrival and reconnaissance', rules: 'Intro missions only. No duels, no zone damage.' },
+  { name: 'Exploration', theme: 'Explore and collect', rules: 'Standard missions and first airdrops. The whole campus is safe.' },
+  { name: 'First Contact', theme: 'Competition begins', rules: 'Puzzle duels unlock. The first zone contraction is announced.' },
+  { name: 'Conflict & Intelligence', theme: 'Risk versus reward', rules: 'Harder missions pay more. The zone closes to central campus.' },
+  { name: 'Final Convergence', theme: 'High-stakes comeback', rules: 'Only Hexavarsity stays safe. Make your last big plays.' },
+  { name: 'Training Room 14', theme: 'Final showdown', rules: 'Every squad plays the synchronized finale.' },
+];
+
 export const FINALE_STAGES: Record<string, { name: string; text: string }> = {
   A: { name: 'Entry Lock', text: 'Every squad decodes its way into the final circle.' },
   B: { name: 'Intelligence Exchange', text: 'Captains trade codewords across squads.' },
@@ -108,6 +117,7 @@ export function feedText(type: string, p: any, map: MapData | null): { text: str
     case 'story.broadcast': return { text: `📣 ${p.text}`, tone: 'warn' };
     case 'game.paused': return { text: 'Game paused by host', tone: 'info' };
     case 'game.resumed': return { text: 'Game resumed', tone: 'info' };
+    case 'phase.started': return { text: `▶ Phase ${p.phase}: ${MATCH_PHASES[p.phase]?.name || ''}`, tone: 'warn' };
     case 'final.started': return { text: 'FINALE — all squads converge on Training Room 14', tone: 'warn' };
     case 'final.stage': return { text: `Final stage ${p.stage}: ${FINALE_STAGES[p.stage]?.name || ''}`, tone: 'warn' };
     case 'sync.started': return { text: 'Synchronized challenge started — all squads!', tone: 'warn' };

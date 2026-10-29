@@ -140,3 +140,15 @@ Errors are short codes (`NOT_CAPTAIN`, `ROLE_TAKEN`, `DANGER_ZONE`…) mapped to
 | Database size | < 20 MB per event | 500 MB |
 
 Local load test (15 squads, 60 phones): p50 7 ms, p95 ≈ 130 ms, 0 server errors; 45 of 60 simultaneous captain claims correctly rejected. Run `npm run loadtest` against your real project before the event — venue Wi-Fi is usually the bottleneck.
+
+## 11. P0 additions (migration `0100_p0_phases_trial.sql`)
+- **Incremental only.** Earlier migrations are unchanged. The migration adds columns (`events.is_trial`, `arenas.match_phase`, `phase_started_at`, `phase_next_at`, `zone_hold`), new settings keys, two triggers and new functions, and replaces a few function bodies with the same signatures (`_tick`, `_pick_template`, `_start_instance`, `host_command`, `host_generate_teams`, `host_import_teams`). It re-applies the browser whitelist, because Postgres grants EXECUTE on new functions to PUBLIC by default.
+- **Public phase mirror.** The authoritative phase lives in `arenas.match_phase`; a copy (`phase`, `next_at`, `duel_phase`, `zone_target`) plus a `trial` flag is written to `arenas.overlay.match`, which `player_state` and `spectator_state` already return. So no existing API contract changed. `clear_overlay` keeps this key.
+- **Duel lock.** A `before insert` trigger on `battles` raises `DUELS_LOCKED` below `duel_phase`; the whole captain action rolls back, so no weapon is consumed.
+- **Tick.** Now also advances phases on the schedule and keeps contracting the zone toward the phase target, honouring `zone_hold`.
+- **`_shift_arena(arena, interval)`** moves every timer of an arena. Resume uses it implicitly (phase timers) and trial fast-forward uses a negative interval.
+- **Host command routing.** `host_command` keeps its signature and audit behaviour, routes new commands (`set_phase`, `next_phase`, `hide_rankings`, `reset_pin`, `trial_skip`, `trial_bots`, `trial_reset`) to `_host_exec_p0`, and wraps existing ones with phase hooks (resume, begin_finale, zone_cancel, reset). PINs never enter the audit log.
+- **Trial isolation.** `trial_*` commands raise `TRIAL_ONLY` unless `events.is_trial`; trial events are created only through `host_create_trial` and are labelled on every screen.
+- **New API functions:** `host_roster`, `host_create_trial`, `host_trial_status` (34 browser-callable functions in total).
+- **Squad preparation.** PINs come from `_new_pin` (digits drawn from `gen_random_uuid`, i.e. the OS CSPRNG), default 6 digits. A `before insert` trigger on `teams` gives codenames (Alpha-01…) and a bus number. Import validates the whole file before writing and rejects weak PINs.
+- **Simulated squads** are created by `trial_bots`, which calls the real `join_team` four times per squad. The host browser then drives them through the same RPCs as phones (`claim_role`, `captain_move`, `captain_explore`, `captain_submit`, `captain_attack`, `captain_claim_airdrop`).
