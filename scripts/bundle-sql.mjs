@@ -5,7 +5,8 @@
 // Run: npm run db:bundle  → supabase/setup/part-N.sql (run them in order)
 import { readFileSync, readdirSync, writeFileSync, mkdirSync, rmSync } from 'node:fs';
 
-const LIMIT = 90000;
+// 18k: some copy paths (file previews, clipboards) silently cut text at 20,000 characters.
+const LIMIT = 18000;
 
 // Remove -- comments and collapse whitespace, never touching '…' strings or "…" identifiers.
 export function minify(sql) {
@@ -45,6 +46,30 @@ export function minify(sql) {
   return out.trim();
 }
 
+// Split minified SQL into top-level statements (ignoring ; inside strings and $$ bodies).
+function statements(sql) {
+  const out = [];
+  let start = 0; let i = 0; let inDollar = false;
+  while (i < sql.length) {
+    const c = sql[i];
+    if (!inDollar && (c === "'" || c === '"')) {
+      let j = i + 1;
+      while (j < sql.length) { if (sql[j] === c) { if (sql[j + 1] === c) { j += 2; continue; } break; } j++; }
+      i = j + 1; continue;
+    }
+    if (c === '$' && sql[i + 1] === '$') { inDollar = !inDollar; i += 2; continue; }
+    if (inDollar && (c === "'")) { // strings inside function bodies
+      let j = i + 1;
+      while (j < sql.length) { if (sql[j] === c) { if (sql[j + 1] === c) { j += 2; continue; } break; } j++; }
+      i = j + 1; continue;
+    }
+    if (!inDollar && c === ';') { out.push(sql.slice(start, i + 1).trim()); start = i + 1; }
+    i++;
+  }
+  if (sql.slice(start).trim()) out.push(sql.slice(start).trim());
+  return out;
+}
+
 const dir = new URL('../supabase/migrations/', import.meta.url);
 const outDir = new URL('../supabase/setup/', import.meta.url);
 rmSync(outDir, { recursive: true, force: true });
@@ -53,14 +78,15 @@ const files = readdirSync(dir).filter((f) => f.endsWith('.sql')).sort();
 const parts = [];
 let cur = '';
 for (const f of files) {
-  const body = minify(readFileSync(new URL(f, dir), 'utf8')) + ' ';
-  if (body.length > LIMIT) throw new Error(`${f} alone exceeds ${LIMIT} characters after minifying — split it`);
-  if (cur.length + body.length > LIMIT && cur) { parts.push(cur); cur = ''; }
-  cur += body;
+  for (const st of statements(minify(readFileSync(new URL(f, dir), 'utf8')))) {
+    if (st.length > LIMIT) throw new Error(`a statement in ${f} is ${st.length} characters (> ${LIMIT}) — split it`);
+    if (cur.length + st.length + 1 > LIMIT && cur) { parts.push(cur); cur = ''; }
+    cur += st + ' ';
+  }
 }
 if (cur) parts.push(cur);
 parts.forEach((p, i) => {
   const text = `/* HEXA BATTLEGROUNDS setup — PART ${i + 1} OF ${parts.length}. Run parts in order. Safe to re-run. */ ${p.trim()}\n`;
-  writeFileSync(new URL(`part-${i + 1}.sql`, outDir), text);
-  console.log(`supabase/setup/part-${i + 1}.sql  ${text.length.toLocaleString()} characters, ${text.split('\n').length - 1} line`);
+  writeFileSync(new URL(`part-${String(i + 1).padStart(2, "0")}.sql`, outDir), text);
+  console.log(`supabase/setup/part-${String(i + 1).padStart(2, "0")}.sql  ${text.length.toLocaleString()} characters, ${text.split('\n').length - 1} line`);
 });

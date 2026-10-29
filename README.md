@@ -42,7 +42,7 @@ Create a repository and push this folder.
 
 ### 4. Create the game database
 1. Open the Supabase dashboard (Vercel → Storage → your database → **Open in Supabase**).
-2. **SQL Editor → New query** → paste [`supabase/setup/part-1.sql`](supabase/setup/part-1.sql) → **Run**. Then do the same, in order, for `part-2.sql`, `part-3.sql` and `part-4.sql` (the editor accepts at most 100,000 characters per query, so the setup is split; each part is a single minified line so the editor can't auto-indent it past the limit). Together they create every table, the game engine, the map and the 145-mission library. Re-running them later is safe (they update in place).
+2. **SQL Editor → New query** → paste [`supabase/setup/part-01.sql`](supabase/setup) → **Run**, then repeat for `part-02.sql` … `part-19.sql` **in order** (a new query each time is fine). Each part is a single line under 18,000 characters, because the editor accepts at most 100,000 characters per query and some copy paths cut text at 20,000. Together they create every table, the game engine, the map and the 145-mission library. Re-running them is safe.
    - **No SQL Editor? Use one command from your laptop:** copy `POSTGRES_URL_NON_POOLING` from Vercel → Settings → Environment Variables, then in this folder run `npm install` and `DATABASE_URL="<that value>" npm run db:setup` (Windows PowerShell: `$env:DATABASE_URL="<value>"; npm run db:setup`).
    - Vercel's own query box runs one statement at a time and will fail with "cannot insert multiple commands into a prepared statement" — use Supabase's SQL Editor or `npm run db:setup` instead.
    - With the Supabase CLI instead: `supabase link` then `supabase db push` (uses `supabase/migrations/`).
@@ -84,7 +84,7 @@ Against a real Supabase project: copy `.env.example` → `.env.local`, fill in t
 
 ```
 supabase/migrations/   0001 schema · 0002 core engine & tick · 0003 player/captain API · 0004 host & projector API · 0005–0010 content (generated)
-supabase/setup/        the migrations packed into 4 paste-able parts (run in order)
+supabase/setup/        the migrations packed into 19 paste-able parts (run in order)
 content/               editable campus map, items and the mission generator
 src/pages/             Join, Play (four role views), Host console, Screen (projector)
 src/components/        CampusMap (pan/zoom/zone/airdrops), shared HUD components
