@@ -42,7 +42,7 @@ Create a repository and push this folder.
 
 ### 4. Create the game database
 1. Open the Supabase dashboard (Vercel → Storage → your database → **Open in Supabase**).
-2. **SQL Editor → New query** → paste [`supabase/setup/part-1.sql`](supabase/setup/part-1.sql) → **Run**. Then do the same, in order, for `part-2.sql`, `part-3.sql` and `part-4.sql` (the editor accepts at most 100,000 characters per query, so the setup is split). Together they create every table, the game engine, the map and the 145-mission library. Re-running them later is safe (they update in place).
+2. **SQL Editor → New query** → paste [`supabase/setup/part-1.sql`](supabase/setup/part-1.sql) → **Run**. Then do the same, in order, for `part-2.sql`, `part-3.sql` and `part-4.sql` (the editor accepts at most 100,000 characters per query, so the setup is split; each part is a single minified line so the editor can't auto-indent it past the limit). Together they create every table, the game engine, the map and the 145-mission library. Re-running them later is safe (they update in place).
    - **No SQL Editor? Use one command from your laptop:** copy `POSTGRES_URL_NON_POOLING` from Vercel → Settings → Environment Variables, then in this folder run `npm install` and `DATABASE_URL="<that value>" npm run db:setup` (Windows PowerShell: `$env:DATABASE_URL="<value>"; npm run db:setup`).
    - Vercel's own query box runs one statement at a time and will fail with "cannot insert multiple commands into a prepared statement" — use Supabase's SQL Editor or `npm run db:setup` instead.
    - With the Supabase CLI instead: `supabase link` then `supabase db push` (uses `supabase/migrations/`).

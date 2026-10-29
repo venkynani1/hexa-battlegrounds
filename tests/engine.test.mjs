@@ -6,7 +6,7 @@ import { readFileSync, readdirSync } from 'node:fs';
 import { PGlite } from '@electric-sql/pglite';
 
 let db;
-const MIG = new URL('../supabase/migrations/', import.meta.url);
+const MIG = new URL(process.env.SQL_DIR || '../supabase/migrations/', import.meta.url);
 
 async function call(fn, ...args) {
   const ph = args.map((_, i) => `$${i + 1}`).join(', ');
