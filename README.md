@@ -1,8 +1,8 @@
 # Hexaware Battlegrounds × Operation Siruseri
 
-**Drop. Decode. Dominate.** A host-controlled, real-time, mobile-first multiplayer survival game for an in-room corporate event. Squads of four (Captain, Scout, Decoder, Intel Officer) drop onto a stylised Hexaware Siruseri campus, split clues across four phones, fight puzzle duels, chase airdrops, negotiate with other captains and converge on **Hexavarsity Training Room 14** for a simultaneous finale.
+**Drop. Decode. Dominate.** A host-controlled, real-time, mobile-first multiplayer survival game for an in-room corporate event. Squads of four (Captain, Scout, Decoder, Intel Officer) ride a 3D shuttle to Gate 1, parachute onto a **3D Hexaware Siruseri campus**, run it with a Free Fire-style joystick, split clues across four phones, fight puzzle duels, chase airdrops, dodge red zones and a shrinking safe circle, negotiate with other captains and converge on **Hexavarsity Training Room 14** for a simultaneous finale.
 
-- **60 players per map** (15 squads). Bigger events run **parallel maps** (Map 2, Map 3…) on the same campus, controlled from one host console, with a fair combined grand champion.
+- **Up to 60 players per map** (15 squads; a map can start with any number of complete squads from 1 to 15). Bigger events run **parallel maps** (Map 2, Map 3…) on the same campus, controlled from one host console, with a fair combined grand champion.
 - **Zero cost hosting:** Vercel Hobby (frontend) + Supabase Free (Postgres, Realtime), added from inside Vercel.
 - **Server-authoritative:** every rule, timer, score and answer check runs inside Postgres. Browsers never receive answers and cannot touch tables.
 
@@ -42,8 +42,10 @@ Create a repository and push this folder.
 
 ### 4. Create the game database
 1. Open the Supabase dashboard (Vercel → Storage → your database → **Open in Supabase**).
-2. **SQL Editor → New query** → paste [`supabase/setup/part-01.sql`](supabase/setup) → **Run**, then repeat for `part-02.sql` … `part-20.sql` **in order** (a new query each time is fine). Each part is a single line under 18,000 characters, because the editor accepts at most 100,000 characters per query and some copy paths cut text at 20,000. Together they create every table, the game engine, the map and the 145-mission library. Re-running them is safe.
-   - **Already ran the earlier setup (part-01 … part-19)?** You only need [`supabase/upgrade/upgrade-01.sql`](supabase/upgrade) and `upgrade-02.sql`, in order. They add match phases, trial mode and squad preparation without touching your data.
+2. **SQL Editor → New query** → paste [`supabase/setup/part-01.sql`](supabase/setup) → **Run**, then repeat for `part-02.sql` … `part-28.sql` **in order** (a new query each time is fine). Each part is a single line under 18,000 characters, because the editor accepts at most 100,000 characters per query and some copy paths cut text at 20,000. Together they create every table, the game engine, the map and the 191-challenge library. Re-running them is safe.
+   - **Already ran `supabase/upgrade` (match phases)?** Run only [`supabase/upgrade-2/upgrade2-01.sql`](supabase/upgrade-2) … `upgrade2-22.sql`, in order. They add the open world (positions, joystick movement, circular zone, red zones), challenge pack 2 and remove trial mode, without touching squads or scores. Each part is under ~10,000 characters.
+   - **Only ran the original setup (part-01 … part-19)?** Run everything in [`supabase/upgrade/`](supabase/upgrade) (`upgrade-01` … `upgrade-28`) in order — it contains both upgrades.
+   - Easiest of all for any upgrade: `DATABASE_URL="<POSTGRES_URL_NON_POOLING>" npm run db:setup` runs every migration (safe to re-run).
    - **No SQL Editor? Use one command from your laptop:** copy `POSTGRES_URL_NON_POOLING` from Vercel → Settings → Environment Variables, then in this folder run `npm install` and `DATABASE_URL="<that value>" npm run db:setup` (Windows PowerShell: `$env:DATABASE_URL="<value>"; npm run db:setup`).
    - Vercel's own query box runs one statement at a time and will fail with "cannot insert multiple commands into a prepared statement" — use Supabase's SQL Editor or `npm run db:setup` instead.
    - With the Supabase CLI instead: `supabase link` then `supabase db push` (uses `supabase/migrations/`).
@@ -74,22 +76,24 @@ Against a real Supabase project: copy `.env.example` → `.env.local`, fill in t
 
 | Command | What it does |
 |---|---|
-| `npm test` | 34 tests on the real SQL in embedded Postgres: the 21 original engine tests (joining, PIN lockout, race-safe roles, captain-only rules, answer secrecy, idempotent scoring, battles, recovery, airdrops, relays, chat, alliances, pause/resume, zone, finale, permissions) plus 13 P0 tests (phases and duel lock, phase-driven zone, auto pacing, timer scaling, PINs and reset, CSV validation, trial isolation, simulated squads, cross-map isolation, identical finale across maps) |
+| `npm test` | 37 tests on the real SQL in embedded Postgres: 21 engine tests (joining, PIN lockout, race-safe roles, captain-only rules, answer secrecy, idempotent scoring, battles, recovery, airdrops, relays, chat, alliances, pause/resume, circular zone damage, finale, permissions), 10 P0 tests (phases and duel lock, phase-driven zone, auto pacing, timer scaling, PINs and reset, CSV validation, cross-map isolation, identical finale across maps) and 6 open-world tests (start with fewer squads, server speed cap, location areas, distance-based travel time, duel range, red zones) |
 | `npm run build` | Type-check and build for production |
-| `npm run content` | Regenerate the map/mission seed (`0005`–`0010` content migrations) from `content/*.mjs` |
-| `npm run db:bundle` | Rebuild `supabase/setup/part-*.sql` from the migrations |
+| `npm run content` | Regenerate the map/mission seed (`0005`–`0024` and `0210`+ content migrations) from `content/*.mjs` |
+| `npm run db:bundle` | Rebuild `supabase/setup/`, `supabase/upgrade/` and `supabase/upgrade-2/` from the migrations |
 | `npm run loadtest` | Simulate squads × 4 phones (`SUPABASE_URL`, `SUPABASE_KEY`, `SQUADS`, `MINUTES`) |
 | `npm run local` | Offline game server for rehearsals |
 
 ## Project layout
 
 ```
-supabase/migrations/   0100 P0 (match phases, trial mode, squad prep) · 0001 schema · 0002 core engine & tick · 0003 player/captain API · 0004 host & projector API · 0005–0010 content (generated)
-supabase/setup/        all migrations packed into 20 paste-able parts (fresh install, run in order)
-supabase/upgrade/      only the incremental migrations (0100+) for existing databases
-content/               editable campus map, items and the mission generator
-src/pages/             Join, Play (four role views), Host console, Screen (projector)
-src/components/        CampusMap (pan/zoom/zone/airdrops), shared HUD components
+supabase/migrations/   0001 schema · 0002 core engine & tick · 0003 player/captain API · 0004 host & projector API · 0005–0024 content · 0100 match phases & squad prep · 0200 open world, circular zone, red zones · 0210+ challenge pack 2
+supabase/setup/        all migrations packed into paste-able parts (fresh install, run in order)
+supabase/upgrade/      incremental migrations 0100+ (databases that ran only the original setup)
+supabase/upgrade-2/    incremental migrations 0200+ (databases that already ran supabase/upgrade)
+content/               editable campus map, items and the challenge generators (missions.mjs, missions2.mjs)
+src/pages/             Join, Play (world HUD + four role views), Host console, Screen (projector)
+src/three/             3D campus world and 3D shuttle bus (three.js, lazy-loaded)
+src/components/        CampusMap (2D tactical map), Fruit Slash, shuttle, shared HUD components
 src/lib/               RPC client, live sync (realtime + polling + deadline refresh), server clock, synthesised SFX
 scripts/               local server, load test, content & SQL bundlers
 tests/                 engine tests
@@ -100,7 +104,7 @@ docs/                  architecture, game design, host manual
 - [Architecture, data model, API & realtime contract](docs/ARCHITECTURE.md)
 - [Game design, economy & 120-minute run-sheet](docs/GAME_DESIGN.md)
 - [Host manual, rehearsal checklist, recovery procedures, known limitations](docs/HOST_MANUAL.md)
-- [Trial manual: rehearse with simulated squads and fast-forward](docs/TRIAL_MANUAL.md)
+- [Design audit (Apple design / mobile-native review)](docs/DESIGN_AUDIT.md)
 - [Feature audit and P0 status](docs/AUDIT.md)
 
 All sounds are synthesised in the browser and all content is original — no PUBG assets, branding, maps or audio.

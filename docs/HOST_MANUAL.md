@@ -12,7 +12,7 @@
 2. **Links & PINs → Create squads**: codenames, buses and 6-digit PINs are generated. Click **Print squad cards** (one card per squad with its own QR code that pre-fills the squad number, plus the PIN) or **Download CSV**. PINs are stored hashed and shown only in this browser session; **Issue new PIN** on any card replaces one securely.
    Or paste an organiser CSV (`number,name,pin,map`; leave PIN empty to generate one). The whole file is validated first.
 3. **Game control → Match pacing**: pick *Full event* (or tune in Settings) and a shuttle length.
-4. Rehearse in a separate **trial event** — see [TRIAL_MANUAL.md](TRIAL_MANUAL.md).
+4. Rehearse in a separate event (for example `HEXA26T`) with a few real phones; *Reset map* returns it to the lobby.
 5. On event day just log in with the same code and password: squads, PINs and settings are already there.
 
 ## Earlier notes
@@ -29,7 +29,7 @@
 - [ ] Projector: fullscreen, sound on, readable from the back row, correct map.
 - [ ] Test **Pause/Resume**, **Broadcast**, **Countdown**, **Blackout**, a **Squad 00 transmission**, **Zone warning**.
 - [ ] Test a disconnect: close a phone browser, reopen `/play` — it must resume the same role.
-- [ ] Run the guided trial ([TRIAL_MANUAL.md](TRIAL_MANUAL.md)) in a separate trial event.
+- [ ] Walk the 3D world with the captain's joystick, call a **red zone**, shrink the zone and check that phones outside lose HP.
 - [ ] Reset the rehearsal map: Game control → **Reset map** (type `RESET`) — squads and players stay, gameplay is wiped. Or create a fresh event code for the real game.
 - [ ] Print the PIN sheet and keep a spare laptop logged into `/host`.
 
@@ -38,9 +38,9 @@ Each map card shows the current **match phase** with *◀ / Next phase ▶* and 
 
 ## Running the game
 Follow the run-sheet in [GAME_DESIGN.md](GAME_DESIGN.md#120-minute-run-sheet-per-map-parallel-maps-run-the-same-sheet). Typical sequence per map (or *All maps*):
-1. **Open boarding** (assigns buses; incomplete squads stay in the lobby — fix them in Squads first).
+1. **Open boarding** (assigns buses). You can start with any number of complete squads from 1 to 15; incomplete squads stay in the lobby. An empty map is refused.
 2. **DRIVE** → 10 s shuttle → Gate 1 role claim (15 s) → map revealed.
-3. During play: airdrops (Map & zone), transmissions and bargains (Suspense), zone warnings (Map & zone or automatic).
+3. During play: airdrops and **red zones** (Map & zone), transmissions and bargains (Suspense), zone warnings (Map & zone or automatic). The safe zone is a shrinking circle; squads outside lose HP over time and are never teleported. Red zones give phones a 20 s warning, then hit squads still inside for 30 HP.
 4. **Begin finale** → set stage and **Launch round** for A, B, C (repeat C as you like), **Reveal Squad 00** for D, launch E.
 5. **Lock results** → **Reveal winner** on each map → **Reveal grand champion**.
 6. Logs → **Export event summary** (results, ledger, audit, aggregate analytics).

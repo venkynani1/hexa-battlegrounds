@@ -406,7 +406,7 @@ export default function WorldTab({ s, token, map, refresh, openMission, openSqua
               {x.protected && <span className="muted" style={{ fontSize: 13 }}>Protected after respawn — try later.</span>}
             </div>
           ))}
-          <p className="muted" style={{ margin: 0, fontSize: 13 }}>A duel is a puzzle race: the first squad to answer wins and the loser takes damage. Pistol 25 · SMG 35 (fast) · Sniper 50 (hard).</p>
+          <p className="muted" style={{ margin: 0, fontSize: 13 }}>A duel is a puzzle race: the first squad to answer wins and the loser takes damage. Pistol 25 damage (90 s, reusable) · SMG 20 (50 s, one use) · Sniper 40 (120 s, hard, one use).</p>
         </div>
       </Sheet>
     </div>

@@ -35,6 +35,6 @@ QR (`/join?e=CODE`) → join with squad number + PIN → lobby (`arena.phase = l
 | Map phases and zone shrinking | **Done** | Phases 0–5 with server gating (duels from Phase 2), phase-aware mission difficulty, automatic pacing, phase-driven contraction with hold, presets, host timeline. |
 | Pre-generated team PINs | **Done** | 6-digit CSPRNG PINs, codenames, buses at creation, printable squad cards with per-squad QR, PIN reset, PINs kept out of audit logs. |
 | Import/export squad roster | **Done** | Whole-file validation (duplicates, unknown maps, weak PINs), generated PINs for blank rows, CSV export. |
-| Trial/simulation mode | **Done** | Trial events, guided auto-ticking checklist, simulated squads via real RPCs, fast-forward, reset, live-event isolation. |
+| Trial/simulation mode | **Removed** (by request) | Rehearse in a separate event; *Reset map* returns a map to the lobby. Removed in migration 0200. |
 | Cinematic projector | **Partly** | P0 scenes (boarding, convoy, phase banner, sealed rankings) added; scene switching and commentary cues are P2. |
 | Mission variety, progression, abilities, world events, comeback, finale redesign | **Not started** | P1. |

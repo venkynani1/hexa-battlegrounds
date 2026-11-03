@@ -17,10 +17,17 @@
 
 Roles are claimed at Gate 1 (first tap wins, enforced by the database), then auto-filled.
 
-## Core loop (per squad, runs in parallel for every squad)
-Choose destination → travel (6–25 s, first drop 8 s) → arrive (encounter check, mission starts) → each teammate reads their clue → squad talks → captain submits (3 attempts) → reward (points, coins, location loot) or failure (−10 HP) → search again (2 missions per visit) or move. Leaving a location forfeits its mission without penalty.
+## Open world and movement
+Each squad has a position on the campus (0–1 coordinates). The captain steers with a floating joystick (server-capped at `move_speed` = 2.5 % of the campus per second, ~40 s to cross) or taps a location ring to auto-run there (time = distance ÷ speed; the first drop from Gate 1 is an 8 s parachute to anywhere). Locations are areas of radius `loc_radius` (3.5 %): inside one the squad can search, shop and crack airdrops; leaving it ends the search without penalty. Duels need the squads within `engage_range` (6 %). Teammates see the squad move live.
 
-## Challenge library (145 reviewed templates, generated from fixed seeds)
+## Core loop (per squad, runs in parallel for every squad)
+Run or auto-run to a location → arrive (encounter check, mission starts) → each teammate reads their clue → squad talks → captain submits (3 attempts) → reward (points, coins, location loot) or failure (−10 HP) → search again (2 missions per visit) or move. Leaving a location forfeits its mission without penalty.
+
+## Challenge library (191 reviewed templates, generated from fixed seeds)
+
+Pack 2 (migrations 0210+): **Picture Riddles** (🪜 + 👨 = STEPFATHER; one emoji pair per teammate), **Riddle Room** (one riddle per teammate), **Emoji Cinema** (films in emoji, Hollywood and Indian; also a pistol duel), **Tech Quick-Fire** (one-word tech questions; also the SMG duel), **Mini Sudoku Vault** (4×4: Scout holds rows 1–2, Decoder rows 3–4, Intel the code cells; also sniper duels and airdrop locks), **Fruit Slash** (Scout plays a slicing mini-game that reveals each fruit's digit, Intel knows the fruit order, Decoder the transform; also airdrop locks).
+
+Pack 1:
 | Family | Scout | Decoder | Intel | Where |
 |---|---|---|---|---|
 | Signal Intercept (Caesar) | 3 intercepted lines | how the cipher works | real frequency + key | gates, transmissions, boardroom |
@@ -88,18 +95,11 @@ The match runs through six named phases. The current phase, its rules and the ti
 | 4 Final Convergence | High-stakes comeback | Only Hexavarsity stays safe; last chance for points before the finale. | 4 |
 | 5 Training Room 14 | Final showdown | Started only by *Begin finale*; synchronized rounds A–F. | 5 |
 
-Phases advance automatically on the `phase_schedule` (minutes after play starts) when `auto_pacing` = 1, or manually with *Next phase*. Whenever the zone is below the current phase's target, the server announces the next contraction `zone_warning` seconds ahead (orange dashed **next-zone preview** on every map), then collapses it. *Cancel zone* holds contraction until the host acts again.
+Phases advance automatically on the `phase_schedule` (minutes after play starts) when `auto_pacing` = 1, or manually with *Next phase*. Whenever the zone is below the current phase's target, the server announces the next contraction `zone_warning` seconds ahead (white **next circle** on every map and minimap, with a countdown), then shrinks it. *Cancel zone* holds contraction until the host acts again.
 
-| Stage | Dangerous | Safe |
-|---|---|---|
-| 0 | — | whole campus |
-| 1 | gates 2–4, sports courts | everything else |
-| 2 | EB1, Phase 2, terraces, parking | central + EB2/EB3/RTB cores + Hexavarsity |
-| 3 | EB2, EB3, RTB, Gate 1 | central amenities + Hexavarsity |
-| 4 | central amenities | Hexavarsity + central steps |
-| 5 | everything but TR14 | **Training Room 14** |
+**The safe zone is a circle** (stages 0–5, radii 0.9 → 0.5 → 0.36 → 0.24 → 0.14 → 0.035 of the campus). Circle centres are seeded per event (the same on every map), each circle lies inside the previous one and always contains Training Room 14; stage 5 is TR14 itself. Squads outside lose `zone_tick_damage` (4) HP every `zone_tick_seconds` (6), shield first, and are never teleported; an arrow points them to safety. Reaching the next circle by auto-run before it closes earns 40 points. Airdrops land inside the next circle; Emergency Extract jumps to the nearest location inside it.
 
-Squads still outside a collapsing area take `dmg_zone` (15) damage **once per stage** and are evacuated along the map graph to the nearest safe location; reaching safety before the collapse earns 40 points. 0 HP means Recovery, never elimination. TR14 never closes and every location has a route to it (tested). The safe zone is drawn as a glowing boundary around the safe locations with the danger area hatched.
+**Red zones**: the host (or `red_interval` minutes from Phase 2) marks a red circle (`red_radius` 8 %) inside the safe zone, never on TR14. Every phone gets a `red_warning` (20 s) countdown; squads still inside when it lands lose `red_damage` (30) HP. One red zone per map at a time; pause/resume shifts its timer.
 
 ### Pacing presets
 | Preset | Phases 1–4 start (min) | Zone warning | Shuttle | Mission timers | Typical length |
@@ -144,5 +144,5 @@ Round score = max × (0.5 + 0.5 × time remaining ÷ round length), so early sol
 `zone_auto = 1` with `zone_schedule = 20,40,55,70,85` automates the zone timeline. All values are starting points — tune them after the rehearsal in Host → Settings.
 
 ## Arrival experience
-- **Bus lobby:** after joining, each phone shows its squad's bus interior: departure board (bus `HBX-nn`, destination, squad codename, map, status), four seats filling as teammates join, live online dots, readiness bar and host announcements on a ticker. Roles are claimed at Gate 1, so seats show "Role at Gate 1" until then.
-- **Shuttle:** doors close (about 3 s countdown), the bus drives a stylised road past signs and streetlights to the Gate 1 arch, while phones rotate through the four role briefings. The projector shows the whole convoy. Duration is a setting (Short 12 s / Cinematic 30 s). All motion is computed from server departure and arrival times, so a refresh resumes at the same moment and no phone arrives early.
+- **Bus lobby:** from the moment a player joins, the phone shows a **3D shuttle bus** with the squad's avatars seated inside (name tags, role colours once claimed, a ring under "you", a hooded driver…), the departure board (bus `HBX-nn`, destination, squad codename, map, status), a seat list, readiness bar and host announcements on a ticker.
+- **Shuttle:** doors close (about 3 s countdown), then the same 3D bus drives down the road with the squad seated inside until the Gate 1 arch arrives, while phones rotate through the four role briefings. The projector shows the whole convoy. Duration is a setting (Short 12 s / Cinematic 30 s). All motion is computed from server departure and arrival times, so a refresh resumes at the same moment and no phone arrives early.
