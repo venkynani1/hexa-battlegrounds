@@ -1,12 +1,15 @@
 // Bus lobby and shuttle journey. Everything that moves is derived from server timestamps
 // (shuttle_departed_at / shuttle_arrive_at), so every phone and the projector show the same
 // moment, a refresh resumes at the right point, and no device can arrive "early".
-import { useMemo } from 'react';
+import { lazy, Suspense, useMemo } from 'react';
 import { progress, secondsLeft, serverTime, useNow } from '../lib/time';
 import { ROLES, ROLE_ORDER, Role } from '../lib/game';
 
 const pad2 = (n: number | null | undefined) => String(n ?? 0).padStart(2, '0');
 export const busCode = (bus?: number | null) => `HBX-${pad2(bus || 1)}`;
+
+const Bus3D = lazy(() => import('../three/Bus3D'));
+const seatsOf = (s: any) => [0, 1, 2, 3].map((i) => { const p = s.roster[i]; return p ? { name: p.name, role: p.role, me: p.me, online: p.online } : null; });
 
 const reduced = () => typeof document !== 'undefined' && document.documentElement.classList.contains('reduced-motion');
 
@@ -29,35 +32,23 @@ export function BusInterior({ s }: { s: any }) {
         {announce && <div className="db-ticker"><span>📣 {announce}</span></div>}
       </div>
 
-      <div className="bus-shell" aria-label={`Bus ${busCode(s.team.bus)} interior, ${n} of 4 seats taken`}>
-        <div className="bus-windows" aria-hidden>
-          <div className={`bus-scenery ${boarding ? 'idle' : ''}`} />
-          {[0, 1, 2, 3].map((i) => <i key={i} className="bus-pane" />)}
+      <Suspense fallback={<BusShell2D s={s} seats={seats} n={n} boarding={boarding} />}>
+        <div className="bus-stage">
+          <Bus3D seats={seatsOf(s)} code={busCode(s.team.bus)} height={290} />
+          <div className="bus-stage-tag">{busCode(s.team.bus)} · {n}/4 seated</div>
         </div>
-        <div className="bus-cabin">
-          <div className="bus-front" aria-hidden><span className="bus-driver">⎈</span><span className="muted">DRIVER</span></div>
-          <div className="seat-rows">
-            {[0, 2].map((row) => (
-              <div key={row} className="seat-row">
-                {[row, row + 1].map((i, col) => {
-                  const p = seats[i];
-                  const r = p?.role as Role | null;
-                  return (
-                    <div key={i} className={`seat ${p ? 'taken' : ''} ${p?.me ? 'me' : ''}`} style={r ? { borderColor: ROLES[r].color } : undefined}>
-                      <span className="seat-no">SEAT {pad2(i + 1)}</span>
-                      <span className="seat-name">{p ? p.name : 'EMPTY'}</span>
-                      <span className="seat-role" style={r ? { color: ROLES[r].color } : undefined}>
-                        {r ? `${ROLES[r].icon} ${ROLES[r].name}` : p ? 'Role at Gate 1' : 'Waiting…'}
-                      </span>
-                      {p && <span className={`dot ${p.online ? 'on' : 'off'}`} style={{ position: 'absolute', top: 8, right: 8 }} />}
-                      {col === 0 && <span className="aisle" aria-hidden />}
-                    </div>
-                  );
-                })}
-              </div>
-            ))}
-          </div>
-        </div>
+      </Suspense>
+      <div className="seat-strip" aria-label="Seats">
+        {seats.map((p: any, i: number) => {
+          const r = p?.role as Role | null;
+          return (
+            <div key={i} className={`seat-pill ${p ? 'taken' : ''} ${p?.me ? 'me' : ''}`} style={r ? { borderColor: ROLES[r].color } : undefined}>
+              <span className={`dot ${p ? (p.online ? 'on' : 'off') : ''}`} />
+              <span className="grow" style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p ? p.name : `Seat ${i + 1} · empty`}</span>
+              {r && <span style={{ color: ROLES[r].color }} aria-label={ROLES[r].name}>{ROLES[r].icon}</span>}
+            </div>
+          );
+        })}
       </div>
 
       <div className="panel">
@@ -69,6 +60,44 @@ export function BusInterior({ s }: { s: any }) {
         </p>
       </div>
     </div>
+  );
+}
+
+
+// 2D fallback while the 3D bus loads (or without WebGL)
+function BusShell2D({ s, seats, n, boarding }: { s: any; seats: any[]; n: number; boarding: boolean }) {
+  return (
+      <div className="bus-shell" aria-label={`Bus ${busCode(s.team.bus)} interior, ${n} of 4 seats taken`}>
+      <div className="bus-windows" aria-hidden>
+        <div className={`bus-scenery ${boarding ? 'idle' : ''}`} />
+        {[0, 1, 2, 3].map((i) => <i key={i} className="bus-pane" />)}
+      </div>
+      <div className="bus-cabin">
+        <div className="bus-front" aria-hidden><span className="bus-driver">⎈</span><span className="muted">DRIVER</span></div>
+        <div className="seat-rows">
+          {[0, 2].map((row) => (
+            <div key={row} className="seat-row">
+              {[row, row + 1].map((i, col) => {
+                const p = seats[i];
+                const r = p?.role as Role | null;
+                return (
+                  <div key={i} className={`seat ${p ? 'taken' : ''} ${p?.me ? 'me' : ''}`} style={r ? { borderColor: ROLES[r].color } : undefined}>
+                    <span className="seat-no">SEAT {pad2(i + 1)}</span>
+                    <span className="seat-name">{p ? p.name : 'EMPTY'}</span>
+                    <span className="seat-role" style={r ? { color: ROLES[r].color } : undefined}>
+                      {r ? `${ROLES[r].icon} ${ROLES[r].name}` : p ? 'Role at Gate 1' : 'Waiting…'}
+                    </span>
+                    {p && <span className={`dot ${p.online ? 'on' : 'off'}`} style={{ position: 'absolute', top: 8, right: 8 }} />}
+                    {col === 0 && <span className="aisle" aria-hidden />}
+                  </div>
+                );
+              })}
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+
   );
 }
 
@@ -214,7 +243,7 @@ export function RoadScene({ start, end, buses = [{ bus: 1, label: '' }], big = f
 
 // ── Phone: full shuttle phase screen ─────────────────────────────────────
 export function ShuttleJourney({ s }: { s: any }) {
-  useNow(500);
+  useNow(250);
   const st = shuttleStage(s.arena.shuttle_departed_at, s.arena.shuttle_arrive_at);
   // rotate through the four role briefings during the ride (same order on every phone)
   const idx = Math.floor((serverTime() / 4000) % 4);
@@ -224,7 +253,18 @@ export function ShuttleJourney({ s }: { s: any }) {
       <div className="depart-board compact">
         <div className="db-row"><span>{busCode(s.team.bus)}</span><b className={st.doors ? 'blink' : 'ok'}>{st.doors ? 'DOORS CLOSING' : st.arriving ? 'ARRIVING · GATE 1' : 'EN ROUTE'}</b></div>
       </div>
-      <RoadScene start={s.arena.shuttle_departed_at} end={s.arena.shuttle_arrive_at} buses={[{ bus: s.team.bus || 1, label: '' }]} />
+      <Suspense fallback={<RoadScene start={s.arena.shuttle_departed_at} end={s.arena.shuttle_arrive_at} buses={[{ bus: s.team.bus || 1, label: '' }]} />}>
+        <div className="bus-stage">
+          <Bus3D seats={seatsOf(s)} code={busCode(s.team.bus)} driving={!st.doors} progress={st.drive} height={300} />
+          <div className="bus-stage-tag">{st.doors ? 'Doors closing…' : st.arriving ? 'Arriving at Gate 1' : 'En route to Hexaware Siruseri'}</div>
+        </div>
+        <div className="road-hud" style={{ position: 'static' }}>
+          <span className="up">SIPCOT</span>
+          <div className="bar timer grow"><i style={{ width: `${st.drive * 100}%` }} /></div>
+          <span className="up" style={{ color: 'var(--gold)' }}>GATE 1</span>
+          <b className="mono">{secondsLeft(s.arena.shuttle_arrive_at)}s</b>
+        </div>
+      </Suspense>
       <div className="panel" style={{ borderColor: ROLES[r].color }}>
         <div className="kind-tag">Arrival briefing · {idx + 1}/4</div>
         <div className="row" style={{ marginTop: 6, alignItems: 'flex-start' }}>

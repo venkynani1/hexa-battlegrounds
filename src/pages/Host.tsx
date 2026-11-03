@@ -4,10 +4,10 @@ import { useLive } from '../lib/live';
 import { msUntil, useNow } from '../lib/time';
 import { FINALE_STAGES, KIND_LABEL, locName, MapData, ROLE_ORDER, ROLES, Role, TIER_COLOR, useMapData, ZONE_TEXT } from '../lib/game';
 import CampusMap from '../components/CampusMap';
-import { PacingPanel, PhaseControls, RosterPanel, TrialPanel } from './HostP0';
+import { PacingPanel, PhaseControls, RosterPanel } from './HostP0';
 import { Countdown, FeedList, Modal, QR, toast } from '../components/ui';
 
-type Section = 'control' | 'squads' | 'map' | 'missions' | 'production' | 'finale' | 'links' | 'trial' | 'settings' | 'log';
+type Section = 'control' | 'squads' | 'map' | 'missions' | 'production' | 'finale' | 'links' | 'settings' | 'log';
 const PHASES = ['lobby', 'boarding', 'shuttle', 'roles', 'play', 'finale', 'results', 'ended'];
 
 export default function Host() {
@@ -18,7 +18,7 @@ export default function Host() {
 
 // ── Login / create ─────────────────────────────────────────────────────
 function HostLogin({ onLogin }: { onLogin: (t: string) => void }) {
-  const [mode, setMode] = useState<'login' | 'create' | 'trial'>('login');
+  const [mode, setMode] = useState<'login' | 'create'>('login');
   const [code, setCode] = useState(store.get('hb_host_code') || '');
   const [name, setName] = useState('Hexaware Battlegrounds × Operation Siruseri');
   const [secret, setSecret] = useState('');
@@ -31,9 +31,7 @@ function HostLogin({ onLogin }: { onLogin: (t: string) => void }) {
     try {
       const r = mode === 'login'
         ? await rpc('host_login', { p_code: code, p_secret: secret })
-        : mode === 'trial'
-          ? await rpc('host_create_trial', { p_code: code, p_name: name, p_secret: secret, p_arenas: maps })
-          : await rpc('host_create_event', { p_code: code, p_name: name, p_secret: secret, p_arenas: maps });
+        : await rpc('host_create_event', { p_code: code, p_name: name, p_secret: secret, p_arenas: maps });
       store.set('hb_host_code', r.code);
       onLogin(r.token);
     } catch (ex) { setErr(friendly(ex)); } finally { setBusy(false); }
@@ -47,7 +45,6 @@ function HostLogin({ onLogin }: { onLogin: (t: string) => void }) {
         <div className="row">
           <button className={`btn grow ${mode === 'login' ? 'primary' : 'ghost'}`} onClick={() => setMode('login')}>Log in</button>
           <button className={`btn grow ${mode === 'create' ? 'primary' : 'ghost'}`} onClick={() => setMode('create')}>Create event</button>
-          <button className={`btn grow ${mode === 'trial' ? 'warn' : 'ghost'}`} onClick={() => setMode('trial')}>Trial</button>
         </div>
         <form className="panel col" onSubmit={submit} style={{ gap: 14 }}>
           <div className="field"><label htmlFor="c">Event code</label>
@@ -62,8 +59,7 @@ function HostLogin({ onLogin }: { onLogin: (t: string) => void }) {
           <div className="field"><label htmlFor="s">Host password</label>
             <input id="s" className="input" type="password" value={secret} onChange={(e) => setSecret(e.target.value)} minLength={6} required autoComplete="current-password" /></div>
           {err && <div className="chip bad" style={{ whiteSpace: 'normal', padding: 10 }}>{err}</div>}
-          <button className="btn primary big" disabled={busy}>{mode === 'login' ? 'Enter control room' : mode === 'trial' ? 'Create trial event' : 'Create event'}</button>
-          {mode === 'trial' && <p className="muted" style={{ margin: 0, fontSize: 13 }}>A trial is a separate rehearsal event, labelled TRIAL everywhere, with Quick demo pacing, simulated squads and fast-forward. It can never affect a live event.</p>}
+          <button className="btn primary big" disabled={busy}>{mode === 'login' ? 'Enter control room' : 'Create event'}</button>
           {mode === 'create' && <p className="muted" style={{ margin: 0, fontSize: 13 }}>Share the host password only with your co-host. Anyone with it controls the game.</p>}
         </form>
       </div>
@@ -112,13 +108,13 @@ function Dashboard({ token, onLogout }: { token: string; onLogout: () => void })
   const selArena = arenas.find((a: any) => a.id === arena) || null;
   const teams = d.teams.filter((t: any) => arena === 'all' || t.arena_id === arena);
   const nav: [Section, string][] = [['control', 'Game control'], ['squads', 'Squads'], ['map', 'Map & zone'], ['missions', 'Missions'],
-    ['production', 'Suspense'], ['finale', 'Finale & results'], ['links', 'Links & PINs'], ['trial', 'Trial mode'], ['settings', 'Settings'], ['log', 'Logs']];
+    ['production', 'Suspense'], ['finale', 'Finale & results'], ['links', 'Links & PINs'], ['settings', 'Settings'], ['log', 'Logs']];
 
   return (
     <div className="host">
       <aside className="host-nav">
         <div className="col" style={{ gap: 2, padding: '4px 8px 12px' }}>
-          <span className="up" style={{ fontSize: 20 }}>{d.event.code}{String(d.event.name).startsWith('TRIAL') && <span className="chip gold" style={{ marginLeft: 6, fontSize: 11 }}>TRIAL</span>}</span>
+          <span className="up" style={{ fontSize: 20 }}>{d.event.code}</span>
           <span className="muted" style={{ fontSize: 12 }}>{d.event.name}</span>
         </div>
         {nav.map(([id, label]) => <button key={id} className={section === id ? 'on' : ''} onClick={() => setSection(id)}>{label}{id === 'log' && d.reports > 0 ? ` (${d.reports})` : ''}</button>)}
@@ -146,7 +142,6 @@ function Dashboard({ token, onLogout }: { token: string; onLogout: () => void })
         {section === 'production' && <Production arena={arena === 'all' ? null : arena} cmd={cmd} />}
         {section === 'finale' && <Finale d={d} arenas={arenas} arena={arena} cmd={cmd} />}
         {section === 'links' && <Links d={d} token={token} refresh={live.refresh} cmd={cmd} />}
-        {section === 'trial' && <TrialPanel d={d} token={token} cmd={cmd} map={map} arena={arena} onLogout={onLogout} />}
         {section === 'settings' && <Settings d={d} token={token} refresh={live.refresh} />}
         {section === 'log' && <Logs d={d} token={token} arenas={arenas} cmd={cmd} map={map} />}
       </main>
@@ -217,7 +212,7 @@ function ArenaCard({ a, d, cmd }: { a: any; d: any; cmd: Cmd }) {
         </button>
       </div>
       <PhaseControls a={a} cmd={cmd} />
-      {a.phase === 'lobby' && ready < teams.length && <p className="muted" style={{ fontSize: 12, marginBottom: 0 }}>Incomplete squads stay in the lobby and are not boarded. Resolve them in Squads.</p>}
+      {a.phase === 'lobby' && <p className="muted" style={{ fontSize: 12, marginBottom: 0 }}>{ready} complete squad{ready === 1 ? '' : 's'} ready on this map. You can start with any number from 1 to 15 — you don’t need a full map.{ready < teams.length ? ' Incomplete squads stay in the lobby and are not boarded.' : ''}</p>}
     </div>
   );
 }
@@ -353,8 +348,8 @@ function MapControl({ d, arenas, selArena, setArena, cmd, map, reloadMap }: { d:
     <div className="grid2" style={{ gridTemplateColumns: 'minmax(0, 2fr) minmax(280px, 1fr)' }}>
       <div className="col">
         {!selArena && <div className="row" style={{ gap: 6 }}>{arenas.map((x) => <button key={x.id} className="btn xs" onClick={() => setArena(x.id)}>{x.name}</button>)}</div>}
-        <CampusMap map={map} zoneStage={a.zone_stage} zoneWarning={zoneWarn} height="70vh" selected={sel} onSelect={setSel}
-          squads={teams.map((t: any) => ({ number: t.number, location: t.location, travel_to: t.travel_to, in_battle: d.battles.some((b: any) => b.attacker === t.number || b.defender === t.number) }))}
+        <CampusMap map={map} zoneStage={a.zone_stage} zoneWarning={zoneWarn} height="70vh" selected={sel} onSelect={setSel} zone={a.overlay?.zone} red={a.overlay?.red}
+          squads={teams.map((t: any) => ({ number: t.number, location: t.location, pos: t.pos, in_battle: d.battles.some((b: any) => b.attacker === t.number || b.defender === t.number) }))}
           airdrops={d.airdrops.filter((x: any) => x.arena_id === a.id)} labels="all" />
         {selLoc && (
           <div className="panel row wrap between">
@@ -377,7 +372,19 @@ function MapControl({ d, arenas, selArena, setArena, cmd, map, reloadMap }: { d:
             <span className="muted">Set stage</span>
             {[0, 1, 2, 3, 4, 5].map((n) => <button key={n} className={`btn xs ${n === a.zone_stage ? 'primary' : 'ghost'}`} onClick={() => cmd(a.id, 'zone_set', { stage: n })}>{n}</button>)}
           </div>
-          <p className="muted" style={{ fontSize: 12, marginBottom: 0 }}>Squads caught in danger take {d.event.settings.dmg_zone} damage once per stage and are auto-evacuated to the nearest safe spot. TR14 never closes.</p>
+          <p className="muted" style={{ fontSize: 12, marginBottom: 0 }}>The safe zone is a shrinking circle (same circles on every map) that always ends on TR14. Squads outside lose {d.event.settings.zone_tick_damage ?? 4} HP every {d.event.settings.zone_tick_seconds ?? 6} s until they run back inside — nobody is teleported.</p>
+        </div>
+        <div className="panel danger">
+          <div className="panel-title">Red zone · {a.name}</div>
+          {a.red_at
+            ? <p style={{ marginTop: 0 }}><b style={{ color: 'var(--red)' }}>Strike in <Countdown to={a.red_at} /></b> — squads inside the red circle lose {d.event.settings.red_damage ?? 30} HP.</p>
+            : <p style={{ marginTop: 0 }} className="muted">Call a bombardment: phones get a {d.event.settings.red_warning ?? 20}-second warning, then squads still inside the red circle lose {d.event.settings.red_damage ?? 30} HP. Never lands on TR14.</p>}
+          <div className="row wrap">
+            <button className="btn sm danger" disabled={a.phase !== 'play' || !!a.red_at} onClick={() => cmd(a.id, 'red_zone', {})}>💥 Random red zone</button>
+            <button className="btn sm danger" disabled={a.phase !== 'play' || !!a.red_at || !selLoc} onClick={() => selLoc && cmd(a.id, 'red_zone', { x: selLoc.x, y: selLoc.y })}>💥 On {selLoc ? selLoc.name.split('(')[0] : 'selected location'}</button>
+            {a.red_at && <button className="btn sm ghost" onClick={() => cmd(a.id, 'red_cancel')}>Cancel</button>}
+          </div>
+          <p className="muted" style={{ fontSize: 12, marginBottom: 0 }}>Automatic red zones: set “Red zone every N minutes” in Settings (from Phase 2).</p>
         </div>
         <div className="panel">
           <div className="panel-title">Airdrop</div>
@@ -386,8 +393,8 @@ function MapControl({ d, arenas, selArena, setArena, cmd, map, reloadMap }: { d:
           </div></div>
           <div className="field" style={{ marginTop: 6 }}><label>Location</label>
             <select className="input" value={loc} onChange={(e) => setLoc(e.target.value)}>
-              <option value="">Auto (safe, prefers Fountain)</option>
-              {map.locations.filter((l) => l.kind !== 'start' && l.collapse > a.zone_stage).map((l) => <option key={l.id} value={l.id}>{l.name}</option>)}
+              <option value="">Auto (inside the next safe zone)</option>
+              {map.locations.filter((l) => l.kind !== 'start').map((l) => <option key={l.id} value={l.id}>{l.name}</option>)}
             </select></div>
           <button className="btn warn block" style={{ marginTop: 8 }} onClick={() => cmd(a.id, 'spawn_airdrop', { tier, location: loc || null })}>✈ Drop it</button>
         </div>
@@ -689,7 +696,7 @@ const SETTING_HELP: Record<string, string> = {
   pts_standard: 'Standard mission points', pts_hard: 'Hard mission points', pts_battle: 'Battle victory', pts_airdrop: 'Airdrop objective',
   pts_relay_bonus: 'Bonus to the squad that shared a codeword', pts_relocation: 'Escaping a collapsing zone in time', pen_recovery: 'Penalty on reaching 0 HP',
   finale_max: 'Max points per final battle/code round', finale_entry_max: 'Max points: entry lock', finale_exchange_max: 'Max points: exchange',
-  hp_max: 'Max HP', hp_respawn: 'HP after recovery', dmg_fail: 'Damage for a failed mission', dmg_zone: 'Zone damage (once per stage)', shield_max: 'Max shield',
+  hp_max: 'Max HP', hp_respawn: 'HP after recovery', dmg_fail: 'Damage for a failed mission', dmg_zone: 'Legacy zone damage (unused by the circular zone)', shield_max: 'Max shield',
   shuttle_seconds: 'Shuttle ride (s)', roles_seconds: 'Role claim window (s)', bus_size: 'Squads per bus', arena_size: 'Squads per map (≤15 keeps the free tier safe)',
   attack_cooldown: 'Attacker cooldown (s)', protect_seconds: 'Protection after battle/respawn (s)', recovery_seconds: 'Recovery window (s)',
   zone_warning: 'Zone warning (s)', airdrop_window: 'Airdrop claim window (s)', airdrop_interval: 'Auto airdrop every N minutes (0 = host only)',
@@ -699,6 +706,9 @@ const SETTING_HELP: Record<string, string> = {
   zone_schedule: 'Legacy zone times (minutes, used when “Automatic zone schedule” = 1)', sync_seconds: 'Default finale round length (0 = per template)',
   auto_pacing: 'Automatic match phases (1 = on)', phase_schedule: 'Phase 1–4 start (minutes after play starts)', duel_phase: 'Duels unlock in phase',
   mission_time_pct: 'Mission timer scale (%)', pin_length: 'Digits in generated PINs (4–8)',
+  move_speed: 'Run speed (‰ of campus per second; 25 ≈ 40 s to cross)', loc_radius: 'Location area radius (‰)', engage_range: 'Duel range (‰)',
+  zone_tick_seconds: 'Outside the zone: damage every N s', zone_tick_damage: 'Outside the zone: HP lost per tick',
+  red_interval: 'Red zone every N minutes from Phase 2 (0 = host only)', red_warning: 'Red zone warning (s)', red_damage: 'Red zone damage', red_radius: 'Red zone radius (‰)',
 };
 function Settings({ d, token, refresh }: { d: any; token: string; refresh: () => void }) {
   const [vals, setVals] = useState<any>(d.event.settings);

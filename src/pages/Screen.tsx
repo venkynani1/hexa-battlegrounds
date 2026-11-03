@@ -6,8 +6,10 @@ import { msUntil, progress, secondsLeft, useNow, fmtClock } from '../lib/time';
 import { feedText, FINALE_STAGES, KIND_LABEL, MapData, useMapData, ZONE_TEXT } from '../lib/game';
 import { sfx, unlockAudio, audioReady } from '../lib/sound';
 import CampusMap from '../components/CampusMap';
+import { lazy, Suspense, useState as useStateR } from 'react';
+const World3D = lazy(() => import('../three/World3D'));
 import { RoadScene, busCode, shuttleStage } from '../components/Shuttle';
-import { PhaseBanner, TrialRibbon } from '../components/Phase';
+import { PhaseBanner } from '../components/Phase';
 import { Countdown, FeedList, HostOverlays, Loading, QR, ThreatMeter } from '../components/ui';
 
 export default function Screen() {
@@ -33,7 +35,6 @@ export default function Screen() {
   return (
     <div style={{ position: 'fixed', inset: 0 }} onClick={() => { unlockAudio(); setArmed(true); }}>
       <HostOverlays overlay={s.arena.overlay} paused={s.arena.paused} />
-      <TrialRibbon on={!!s.arena.overlay?.trial || String(s.event?.name || '').startsWith('TRIAL')} />
       {!armed && (
         <button className="btn ghost sm" style={{ position: 'fixed', right: 12, bottom: 12, zIndex: 99 }}
           onClick={() => { unlockAudio(); setArmed(true); document.documentElement.requestFullscreen?.().catch(() => {}); sfx.gate(); }}>
@@ -205,6 +206,28 @@ function RolesScreen({ s }: { s: any }) {
   );
 }
 
+// Projector battlefield: 3D campus (orbiting camera) with a 2D tactical fallback/toggle.
+function ProjectorWorld({ s, map, zoneWarn }: { s: any; map: MapData; zoneWarn: boolean }) {
+  const [view, setView] = useStateR<'3d' | '2d'>(() => (typeof document !== 'undefined' && !!document.createElement('canvas').getContext('webgl') ? '3d' : '2d'));
+  const zone = s.arena.overlay?.zone; const red = s.arena.overlay?.red || null;
+  const squads = s.squads.filter((q: any) => q.ready);
+  const state = {
+    squads: squads.filter((q: any) => q.pos).map((q: any) => ({ key: String(q.number), number: q.number, x: q.pos[0], y: q.pos[1], ally: false, inBattle: q.in_battle, down: q.state === 'recovery', label: `SQ ${q.number}` })),
+    zone, red, airdrops: (s.airdrops || []).map((a: any, i: number) => ({ key: `${a.location}-${i}`, location: a.location, tier: a.tier })),
+    battles: (s.battles || []).filter((b: any) => b.x != null).map((b: any) => ({ key: `${b.attacker}-${b.defender}`, x: b.x, y: b.y })),
+    locRadius: s.arena.overlay?.world?.loc_radius,
+  };
+  return (
+    <div style={{ position: 'relative', height: '100%', minHeight: 0, borderRadius: 12, overflow: 'hidden' }}>
+      {view === '3d'
+        ? <Suspense fallback={<div className="world-loading">Loading 3D campus…</div>}><World3D map={map} state={state} mode="orbit" /></Suspense>
+        : <CampusMap map={map} zoneStage={s.arena.zone_stage} zoneWarning={zoneWarn} interactive={false} height="100%" bigLabels zone={zone} red={red}
+            squads={squads} airdrops={s.airdrops} battles={s.battles} />}
+      <button className="btn xs ghost" style={{ position: 'absolute', right: 10, bottom: 10 }} onClick={() => setView((v) => (v === '3d' ? '2d' : '3d'))}>{view === '3d' ? '2D tactical' : '3D view'}</button>
+    </div>
+  );
+}
+
 function PlayScreen({ s, map }: { s: any; map: MapData }) {
   const zoneWarn = !!s.arena.zone_next_at && msUntil(s.arena.zone_next_at) > 0;
   const board = [...s.squads].filter((q: any) => q.ready).sort((a: any, b: any) => (b.points ?? 0) - (a.points ?? 0) || a.number - b.number);
@@ -214,8 +237,7 @@ function PlayScreen({ s, map }: { s: any; map: MapData }) {
         <span className={`chip ${zoneWarn ? 'bad' : 'warn'}`} style={{ fontSize: 18, padding: '8px 14px' }}>☢ Zone {s.arena.zone_stage}{zoneWarn && <> · collapse in <Countdown to={s.arena.zone_next_at} /></>}</span>
       </div>} />
       <div className="screen-main">
-        <CampusMap map={map} zoneStage={s.arena.zone_stage} zoneWarning={zoneWarn} interactive={false} height="100%" bigLabels
-          squads={s.squads.filter((q: any) => q.ready)} airdrops={s.airdrops} battles={s.battles} />
+        <ProjectorWorld s={s} map={map} zoneWarn={zoneWarn} />
 
       </div>
       <div className="screen-side">

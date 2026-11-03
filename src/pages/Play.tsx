@@ -3,14 +3,16 @@ import { useNavigate } from 'react-router-dom';
 import { friendly, GameError, newKey, rpc, store } from '../lib/api';
 import { useLive } from '../lib/live';
 import { msUntil, progress, secondsLeft, useNow, fmtClock, serverTime } from '../lib/time';
-import { FINALE_STAGES, MATCH_PHASES, KIND_LABEL, locName, MapData, neighbors, ROLE_ORDER, ROLES, Role, TIER_COLOR, useMapData, ZONE_TEXT } from '../lib/game';
+import { FINALE_STAGES, MATCH_PHASES, KIND_LABEL, locName, MapData, ROLE_ORDER, ROLES, Role, TIER_COLOR, useMapData } from '../lib/game';
 import { buzz, sfx, unlockAudio } from '../lib/sound';
-import CampusMap, { SHORT, shortestRoute } from '../components/CampusMap';
+import { SHORT } from '../components/CampusMap';
+import WorldTab from './PlayWorld';
+import FruitSlash from '../components/FruitSlash';
 import { BusInterior, ShuttleJourney } from '../components/Shuttle';
-import { PhaseBanner, TrialRibbon } from '../components/Phase';
+import { PhaseBanner } from '../components/Phase';
 import { Countdown, FeedList, HostOverlays, HpBar, Loading, SettingsSheet, Sheet, TimerBar, toast, ZoneChip } from '../components/ui';
 
-type Tab = 'mission' | 'map' | 'squad' | 'comms';
+type Tab = 'world' | 'mission' | 'squad' | 'comms';
 
 export default function Play() {
   const nav = useNavigate();
@@ -28,7 +30,7 @@ export default function Play() {
       s?.mission?.clue?.reveal_seconds ? new Date(new Date(s.mission.started_at).getTime() + s.mission.clue.reveal_seconds * 1000).toISOString() : null],
   });
   const s = live.data;
-  const [tab, setTab] = useState<Tab>('mission');
+  const [tab, setTab] = useState<Tab>('world');
   const [settings, setSettings] = useState(false);
 
   useEffect(() => { if (!token) nav('/join'); }, [token, nav]);
@@ -47,6 +49,13 @@ export default function Play() {
   }, [live.error, nav]);
 
   useGameEffects(s, map);
+  // teammates whose job is reading clues jump to the mission as soon as one starts
+  const lastAct = useRef<string | null>(null);
+  useEffect(() => {
+    const act = s?.battle?.id || s?.mission?.id || null;
+    if (act && act !== lastAct.current && s?.me?.role && s.me.role !== 'captain') setTab('mission');
+    lastAct.current = act;
+  }, [s?.battle?.id, s?.mission?.id]);
 
   if (!token) return null;
   if (!s) return <Loading text={live.error ? friendly(live.error) : 'Connecting to your squad…'} />;
@@ -60,18 +69,17 @@ export default function Play() {
   return (
     <div className="app" onClick={() => unlockAudio()}>
       <HostOverlays overlay={s.arena.overlay} paused={s.arena.paused} />
-      <TrialRibbon on={!!s.arena.overlay?.trial || String(s.event?.name || '').startsWith('TRIAL')} />
-      <TopBar s={s} onSettings={() => setSettings(true)} connected={live.connected} />
-      <main className="content">
+      {!(inGame && tab === 'world') && <TopBar s={s} onSettings={() => setSettings(true)} connected={live.connected} />}
+      {inGame && tab === 'world' && <WorldTab s={s} token={token} map={map} refresh={live.refresh} openMission={() => setTab('mission')} openSquad={() => setTab('squad')} onSettings={() => setSettings(true)} connected={live.connected} />}
+      <main className={`content ${inGame && tab === 'world' ? 'hidden' : ''}`}>
         {phase === 'lobby' && <Lobby s={s} />}
         {phase === 'boarding' && <Boarding s={s} />}
         {phase === 'shuttle' && <Shuttle s={s} />}
         {phase === 'roles' && <Roles s={s} token={token} refresh={live.refresh} />}
         {inGame && <RoleReveal s={s} />}
-        {inGame && phase === 'play' && <PhaseBanner overlay={s.arena.overlay} />}
+        {inGame && phase === 'play' && tab === 'mission' && <PhaseBanner overlay={s.arena.overlay} />}
         {inGame && phase === 'finale' && <FinaleBanner s={s} />}
-        {inGame && tab === 'mission' && <MissionTab s={s} token={token} map={map} refresh={live.refresh} goMap={() => setTab('map')} goComms={() => setTab('comms')} />}
-        {inGame && tab === 'map' && map && <MapTab s={s} token={token} map={map} refresh={live.refresh} />}
+        {inGame && tab === 'mission' && <MissionTab s={s} token={token} map={map} refresh={live.refresh} goMap={() => setTab('world')} goComms={() => setTab('comms')} />}
         {inGame && tab === 'squad' && <SquadTab s={s} token={token} map={map} refresh={live.refresh} />}
         {inGame && tab === 'comms' && isCaptain && <CommsTab s={s} token={token} refresh={live.refresh} />}
         {(phase === 'results' || phase === 'ended') && <Results s={s} />}
@@ -79,8 +87,8 @@ export default function Play() {
       {inGame && (
         <nav className="tabbar" aria-label="Game sections">
           <div className="tabbar-inner">
-            <TabBtn id="mission" tab={tab} set={setTab} ico="◎" label={s.battle ? 'Battle' : 'Mission'} badge={s.battle ? '!' : undefined} />
-            <TabBtn id="map" tab={tab} set={setTab} ico="⌖" label="Map" />
+            <TabBtn id="world" tab={tab} set={setTab} ico="⌖" label="World" />
+            <TabBtn id="mission" tab={tab} set={setTab} ico="◎" label={s.battle ? 'Duel' : 'Mission'} badge={s.battle ? '!' : s.mission ? '●' : undefined} />
             <TabBtn id="squad" tab={tab} set={setTab} ico="⬡" label="Squad" badge={s.bargains?.length && isCaptain ? '!' : undefined} />
             {isCaptain && <TabBtn id="comms" tab={tab} set={setTab} ico="✉" label="Comms" badge={unread ? String(unread) : s.codewords?.length ? '!' : undefined} />}
           </div>
@@ -127,7 +135,8 @@ function useGameEffects(s: any, map: MapData | null) {
     const pInv = Object.values(p.inventory || {}).reduce((a: number, b: any) => a + b, 0) as number;
     const sInv = Object.values(s.inventory || {}).reduce((a: number, b: any) => a + b, 0) as number;
     if (sInv > pInv) sfx.loot();
-    if (s.arena.zone_next_at && s.arena.zone_next_at !== p.arena.zone_next_at) { sfx.zone(); buzz([300, 100, 300]); toast(`☢ Zone collapsing — ${ZONE_TEXT[s.arena.zone_stage + 1] || ''}`, 'bad'); }
+    if (s.arena.zone_next_at && s.arena.zone_next_at !== p.arena.zone_next_at) { sfx.zone(); buzz([300, 100, 300]); toast('☢ Safe zone shrinking — get inside the white circle', 'bad'); }
+    if (s.arena.overlay?.red?.at && s.arena.overlay.red.at !== p.arena.overlay?.red?.at) { sfx.enemy(); buzz([200, 80, 200, 80, 200]); toast('💥 Red zone incoming — clear the red circle!', 'bad'); }
     if ((s.airdrops?.length || 0) > (p.airdrops?.length || 0)) { sfx.airdrop(); toast(`✈ Airdrop at ${locName(map, s.airdrops[0]?.location)}`, 'warn'); }
     if (s.story?.[0]?.at && s.story[0].at !== p.story?.[0]?.at) { sfx.transmission(); toast(`▓ Squad 00: ${s.story[0].title}`, 'warn'); }
     if (s.team.state === 'traveling' && p.team.state !== 'traveling') sfx.tap();
@@ -321,18 +330,19 @@ function Travel({ s, map }: { s: any; map: MapData | null }) {
   return (
     <div className="panel col">
       <div className="panel-title">Moving out</div>
-      <div className="row between up" style={{ fontSize: 13 }}><span>{locName(map, s.team.travel_from)}</span><span>{locName(map, s.team.travel_to)}</span></div>
+      <div className="row between up" style={{ fontSize: 13 }}><span>{s.team.travel_from ? locName(map, s.team.travel_from) : 'Open ground'}</span><span>{locName(map, s.team.travel_to)}</span></div>
       <div className="bar timer"><i style={{ width: `${p * 100}%` }} /></div>
       <div className="center timer-big">{secondsLeft(s.team.travel_arrive_at)}s</div>
-      <p className="muted center" style={{ margin: 0, fontSize: 13 }}>A mission unlocks as soon as you arrive.</p>
+      <p className="muted center" style={{ margin: 0, fontSize: 13 }}>A mission unlocks as soon as you arrive. The captain can grab the joystick to change course.</p>
     </div>
   );
 }
 
 function Idle({ s, token, map, refresh, goMap, goComms }: { s: any; token: string; map: MapData | null; refresh: () => void; goMap: () => void; goComms: () => void }) {
   const isCaptain = s.me.role === 'captain';
-  const here = (s.squads || []).filter((x: any) => x.location === s.team.location && x.id !== s.team.id && !x.traveling);
-  const drops = (s.airdrops || []).filter((a: any) => a.location === s.team.location);
+  const er = s.arena.overlay?.world?.engage_range ?? 0.06;
+  const here = (s.squads || []).filter((x: any) => x.id !== s.team.id && x.pos && s.team.pos && Math.hypot(x.pos[0] - s.team.pos[0], x.pos[1] - s.team.pos[1]) <= er && !x.traveling);
+  const drops = (s.airdrops || []).filter((a: any) => s.team.location && a.location === s.team.location);
   const loc = map?.locations.find((l) => l.id === s.team.location);
   const [busy, setBusy] = useState(false);
   const [weapon, setWeapon] = useState('pistol');
@@ -353,13 +363,14 @@ function Idle({ s, token, map, refresh, goMap, goComms }: { s: any; token: strin
     <>
       <div className="panel">
         <div className="panel-title">Current position</div>
-        <h2 style={{ fontSize: 26 }}>{loc?.name || (s.team.location === 'gate_1' ? 'Gate 1' : '—')}</h2>
+        <h2 style={{ fontSize: 26 }}>{loc?.name || 'Open ground'}</h2>
         {loc && <div className="muted" style={{ fontSize: 13 }}>{loc.reward} · Risk {'▲'.repeat(loc.risk)}{'△'.repeat(3 - loc.risk)}</div>}
-        {!s.team.dropped && s.team.location === 'gate_1' && <p style={{ marginBottom: 0 }}>You are at Gate 1. {isCaptain ? 'Choose your first drop zone on the map.' : 'Your captain is choosing the first drop zone.'}</p>}
+        {!s.team.dropped && <p style={{ marginBottom: 0 }}>You are at Gate 1. {isCaptain ? 'Open World and tap a glowing ring to parachute there.' : 'Your captain is choosing the first drop zone.'}</p>}
+        {s.team.dropped && !loc && <p style={{ marginBottom: 0 }} className="muted">Walk into a glowing ring to search for a mission.</p>}
         {isCaptain && (
           <div className="row wrap" style={{ marginTop: 12 }}>
-            <button className="btn primary grow" onClick={goMap}>⌖ Choose destination</button>
-            {s.team.dropped && <button className="btn grow" disabled={busy || left <= 0} onClick={() => act('captain_explore', {})}>Search area ({Math.max(0, left)} left)</button>}
+            <button className="btn primary grow" onClick={goMap}>⌖ Open world</button>
+            {s.team.dropped && loc && <button className="btn grow" disabled={busy || left <= 0} onClick={() => act('captain_explore', {})}>Search area ({Math.max(0, left)} left)</button>}
           </div>
         )}
       </div>
@@ -374,7 +385,7 @@ function Idle({ s, token, map, refresh, goMap, goComms }: { s: any; token: strin
 
       {here.length > 0 && (
         <div className="panel danger">
-          <div className="kind-tag" style={{ color: 'var(--red)' }}>Enemy squad detected</div>
+          <div className="kind-tag" style={{ color: 'var(--red)' }}>Enemy squad in range</div>
           <div className="list" style={{ marginTop: 8 }}>
             {here.map((x: any) => (
               <div key={x.id} className="list-item" style={{ flexWrap: 'wrap' }}>
@@ -466,7 +477,9 @@ function ActivityCard({ a, s, token, refresh, battle = false }: { a: any; s: any
             <span className="up" style={{ color: ROLES[s.me.role as Role].color, fontSize: 13 }}>{ROLES[s.me.role as Role].icon} {clue.title}</span>
             {revealLeft !== null && <span className="chip bad">Vanishes in {revealLeft}s</span>}
           </div>
-          <div className={`clue ${clue.mono ? 'mono' : ''} ${clue.expired ? 'expired' : ''} ${clue.reveal_seconds && !clue.expired ? 'big' : ''}`}>{clue.body}</div>
+          {clue.game?.type === 'fruit' && !clue.expired && <FruitSlash fruits={clue.game.fruits} bomb={clue.game.bomb} />}
+          {clue.grid?.rows && <SudokuGrid rows={clue.grid.rows} />}
+          {!(clue.grid?.rows) && <div className={`clue ${clue.mono ? 'mono' : ''} ${clue.expired ? 'expired' : ''} ${(clue.reveal_seconds && !clue.expired) || clue.big ? 'big' : ''}`}>{clue.body}</div>}
           {a.relay_backup && <div className="panel good"><div className="panel-title">Backup codeword</div><div className="clue big mono">{a.relay_backup}</div></div>}
           <p className="muted" style={{ margin: 0, fontSize: 13 }}>Tell your captain what you see. Only the captain can submit.</p>
         </div>
@@ -494,134 +507,14 @@ function ActivityCard({ a, s, token, refresh, battle = false }: { a: any; s: any
   );
 }
 
-// ── Map tab ────────────────────────────────────────────────────────────
-function MapTab({ s, token, map, refresh }: { s: any; token: string; map: MapData; refresh: () => void }) {
-  const [sel, setSel] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
-  const isCaptain = s.me.role === 'captain';
-  const reachable = useMemo(() => {
-    if (s.team.state !== 'idle') return new Map<string, number>();
-    if (!s.team.dropped && s.team.location === 'gate_1') {
-      return new Map(map.locations.filter((l) => l.drop && l.enabled && l.collapse > s.arena.zone_stage).map((l) => [l.id, 8]));
-    }
-    const n = neighbors(map, s.team.location);
-    for (const id of [...n.keys()]) {
-      const l = map.locations.find((x) => x.id === id);
-      if (!l || !l.enabled || l.collapse <= s.arena.zone_stage || l.kind === 'start') n.delete(id);
-    }
-    return n;
-  }, [map, s.team.location, s.team.dropped, s.team.state, s.arena.zone_stage]);
-  const loc = map.locations.find((l) => l.id === sel);
-  const squads = (s.squads || []).map((x: any) => ({
-    number: x.number, location: x.location, me: x.id === s.team.id, allied: x.allied, in_battle: x.in_battle,
-    travel_to: x.id === s.team.id ? s.team.travel_to : null, travel_from: x.id === s.team.id ? s.team.travel_from : null,
-    travel_started_at: x.id === s.team.id ? s.team.travel_started_at : null, travel_arrive_at: x.id === s.team.id ? s.team.travel_arrive_at : null,
-  }));
-  const zoneWarn = !!s.arena.zone_next_at && msUntil(s.arena.zone_next_at) > 0;
-
-  async function go() {
-    if (!sel) return;
-    setBusy(true);
-    try {
-      await rpc('captain_move', { p_token: token, p_location: sel });
-      sfx.go(); toast(`Moving to ${loc?.name}`, 'info'); setSel(null);
-    } catch (e) { toast(friendly(e), 'bad'); sfx.fail(); }
-    finally { setBusy(false); refresh(); }
-  }
-
-  const sameBuilding = loc?.building ? map.locations.filter((l) => l.building === loc.building) : [];
+// ── Sudoku clue (4×4; hidden half shown as ?) ──────────────────────────
+function SudokuGrid({ rows }: { rows: (number[] | null)[] }) {
   return (
-    <>
-      <CampusMap map={map} zoneStage={s.arena.zone_stage} zoneWarning={zoneWarn} squads={squads} toolbar
-        airdrops={s.airdrops} selected={sel} onSelect={(id) => { sfx.tap(); setSel(id); }} reachable={reachable}
-        from={s.team.state === 'traveling' ? s.team.travel_to : s.team.location} height="56vh" />
-      <div className="row wrap" style={{ gap: 6 }}>
-        <span className="chip">☢ {ZONE_TEXT[s.arena.zone_stage]}</span>
-        {s.team.state === 'idle' && s.arena.phase === 'play' && <span className="chip" style={{ borderColor: 'var(--cyan)' }}>Dashed ring = one move away</span>}
-      </div>
-      <LocationList map={map} s={s} reachable={reachable} selected={sel} onSelect={(id) => { sfx.tap(); setSel(id); }} />
-      <Sheet open={!!loc} onClose={() => setSel(null)} title={loc?.name}>
-        {loc && (
-          <div className="col">
-            <div className="row wrap" style={{ gap: 6 }}>
-              {loc.building && <span className="chip">{loc.building.toUpperCase()}{loc.floor ? ` · Floor ${loc.floor}` : ''}</span>}
-              <span className="chip">Risk {'▲'.repeat(loc.risk)}{'△'.repeat(Math.max(0, 3 - loc.risk))}</span>
-              <span className="chip gold">{loc.reward}</span>
-              {loc.collapse <= s.arena.zone_stage ? <span className="chip bad">Danger zone</span>
-                : loc.collapse === s.arena.zone_stage + 1 ? <span className="chip warn">Collapses next</span> : <span className="chip good">Safe</span>}
-            </div>
-            {sameBuilding.length > 1 && (
-              <div className="field"><span className="label">Floors in this building</span>
-                <div className="row wrap" style={{ gap: 6 }}>
-                  {sameBuilding.sort((a, b) => String(a.floor).localeCompare(String(b.floor))).map((l) => (
-                    <button key={l.id} className={`btn xs ${l.id === sel ? 'primary' : 'ghost'}`} onClick={() => setSel(l.id)}>{l.floor ?? '·'} {l.name.split('(')[0].trim()}</button>
-                  ))}
-                </div>
-              </div>
-            )}
-            <div className="muted" style={{ fontSize: 14 }}>
-              Squads here: {(s.squads || []).filter((x: any) => x.location === loc.id).map((x: any) => `#${x.number}`).join(', ') || 'none visible'}
-              {(s.airdrops || []).some((a: any) => a.location === loc.id) && ' · ✈ airdrop!'}
-            </div>
-            {isCaptain && s.arena.phase === 'play' && (
-              reachable.has(loc.id)
-                ? <button className="btn primary big block" disabled={busy} onClick={go}>Deploy · {reachable.get(loc.id)}s</button>
-                : (() => {
-                    const plan = s.team.state === 'idle' && loc.id !== s.team.location && s.team.dropped ? shortestRoute(map, s.team.location, loc.id, s.arena.zone_stage) : null;
-                    const first = plan?.path[1];
-                    return plan && first && reachable.has(first) ? (
-                      <div className="col" style={{ gap: 8 }}>
-                        <div className="notice">Route: {plan.path.map((id) => SHORT[id] || id).join(' → ')} · about {plan.seconds}s in total.</div>
-                        <button className="btn primary big block" disabled={busy} onClick={() => setSel(first)}>Plan first stop: {SHORT[first] || first} · {reachable.get(first)}s</button>
-                      </div>
-                    ) : null;
-                  })() || <div className="notice">{loc.id === s.team.location ? 'You are here.' : s.team.state !== 'idle' ? 'Finish your current action first.' : 'Not directly reachable from here — move to a neighbouring location first.'}</div>
-            )}
-          </div>
-        )}
-      </Sheet>
-    </>
-  );
-}
-
-function LocationList({ map, s, reachable, selected, onSelect }: { map: MapData; s: any; reachable: Map<string, number>; selected: string | null; onSelect: (id: string) => void }) {
-  const [q, setQ] = useState('');
-  const [open, setOpen] = useState(false);
-  const stage = s.arena.zone_stage;
-  const drops = new Set((s.airdrops || []).map((a: any) => a.location));
-  const here: Record<string, number> = {};
-  for (const x of s.squads || []) if (x.location) here[x.location] = (here[x.location] || 0) + 1;
-  const list = map.locations
-    .filter((l) => l.kind !== 'start' && (!q || (l.name + ' ' + (SHORT[l.id] || '') + ' ' + (l.building || '')).toLowerCase().includes(q.toLowerCase())))
-    .sort((a, b) => Number(reachable.has(b.id)) - Number(reachable.has(a.id)) || Number(b.collapse > stage) - Number(a.collapse > stage) || a.name.localeCompare(b.name));
-  return (
-    <div className="panel col" style={{ gap: 8 }}>
-      <div className="row between">
-        <div className="panel-title" style={{ margin: 0 }}>Locations</div>
-        <button className="btn xs ghost" onClick={() => setOpen((o) => !o)} aria-expanded={open}>{open ? 'Hide list' : 'Show list'}</button>
-      </div>
-      {open && (
-        <>
-          <input className="input" placeholder="Search: Costa, TR14, EB3…" value={q} onChange={(e) => setQ(e.target.value)} aria-label="Search locations" />
-          <div className="loc-list">
-            {list.map((l) => {
-              const danger = l.collapse <= stage;
-              return (
-                <button key={l.id} className={`loc-row ${reachable.has(l.id) ? 'reach' : ''} ${selected === l.id ? 'sel' : ''}`} onClick={() => onSelect(l.id)}>
-                  <span className="sw" style={{ background: danger ? 'var(--red)' : l.id === 'tr14' ? 'var(--gold)' : l.collapse === stage + 1 ? 'var(--orange)' : 'var(--blue)' }} aria-hidden />
-                  <span>
-                    <b>{SHORT[l.id] || l.name}</b>
-                    <span className="muted" style={{ fontSize: 12, display: 'block' }}>
-                      {l.name}{l.id === s.team.location ? ' · you are here' : ''}{drops.has(l.id) ? ' · ✈ airdrop' : ''}{here[l.id] ? ` · ${here[l.id]} squad${here[l.id] > 1 ? 's' : ''}` : ''}
-                    </span>
-                  </span>
-                  <span className={`chip ${danger ? 'bad' : reachable.has(l.id) ? '' : ''}`}>{danger ? 'Danger' : reachable.has(l.id) ? `${reachable.get(l.id)}s` : l.reward}</span>
-                </button>
-              );
-            })}
-          </div>
-        </>
-      )}
+    <div className="sudoku" role="table" aria-label="Sudoku grid">
+      {rows.map((r, i) => [0, 1, 2, 3].map((j) => {
+        const v = r ? r[j] : null;
+        return <span key={`${i}-${j}`} role="cell" className={`sd ${r ? '' : 'hid'} ${j === 1 ? 'br' : ''} ${i === 1 ? 'bb' : ''}`}>{r ? (v || '') : '?'}</span>;
+      }))}
     </div>
   );
 }

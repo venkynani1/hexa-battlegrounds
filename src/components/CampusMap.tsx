@@ -25,6 +25,8 @@ export const fullName = (n: string) => n.replace(' — Final Battleground', '');
 export type MapSquad = {
   number: number; location?: string | null; travel_from?: string | null; travel_to?: string | null;
   travel_started_at?: string | null; travel_arrive_at?: string | null; me?: boolean; allied?: boolean; in_battle?: boolean; hp?: number;
+  /** open-world position (0..1); used instead of the location when present */
+  pos?: number[] | null;
 };
 
 type Props = {
@@ -46,6 +48,9 @@ type Props = {
   bigLabels?: boolean;
   /** show toggle chips (labels, zone, squads, drops) */
   toolbar?: boolean;
+  /** circular safe zone (arena.overlay.zone): [cx, cy, r] for the current and next stage */
+  zone?: { cur?: number[] | null; next?: number[] | null } | null;
+  red?: { x: number; y: number; r: number } | null;
 };
 
 type Box = { x: number; y: number; w: number; h: number };
@@ -111,8 +116,10 @@ export { route as shortestRoute };
 
 export default function CampusMap({
   map, zoneStage, zoneWarning, squads = [], airdrops = [], battles = [], selected, onSelect, reachable, from,
-  height = 420, interactive = true, showStart = false, labels = 'major', bigLabels = false, toolbar = false,
+  height = 420, interactive = true, showStart = false, labels = 'major', bigLabels = false, toolbar = false, zone, red,
 }: Props) {
+  const circ = zone?.cur && zone.cur[2] < 0.86 ? zone.cur : null;
+  const outsideCirc = (x: number, y: number) => !!circ && Math.hypot(x - circ[0], y - circ[1]) > circ[2];
   const anyTravel = squads.some((s) => s.travel_to);
   useNow(anyTravel ? 120 : 1000);
   const [view, setView] = useState({ k: 1, x: 0, y: 0 });
@@ -149,10 +156,10 @@ export default function CampusMap({
       return {
         id: b, name: BUILDING_NAMES[b] || b, x: Math.min(...xs) - pad, y: Math.min(...ys) - pad,
         w: Math.max(...xs) - Math.min(...xs) + pad * 2, h: Math.max(...ys) - Math.min(...ys) + pad * 2,
-        danger: ls.every((l) => l.collapse <= zoneStage),
+        danger: zone ? ls.every((l) => outsideCirc(l.x, l.y)) : ls.every((l) => l.collapse <= zoneStage),
       };
     });
-  }, [locs, zoneStage]);
+  }, [locs, zoneStage, circ?.join()]);
 
   const safeZone = useMemo(() => {
     const pts = (stage: number) => locs.filter((l) => l.collapse > stage && l.enabled && l.kind !== 'start').map((l) => [l.x * S, l.y * S] as [number, number]);
@@ -238,7 +245,9 @@ export default function CampusMap({
   const now = serverTime();
   const positioned = squads.map((sq) => {
     let x = 0; let y = 0; let visible = false;
-    if (sq.travel_to && sq.travel_from && sq.travel_arrive_at && sq.travel_started_at && byId[sq.travel_from] && byId[sq.travel_to]) {
+    if (sq.pos) {
+      x = sq.pos[0] * S; y = sq.pos[1] * S; visible = true;
+    } else if (sq.travel_to && sq.travel_from && sq.travel_arrive_at && sq.travel_started_at && byId[sq.travel_from] && byId[sq.travel_to]) {
       const a = new Date(sq.travel_started_at).getTime(); const b = new Date(sq.travel_arrive_at).getTime();
       const p = Math.min(1, Math.max(0, (now - a) / Math.max(1, b - a)));
       x = (byId[sq.travel_from].x + (byId[sq.travel_to].x - byId[sq.travel_from].x) * p) * S;
@@ -357,13 +366,21 @@ export default function CampusMap({
           ))}
 
           {/* danger outside the safe zone, current boundary, and next-zone preview */}
-          {show.zone && safeZone.now && (
+          {show.zone && zone && circ && (
+            <g>
+              <path d={`M -60 -60 H ${S + 60} V ${S + 60} H -60 Z M ${(circ[0] - circ[2]) * S} ${circ[1] * S} a ${circ[2] * S} ${circ[2] * S} 0 1 0 ${circ[2] * 2 * S} 0 a ${circ[2] * S} ${circ[2] * S} 0 1 0 ${-circ[2] * 2 * S} 0 Z`} fillRule="evenodd" fill="rgba(42,107,255,0.22)" />
+              <circle cx={circ[0] * S} cy={circ[1] * S} r={circ[2] * S} fill="none" stroke="#3ea5ff" strokeWidth={3} filter="url(#glow)" />
+            </g>
+          )}
+          {show.zone && zone?.next && <circle cx={zone.next[0] * S} cy={zone.next[1] * S} r={zone.next[2] * S} fill="none" stroke="#fff" strokeWidth={3} strokeDasharray="12 8" className="zone-next" />}
+          {red && <circle cx={red.x * S} cy={red.y * S} r={red.r * S} fill="rgba(255,34,56,0.3)" stroke="#ff4d5e" strokeWidth={3} className="danger-blink" />}
+          {show.zone && !zone && safeZone.now && (
             <>
               <path d={`M -60 -60 H ${S + 60} V ${S + 60} H -60 Z ${safeZone.now}`} fillRule="evenodd" fill="url(#hatch)" />
               <path d={safeZone.now} fill="none" stroke="#3ef0ff" strokeWidth={3} filter="url(#glow)" />
             </>
           )}
-          {show.zone && safeZone.next && (
+          {show.zone && !zone && safeZone.next && (
             <path d={safeZone.next} fill="none" stroke="#ff8a3d" strokeWidth={3} strokeDasharray="12 8" className="zone-next" />
           )}
 
@@ -381,8 +398,8 @@ export default function CampusMap({
 
           {/* locations */}
           {locs.map((l) => {
-            const danger = l.collapse <= zoneStage;
-            const warn = !danger && zoneWarning && l.collapse === zoneStage + 1;
+            const danger = zone ? outsideCirc(l.x, l.y) : l.collapse <= zoneStage;
+            const warn = !danger && zoneWarning && (zone ? !!zone.next && Math.hypot(l.x - zone.next[0], l.y - zone.next[1]) > zone.next[2] : l.collapse === zoneStage + 1);
             const r = radiusOf(l);
             const reach = reachable?.has(l.id);
             const x = l.x * S; const y = l.y * S;

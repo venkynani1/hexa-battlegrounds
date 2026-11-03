@@ -1,4 +1,4 @@
-// P0 tests: match phases, pacing, trial mode isolation, squad preparation, multi-map isolation.
+// P0 tests: match phases, pacing, squad preparation, multi-map isolation.
 // Run: npm test   (uses the real migrations in embedded Postgres)
 import { test, before } from 'node:test';
 import assert from 'node:assert/strict';
@@ -20,7 +20,7 @@ const all = async (sql, params = []) => (await db.query(sql, params)).rows;
 const cmd = async (tok, arena, c, args = {}, reason = null) => call('host_command', tok, arena, c, args, reason);
 const unthrottle = (id) => db.query('update arenas set last_tick_at = null where id = $1', [id]);
 
-let live, trial, liveArenas, trialArena;
+let live, liveArenas;
 const squads = {};
 
 async function joinSquad(code, number, pin, prefix) {
@@ -41,9 +41,7 @@ before(async () => {
   await db.exec('create role anon nologin; create role authenticated nologin;');
   for (const f of readdirSync(MIG).filter((f) => f.endsWith('.sql')).sort()) await db.exec(readFileSync(new URL(f, MIG), 'utf8'));
   live = await call('host_create_event', 'LIVE1', 'Live', 'livepass1', 2);
-  trial = await call('host_create_trial', 'TRY1', 'Rehearsal', 'trialpass1', 1);
   liveArenas = (await all(`select id from arenas where event_id = $1 order by number`, [live.event_id])).map((r) => r.id);
-  trialArena = (await one(`select id from arenas where event_id = $1`, [trial.event_id])).id;
 });
 
 test('generated squads: 6-digit strong PINs, codenames, bus numbers at creation', async () => {
@@ -85,7 +83,8 @@ test('CSV import validates the whole file before writing anything', async () => 
   await fails(call('host_import_teams', live.token, [{ number: 41, pin: '482913', map: 9 }]), 'map 9 does not exist');
   await fails(call('host_import_teams', live.token, [{ number: 'x' }]), 'squad number');
   assert.equal((await one(`select count(*)::int n from teams where event_id = $1`, [live.event_id])).n, before, 'nothing written');
-  const trialImport = await call('host_import_teams', trial.token, [{ number: 1, name: 'Falcons', pin: '582039' }, { number: 2, name: '' }]);
+  const fresh = await call('host_create_event', 'IMP1', 'Import', 'importpass1', 1);
+  const trialImport = await call('host_import_teams', fresh.token, [{ number: 1, name: 'Falcons', pin: '582039' }, { number: 2, name: '' }]);
   assert.equal(trialImport.imported, 2);
   assert.equal(trialImport.squads[0].pin, null, 'supplied PINs are never echoed');
   assert.match(trialImport.squads[1].pin, /^\d{6}$/, 'missing PINs are generated and shown once');
@@ -127,9 +126,8 @@ test('phase changes drive zone contraction; zone_cancel holds it; phases cannot 
   assert.equal(a.zone_next_at, null);
   const r = await cmd(live.token, A, 'set_phase', { phase: 5 });
   assert.equal(r.ok, false, 'the finale only starts through begin_finale');
-  const pins = await all(`select location_id from teams where arena_id = $1 and ready`, [A]);
-  const unsafe = await all(`select id from locations where id = any($1) and collapse_stage <= 3`, [pins.map((p) => p.location_id)]);
-  assert.equal(unsafe.length, 0, 'every squad was evacuated to a safe, reachable location');
+  const ov = (await one(`select overlay from arenas where id = $1`, [A])).overlay;
+  assert.equal(ov.zone.stage, 3, 'every screen gets the stage-3 circle');
 });
 
 test('automatic pacing advances phases on schedule; pause/resume shifts the phase timer', async () => {
@@ -160,55 +158,6 @@ test('mission timers scale with mission_time_pct', async () => {
   await call('host_settings', live.token, { mission_time_pct: 100 });
 });
 
-test('trial-only commands are rejected on a live event', async () => {
-  for (const c of ['trial_skip', 'trial_bots', 'trial_reset']) {
-    const r = await cmd(live.token, liveArenas[0], c, { seconds: 60, count: 1 });
-    assert.equal(r.ok, false); assert.match(r.error, /TRIAL_ONLY/);
-  }
-  const ts = await call('host_trial_status', live.token);
-  assert.equal(ts.is_trial, false);
-});
-
-test('trial: simulated squads join through join_team and play through the player RPCs', async () => {
-  const r = await cmd(trial.token, trialArena, 'trial_bots', { count: 2 });
-  const bots = r.result[trialArena].bots;
-  assert.equal(bots.length, 2);
-  assert.ok(bots.every((b) => b.tokens.length === 4));
-  const st = await call('player_state', bots[0].tokens[0]);
-  assert.equal(st.team.ready, true);
-  assert.match(st.event.name, /^TRIAL/);
-  await cmd(trial.token, trialArena, 'open_boarding');
-  await cmd(trial.token, trialArena, 'drive');
-  await cmd(trial.token, trialArena, 'trial_skip', { seconds: 20 });
-  assert.equal((await one(`select phase from arenas where id = $1`, [trialArena])).phase, 'roles', 'fast-forward moved the server clock');
-  // bots race for roles through claim_role
-  const claims = await Promise.allSettled(bots[0].tokens.map((t) => call('claim_role', t, 'captain')));
-  assert.equal(claims.filter((c) => c.status === 'fulfilled').length, 1, 'exactly one captain');
-  await cmd(trial.token, trialArena, 'trial_skip', { seconds: 20 });
-  const cap = (await Promise.all(bots[0].tokens.map((t) => call('player_state', t)))).find((s) => s.me.role === 'captain');
-  assert.equal(cap.arena.phase, 'play');
-  assert.equal(cap.arena.overlay.trial, true);
-  const tok = bots[0].tokens.find((_, i) => i === 0);
-  const mv = await call('captain_move', tok, 'fountain');
-  assert.ok(mv.seconds > 0);
-  await cmd(trial.token, trialArena, 'trial_skip', { seconds: 15 });
-  const after = await call('player_state', tok);
-  assert.equal(after.team.location, 'fountain');
-  assert.ok(after.mission, 'arrival started a mission');
-  const status = await call('host_trial_status', trial.token);
-  assert.equal(status.is_trial, true);
-  assert.equal(status.steps.shuttle, true);
-  assert.equal(status.steps.movement, true);
-});
-
-test('trial reset returns the map to the lobby and phase 0', async () => {
-  const r = await cmd(trial.token, trialArena, 'trial_reset');
-  assert.equal(r.ok, true);
-  const a = await one(`select phase, match_phase, zone_stage from arenas where id = $1`, [trialArena]);
-  assert.deepEqual(a, { phase: 'lobby', match_phase: 0, zone_stage: 0 });
-  assert.equal((await one(`select count(*)::int n from mission_instances where arena_id = $1`, [trialArena])).n, 0);
-});
-
 test('maps are isolated: no cross-map visibility, chat or attacks', async () => {
   const s1 = await call('player_state', squads[1].tokens[0]);
   assert.ok(!s1.squads.some((x) => x.number === 16), 'Map 1 never lists Map 2 squads');
@@ -235,14 +184,16 @@ test('every map plays the same finale challenge (fair grand champion)', async ()
 test('browser key can call the new API but not the new internals', async () => {
   await db.exec('set role anon');
   try {
-    for (const f of ['_set_match_phase', '_shift_arena', '_host_exec_p0', '_new_pin']) {
+    for (const f of ['_set_match_phase', '_shift_arena', '_host_exec_p0', '_new_pin', '_zone_circle', '_red_spawn', '_team_xy']) {
       const r = await db.query(`select has_function_privilege('anon', p.oid, 'execute') ok from pg_proc p where proname = $1`, [f]);
       assert.equal(r.rows[0].ok, false, f);
     }
-    for (const f of ['host_roster', 'host_create_trial', 'host_trial_status']) {
+    for (const f of ['host_roster', 'captain_steer']) {
       const r = await db.query(`select has_function_privilege('anon', p.oid, 'execute') ok from pg_proc p where proname = $1`, [f]);
       assert.equal(r.rows[0].ok, true, f);
     }
     await fails(db.query(`select * from arenas`), 'permission denied');
+    const gone = await db.query(`select count(*)::int n from pg_proc where proname in ('host_create_trial', 'host_trial_status')`);
+    assert.equal(gone.rows[0].n, 0, 'trial mode removed');
   } finally { await db.exec('reset role'); }
 });

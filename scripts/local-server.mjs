@@ -34,6 +34,12 @@ const cors = {
 
 http.createServer(async (req, res) => {
   if (req.method === 'OPTIONS') { res.writeHead(204, cors); return res.end(); }
+  // DEV_SQL=1 only: raw SQL for automated play-tests (never enabled by default)
+  if (process.env.DEV_SQL === '1' && req.url === '/dev/sql' && req.method === 'POST') {
+    let q = ''; for await (const c of req) q += c;
+    try { const r = await db.query(q); res.writeHead(200, { ...cors, 'Content-Type': 'application/json' }); return res.end(JSON.stringify(r.rows)); }
+    catch (e) { res.writeHead(400, cors); return res.end(JSON.stringify({ message: e.message })); }
+  }
   const m = /^\/rest\/v1\/rpc\/([a-z_]+)$/.exec(req.url.split('?')[0]);
   if (!m || req.method !== 'POST') { res.writeHead(404, cors); return res.end('{"message":"not found"}'); }
   let body = '';

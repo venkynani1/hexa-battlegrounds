@@ -27,8 +27,3 @@ export function PhaseBanner({ overlay, big = false }: { overlay: any; big?: bool
     </div>
   );
 }
-
-export function TrialRibbon({ on }: { on: boolean }) {
-  if (!on) return null;
-  return <div className="trial-ribbon" role="note"><span>TRIAL MODE</span></div>;
-}

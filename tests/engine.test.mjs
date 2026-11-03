@@ -136,10 +136,9 @@ test('shuttle → Gate 1 → race-safe role claims → auto-fill', async () => {
 test('only the captain can act; teammates get distinct clues and nobody gets answers', async () => {
   const sq = squads[1].byRole;
   await fails(call('captain_move', sq.scout, 'fountain'), 'NOT_CAPTAIN');
-  await fails(call('captain_move', sq.captain, 'tr14'), 'NOT_CONNECTED');
+  await fails(call('captain_move', sq.captain, 'nowhere'), 'BAD_LOCATION');
   const mv = await call('captain_move', sq.captain, 'fountain');
   assert.ok(mv.seconds > 0);
-  await fails(call('captain_move', sq.captain, 'hexadine'), 'BUSY');
   await db.query(`update teams set travel_arrive_at = now() - interval '1 second' where id = $1`, [squads[1].id]);
   await tickNow(arena1);
   const cap = await call('player_state', sq.captain);
@@ -342,18 +341,45 @@ test('pause freezes timers and resume shifts every deadline', async () => {
   assert.ok(new Date(d1) - new Date(d0) >= 29000);
 });
 
-test('zone collapses relocate squads safely; stage 5 leaves only TR14', async () => {
-  await db.query(`update teams set location_id = 'cricket', state = 'idle' where id = $1`, [squads[1].id]);
-  await call('host_command', host.token, arena1, 'zone_now', {}, null);
-  let t = await one(`select location_id, hp from teams where id = $1`, [squads[1].id]);
-  const loc = await one(`select collapse_stage from locations where id = $1`, [t.location_id]);
-  assert.ok(loc.collapse_stage > 1);
-  await fails(call('captain_move', squads[1].byRole.captain, 'pickleball'), 'DANGER_ZONE');
-  for (let i = 0; i < 4; i++) await call('host_command', host.token, arena1, 'zone_now', {}, null);
-  const locs = await all(`select distinct location_id from teams where arena_id = $1 and ready`, [arena1]);
-  assert.deepEqual(locs.map((l) => l.location_id), ['tr14']);
+test('safe zone: circles shrink onto TR14; outside the circle squads bleed HP over time, never teleport', async () => {
+  const ev = (await one(`select event_id from arenas where id = $1`, [arena1])).event_id;
+  const tr = await one(`select x, y from locations where id = 'tr14'`);
+  let prev = null;
+  for (let k = 0; k <= 5; k++) {
+    const c = (await one(`select _zone_circle($1, $2) c`, [ev, k])).c;
+    assert.ok(Math.hypot(c[0] - tr.x, c[1] - tr.y) <= c[2] + 1e-9, `stage ${k} contains TR14`);
+    if (prev) assert.ok(Math.hypot(c[0] - prev[0], c[1] - prev[1]) + c[2] <= prev[2] + 1e-6, `stage ${k} nests in stage ${k - 1}`);
+    prev = c;
+  }
+  await db.query(`update mission_instances set status = 'cancelled' where team_id = $1 and status = 'active'`, [squads[1].id]);
+  await db.query(`update teams set location_id = null, pos_x = 0.06, pos_y = 0.06, state = 'idle', hp = 100, shield = 0, zone_hit_at = null where id = $1`, [squads[1].id]);
+  await call('host_command', host.token, arena1, 'zone_set', { stage: 3 }, null);
+  let t = await one(`select pos_x, hp from teams where id = $1`, [squads[1].id]);
+  assert.ok(Math.abs(t.pos_x - 0.06) < 1e-6, 'zone collapse does not teleport anyone');
+  await one('select _tick($1, true)', [arena1]);
+  t = await one(`select hp from teams where id = $1`, [squads[1].id]);
+  assert.ok(t.hp < 100, 'outside the zone costs HP');
+  const hp1 = t.hp;
+  await one('select _tick($1, true)', [arena1]); // same few seconds: no double damage
+  assert.equal((await one(`select hp from teams where id = $1`, [squads[1].id])).hp, hp1);
+  await db.query(`update teams set zone_hit_at = now() - interval '1 minute' where id = $1`, [squads[1].id]);
+  await db.query(`update ledger set ref = ref || '-old' where team_id = $1 and kind = 'zone_damage'`, [squads[1].id]);
+  await one('select _tick($1, true)', [arena1]);
+  assert.ok((await one(`select hp from teams where id = $1`, [squads[1].id])).hp < hp1, 'damage keeps ticking');
+  // the public overlay carries the circles for every screen
+  const st = await call('player_state', squads[1].byRole.scout);
+  assert.equal(st.arena.overlay.zone.stage, 3);
+  assert.equal(st.arena.overlay.zone.cur.length, 3);
+  // squads inside take nothing
+  const c3 = (await one(`select _zone_circle($1, 3) c`, [ev])).c;
+  await db.query(`update teams set pos_x = $2, pos_y = $3, zone_hit_at = null where id = $1`, [squads[1].id, c3[0], c3[1]]);
+  const hp2 = (await one(`select hp from teams where id = $1`, [squads[1].id])).hp;
+  await one('select _tick($1, true)', [arena1]);
+  assert.equal((await one(`select hp from teams where id = $1`, [squads[1].id])).hp, hp2);
+  for (let i = 0; i < 2; i++) await call('host_command', host.token, arena1, 'zone_now', {}, null);
   const z = await call('host_command', host.token, arena1, 'zone_now', {}, null);
-  assert.equal(z.ok, false);
+  assert.equal(z.ok, false, 'stage 5 is the last');
+  await db.query(`update teams set location_id = 'tr14', zone_hit_at = null where arena_id = $1`, [arena1]);
 });
 
 test('manual score changes require a reason and are audited', async () => {

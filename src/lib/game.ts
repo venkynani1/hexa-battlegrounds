@@ -23,10 +23,10 @@ export const TIER_COLOR: Record<string, string> = {
 
 export const ZONE_TEXT = [
   'Entire campus is safe',
-  'Gates and sports zones are dangerous',
-  'Outer blocks are collapsing',
-  'Only central campus is safe',
-  'Only Hexavarsity is safe',
+  'Safe circle shrinking — campus edges are unsafe',
+  'Outer blocks are outside the circle',
+  'Only the central circle is safe',
+  'Final circle around Hexavarsity',
   'Training Room 14 is the last safe zone',
 ];
 
@@ -104,9 +104,12 @@ export function feedText(type: string, p: any, map: MapData | null): { text: str
     case 'airdrop.spawned': return { text: `✈ ${String(p.tier).toUpperCase()} airdrop at ${L(p.location)}`, tone: 'warn' };
     case 'airdrop.contested': return { text: `Squad ${p.team} is cracking the airdrop at ${L(p.location)}`, tone: 'warn' };
     case 'airdrop.claimed': return { text: `Squad ${p.team} claimed the ${p.tier} airdrop!`, tone: 'good' };
-    case 'zone.warning': return { text: `⚠ Zone ${p.stage} collapse incoming`, tone: 'bad' };
-    case 'zone.collapsed': return { text: `☢ Zone collapsed — stage ${p.stage}`, tone: 'bad' };
+    case 'zone.warning': return { text: `⚠ Safe zone shrinking (stage ${p.stage})`, tone: 'bad' };
+    case 'zone.collapsed': return { text: `☢ Safe zone shrank — stage ${p.stage}`, tone: 'bad' };
     case 'zone.relocated': return { text: `Squad ${p.team} evacuated to ${L(p.to)}`, tone: 'info' };
+    case 'zone.outside': return { text: `☢ ${p.squads} squad${p.squads === 1 ? '' : 's'} caught outside the safe zone`, tone: 'bad' };
+    case 'redzone.warning': return { text: `💥 Red zone incoming${p.location ? ` near ${L(p.location)}` : ''}`, tone: 'bad' };
+    case 'redzone.strike': return { text: p.hits?.length ? `💥 Red zone hit Squad ${p.hits.join(', ')}` : '💥 Red zone strike — nobody hit', tone: 'bad' };
     case 'zone.cancelled': return { text: 'Zone collapse cancelled', tone: 'info' };
     case 'intel.shared': return { text: `Squad ${p.from} shared intel with Squad ${p.to}`, tone: 'good' };
     case 'alliance.created': return { text: `🤝 Squads ${p.a} & ${p.b} formed an alliance`, tone: 'good' };
