@@ -8,6 +8,7 @@ import { msUntil, serverTime, useNow } from '../lib/time';
 import { buzz, sfx } from '../lib/sound';
 import { Countdown, HpBar, Sheet, toast } from '../components/ui';
 import CampusMap, { SHORT } from '../components/CampusMap';
+import BigMap, { METERS } from './BigMap';
 import type { WorldState } from '../three/world';
 
 const World3D = lazy(() => import('../three/World3D'));
@@ -93,7 +94,7 @@ function Joystick({ onMove, disabled }: { onMove: (x: number, y: number) => void
 }
 
 // ── Icons (simple line icons, original) ─────────────────────────────────
-type IconName = 'search' | 'crate' | 'target' | 'puzzle' | 'med' | 'bag' | 'plus' | 'minus';
+type IconName = 'search' | 'crate' | 'target' | 'puzzle' | 'med' | 'bag' | 'plus' | 'minus' | 'map' | 'chat' | 'gear';
 const ICONS: Record<IconName, string> = {
   search: 'M10.5 4a6.5 6.5 0 1 1 0 13 6.5 6.5 0 0 1 0-13Zm4.8 11.3L20 20',
   crate: 'M4 8l8-4 8 4v8l-8 4-8-4V8Zm0 0l8 4 8-4M12 12v8',
@@ -103,6 +104,9 @@ const ICONS: Record<IconName, string> = {
   bag: 'M8 7V5a4 4 0 0 1 8 0v2M5 7h14l-1 13H6L5 7Zm4 5h6',
   plus: 'M12 5v14M5 12h14',
   minus: 'M5 12h14',
+  map: 'M3 6l6-2 6 2 6-2v14l-6 2-6-2-6 2V6Zm6-2v14m6-12v14',
+  chat: 'M4 5h16v11H9l-5 4V5Z',
+  gear: 'M12 8.5a3.5 3.5 0 1 1 0 7 3.5 3.5 0 0 1 0-7ZM12 2v3m0 14v3M2 12h3m14 0h3M4.9 4.9l2.1 2.1m10 10 2.1 2.1M4.9 19.1 7 17m10-10 2.1-2.1',
 };
 function Icon({ name }: { name: IconName }) {
   return (
@@ -114,7 +118,7 @@ function Icon({ name }: { name: IconName }) {
 
 // ── Compass strip (heading of the camera) ───────────────────────────────
 const CARD = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'];
-function Compass({ src }: { src: { current: { yaw?: number } } }) {
+function Compass({ src, marker }: { src: { current: { yaw?: number } }; marker?: number | null }) {
   const [yaw, setYaw] = useState(src.current.yaw || 0);
   useEffect(() => {
     let raf = 0;
@@ -132,12 +136,18 @@ function Compass({ src }: { src: { current: { yaw?: number } } }) {
     const lab = norm % 45 === 0 ? CARD[norm / 45] : '';
     ticks.push(<span key={a} className={`cp-t ${norm % 45 === 0 ? 'big' : ''}`} style={{ left: `${50 + (off / 60) * 50}%` }}>{lab}</span>);
   }
-  return <div className="compass" aria-label={`Facing ${CARD[Math.round(deg / 45) % 8]}`}>{ticks}<i className="cp-mark" /></div>;
+  let pin: React.ReactNode = null;
+  if (marker != null) {
+    let off = ((marker * 180) / Math.PI - deg) % 360; if (off > 180) off -= 360; if (off < -180) off += 360;
+    const clamped = Math.max(-60, Math.min(60, off));
+    pin = <i className={`cp-pin ${Math.abs(off) > 60 ? 'edge' : ''}`} style={{ left: `${50 + (clamped / 60) * 50}%` }} />;
+  }
+  return <div className="compass" aria-label={`Facing ${CARD[Math.round(deg / 45) % 8]}`}>{ticks}{pin}<i className="cp-mark" /></div>;
 }
 
 // ── Minimap ─────────────────────────────────────────────────────────────
-function MiniMap({ map, me, yaw, squads, zone, red, drops, onClick, overview }: {
-  map: MapData; me: XY | null; yaw: number; squads: any[]; zone: any; red: any; drops: any[]; onClick: () => void; overview: boolean;
+function MiniMap({ map, me, yaw, squads, zone, red, drops, marker, onClick, overview }: {
+  map: MapData; me: XY | null; yaw: number; squads: any[]; zone: any; red: any; drops: any[]; marker?: XY | null; onClick: () => void; overview: boolean;
 }) {
   const cur = zone?.cur; const nxt = zone?.next;
   return (
@@ -155,10 +165,11 @@ function MiniMap({ map, me, yaw, squads, zone, red, drops, onClick, overview }: 
         {red && <circle cx={red.x} cy={red.y} r={red.r} fill="#ff2238" opacity="0.45" />}
         {drops.map((d: any) => { const l = map.locations.find((x) => x.id === d.location); return l ? <rect key={d.id} x={l.x - 0.02} y={l.y - 0.02} width="0.04" height="0.04" fill={TIER_COLOR[d.tier] || '#ffc23d'} /> : null; })}
         {squads.filter((x) => x.pos && !x.me).map((x) => <circle key={x.id} cx={x.pos[0]} cy={x.pos[1]} r="0.02" fill={x.allied ? '#5dff9e' : '#ff4d5e'} />)}
+        {marker && <circle cx={marker[0]} cy={marker[1]} r="0.025" fill="#ffd23d" stroke="#1b2430" strokeWidth="0.008" />}
         {me && <path d={`M ${me[0]} ${me[1]} L ${me[0] + Math.sin(yaw - 0.5) * 0.16} ${me[1] - Math.cos(yaw - 0.5) * 0.16} A 0.16 0.16 0 0 1 ${me[0] + Math.sin(yaw + 0.5) * 0.16} ${me[1] - Math.cos(yaw + 0.5) * 0.16} Z`} fill="#ffffff" opacity="0.22" />}
         {me && <path d={`M ${me[0] + Math.sin(yaw) * 0.045} ${me[1] - Math.cos(yaw) * 0.045} L ${me[0] + Math.sin(yaw + 2.5) * 0.03} ${me[1] - Math.cos(yaw + 2.5) * 0.03} L ${me[0] + Math.sin(yaw - 2.5) * 0.03} ${me[1] - Math.cos(yaw - 2.5) * 0.03} Z`} fill="#3ef0ff" stroke="#fff" strokeWidth="0.006" />}
       </svg>
-      <span className="mm-tag">{overview ? 'SQUAD VIEW' : 'FULL MAP'}</span>
+      <span className="mm-tag">{overview ? 'SQUAD VIEW' : 'MAP'}</span>
     </button>
   );
 }
@@ -178,8 +189,8 @@ function KillFeed({ feed, map }: { feed: any[]; map: MapData | null }) {
   );
 }
 
-export default function WorldTab({ s, token, map, refresh, openMission, openSquad, onSettings, connected }: {
-  s: any; token: string; map: MapData | null; refresh: () => void; openMission: () => void; openSquad: () => void; onSettings: () => void; connected: boolean;
+export default function WorldTab({ s, token, map, refresh, openMission, openSquad, openComms, unread, onSettings, connected }: {
+  s: any; token: string; map: MapData | null; refresh: () => void; openMission: () => void; openSquad: () => void; openComms: () => void; unread: number; onSettings: () => void; connected: boolean;
 }) {
   useNow(500);
   const isCaptain = s.me.role === 'captain';
@@ -187,9 +198,10 @@ export default function WorldTab({ s, token, map, refresh, openMission, openSqua
   const zone = s.arena.overlay?.zone;
   const red = s.arena.overlay?.red && msUntil(s.arena.overlay.red.at) > -2000 ? s.arena.overlay.red : null;
   const canMove = isCaptain && s.arena.phase === 'play' && !s.arena.paused && s.team.state !== 'recovery' && !s.battle;
-  const [mode, setMode] = useState<'follow' | 'overview'>('follow');
-  const [zoom, setZoom] = useState(1);
-  const [pick, setPick] = useState<string | null>(null);
+  const [zoom] = useState(1);
+  const [mapOpen, setMapOpen] = useState(false);
+  const [marker, setMarker] = useState<XY | null>(null);
+  const pick = null as string | null;
   const [engage, setEngage] = useState(false);
   const [busy, setBusy] = useState(false);
 
@@ -300,8 +312,6 @@ export default function WorldTab({ s, token, map, refresh, openMission, openSqua
     finally { setBusy(false); refresh(); }
   }
 
-  const pickLoc = map?.locations.find((l) => l.id === pick);
-  const runSecs = pickLoc ? (!s.team.dropped ? 8 : Math.max(1, Math.round(Math.hypot(pickLoc.x - myXY[0], pickLoc.y - myXY[1]) / world.speed))) : 0;
 
   // primary context action
   let primary: { label: string; icon: IconName; sub?: string; tone: string; onClick: () => void; disabled?: boolean } | null = null;
@@ -316,133 +326,138 @@ export default function WorldTab({ s, token, map, refresh, openMission, openSqua
   const hp = s.team.hp;
 
   const webgl = hasWebGL();
+  const zoneWarn = !!zone?.next_at && msUntil(zone.next_at) > 0;
+  const markerDist = marker ? Math.hypot(marker[0] - myXY[0], marker[1] - myXY[1]) : 0;
+  const markerBearing = marker ? Math.atan2(marker[0] - myXY[0], -(marker[1] - myXY[1])) : null;
+  const markerPlace = marker ? map?.locations.filter((l) => l.kind !== 'start' && l.enabled)
+    .map((l) => ({ l, d: Math.hypot(l.x - marker[0], l.y - marker[1]) })).sort((a, b) => a.d - b.d)[0] : null;
+  const markerLoc = markerPlace && markerPlace.d < 0.05 ? markerPlace.l : null;
+  async function runTo(id: string) {
+    const r = await act('captain_move', { p_location: id });
+    if (r) { sfx.go(); toast(`${!s.team.dropped ? 'Parachuting' : 'Running'} to ${SHORT[id] || locName(map, id)} · ${Math.round(r.seconds)}s`, 'info'); setMapOpen(false); }
+  }
+  // one banner, most urgent first (no stacked boxes over the view)
+  const banner: { tone: string; text: React.ReactNode; arrow?: number } | null =
+    s.arena.paused ? { tone: '', text: '⏸ Paused by the host' }
+    : outside ? { tone: 'bad', text: 'Outside the safe zone — run!', arrow: zoneArrow }
+    : inRed && msUntil(red.at) > 0 ? { tone: 'bad', text: <>Red zone! Get out <Countdown to={red.at} /></> }
+    : s.team.state === 'recovery' ? { tone: 'bad', text: 'Squad down — solve the recovery puzzle' }
+    : red && msUntil(red.at) > 0 ? { tone: 'warn', text: <>💥 Red zone strike in <Countdown to={red.at} /></> }
+    : s.arena.phase === 'finale' ? { tone: 'warn', text: 'Finale in Training Room 14 — open the mission' }
+    : !s.team.dropped && s.arena.phase === 'play' ? { tone: 'info', text: isCaptain ? '🪂 Open the map and pick where to drop' : '🪂 Your captain is picking a drop point' }
+    : zoneWarn ? { tone: 'zone', text: <>Safe zone shrinking in <Countdown to={zone.next_at} /></> }
+    : null;
+  const travelDest = s.team.state === 'traveling' && s.team.travel_to ? map?.locations.find((l) => l.id === s.team.travel_to) : null;
+  const world3d: WorldState = { ...state, waypoint: marker ? { x: marker[0], y: marker[1] } : null, route: travelDest ? { x: travelDest.x, y: travelDest.y } : null };
+
   return (
     <div className="world-screen">
       <div className="world-view">
         {map && webgl ? (
           <Suspense fallback={<div className="world-loading">Loading 3D campus…</div>}>
-            <World3D map={map} state={state} mode={mode} zoom={zoom} live={me} onPick={(id) => { sfx.tap(); setPick(id); }} />
+            <World3D map={map} state={world3d} mode="follow" zoom={zoom} live={me}
+              onPick={(id) => { const l = map.locations.find((x) => x.id === id); if (l) { sfx.tap(); setMarker([l.x, l.y]); } }} />
           </Suspense>
         ) : map ? (
           <div style={{ padding: '120px 8px 0' }}>
-            <CampusMap map={map} zoneStage={s.arena.zone_stage} squads={squads.map((x: any) => ({ number: x.number, location: x.location, me: x.id === s.team.id, allied: x.allied, in_battle: x.in_battle }))}
-              airdrops={s.airdrops} selected={pick} onSelect={(id) => setPick(id)} height="60vh" />
+            <CampusMap map={map} zoneStage={s.arena.zone_stage} squads={squads.map((x: any) => ({ number: x.number, location: x.location, pos: x.pos, me: x.id === s.team.id, allied: x.allied, in_battle: x.in_battle }))}
+              zone={zone} red={red} airdrops={s.airdrops} selected={markerLoc?.id || null} onSelect={(id) => { const l = map.locations.find((x) => x.id === id); if (l) setMarker([l.x, l.y]); }} height="60vh" />
           </div>
         ) : null}
       </div>
 
-      {/* top centre: compass and squads left */}
-      <div className="hud-top">
-        <Compass src={me} />
-        <div className="hud-alive"><b>{alive}</b><span>SQUADS</span></div>
-      </div>
-
-      {/* top-left: squad status */}
+      {/* top-left: minimap, zone timer, team */}
       <div className="hud-tl">
-        <div className="hud-card">
-          <div className="row between" style={{ gap: 6 }}>
-            <b className="up" style={{ fontSize: 14 }}>SQ {s.team.number}</b>
-            <span className="muted hud-name">{s.team.name}</span>
-          </div>
-          <HpBar hp={hp} shield={s.team.shield} />
-          <div className="hud-team">
-            {ROLE_ORDER.map((r: Role) => {
-              const p = s.roster.find((x: any) => x.role === r);
-              return (
-                <span key={r} className={`hud-mate ${p?.online ? 'on' : ''} ${p?.me ? 'me' : ''}`} style={{ borderColor: ROLES[r].color }} title={`${ROLES[r].name}: ${p?.name || '—'}`}>
-                  <i style={{ color: ROLES[r].color }}>{ROLES[r].icon}</i>{(p?.name || '—').slice(0, 7)}
-                </span>
-              );
-            })}
-          </div>
+        {map && <MiniMap map={map} me={myXY} yaw={me.current.yaw || 0} squads={squads.map((x: any) => ({ ...x, me: x.id === s.team.id }))} zone={zone} red={red}
+          drops={s.airdrops || []} marker={marker} overview={false} onClick={() => { sfx.tap(); setMapOpen(true); }} />}
+        <div className={`hud-zone ${zoneWarn ? 'warn' : ''}`}>
+          {zoneWarn ? <>☢ <Countdown to={zone.next_at} /></> : <>◯ {zone?.stage ?? s.arena.zone_stage}/5</>}
+          <span className="sep">·</span>P{phase}
         </div>
-        <div className="hud-loc">{here ? <>📍 {SHORT[here.id] || here.name}</> : s.team.state === 'traveling' ? <>🏃 Running to {SHORT[s.team.travel_to] || locName(map, s.team.travel_to)}</> : <>Open ground</>}</div>
+        <div className="hud-team" aria-label="Your squad">
+          {ROLE_ORDER.map((r: Role) => {
+            const p = s.roster.find((x: any) => x.role === r);
+            return (
+              <div key={r} className={`hud-mate ${p?.online ? 'on' : ''} ${p?.me ? 'me' : ''}`}>
+                <i style={{ background: ROLES[r].color }}>{ROLES[r].icon}</i>
+                <span>{p?.name || '—'}</span>
+              </div>
+            );
+          })}
+        </div>
         {(s.mission || s.battle) && (
           <button className={`hud-mission ${s.battle ? 'battle' : ''}`} onClick={openMission}>
-            <span>{s.battle ? `⚔ DUEL · SQ ${s.battle.attacker} vs ${s.battle.defender}` : `◎ ${s.mission.title}`}</span>
+            <span>{s.battle ? `⚔ Duel vs SQ ${s.battle.we_attacked ? s.battle.defender : s.battle.attacker}` : s.mission.title}</span>
             <b className="mono"><Countdown to={(s.battle || s.mission).deadline} low={20} /></b>
           </button>
         )}
+      </div>
+
+      {/* top centre: compass, counters, one banner */}
+      <div className="hud-top">
+        <Compass src={me} marker={markerBearing} />
+        <div className="hud-info">
+          <span><b>{alive}</b> squads</span>
+          <span><b>{s.team.points}</b> pts</span>
+          <span className="gold"><b>{s.team.coins}</b> ¢</span>
+        </div>
+        {banner && (
+          <div className={`hud-banner ${banner.tone}`} role="status">
+            {banner.arrow != null && <span className="arrow" style={{ transform: `rotate(${banner.arrow}rad)` }} aria-hidden>➤</span>}
+            {banner.text}
+          </div>
+        )}
+      </div>
+
+      {/* top-right: buttons + kill feed */}
+      <div className="hud-tr">
+        <div className="hud-btns">
+          <button className="hb" onClick={() => { sfx.tap(); setMapOpen(true); }} aria-label="Open map"><Icon name="map" /></button>
+          <button className="hb" onClick={openSquad} aria-label="Bag and squad"><Icon name="bag" /></button>
+          {isCaptain && <button className="hb" onClick={openComms} aria-label="Captain chat"><Icon name="chat" />{unread > 0 && <em>{unread}</em>}</button>}
+          <button className="hb" onClick={onSettings} aria-label="Settings"><Icon name="gear" /><span className={`dot ${connected ? 'on' : ''}`} /></button>
+        </div>
         <KillFeed feed={s.feed} map={map} />
       </div>
 
-      {/* top-right: minimap + score */}
-      <div className="hud-tr">
-        {map && <MiniMap map={map} me={myXY} yaw={me.current.yaw || 0} squads={squads.map((x: any) => ({ ...x, me: x.id === s.team.id }))} zone={zone} red={red} drops={s.airdrops || []}
-          overview={mode === 'overview'} onClick={() => { sfx.tap(); setMode((m) => (m === 'follow' ? 'overview' : 'follow')); }} />}
-        <div className="row" style={{ gap: 6 }}>
-          <div className="hud-stats">
-            <span><b>{s.team.points}</b> PTS</span>
-            <span style={{ color: 'var(--gold)' }}><b>{s.team.coins}</b> ¢</span>
+      {/* bottom centre: marker card / location, HP */}
+      <div className="hud-bc">
+        {marker ? (
+          <div className="hud-marker">
+            <span className="grow"><b>{markerLoc ? (SHORT[markerLoc.id] || markerLoc.name) : 'Marker'}</b> · {Math.round(markerDist * METERS)} m · {Math.max(1, Math.round(markerDist / world.speed))} s</span>
+            {markerLoc && isCaptain && s.arena.phase === 'play' && here?.id !== markerLoc.id && (
+              <button className="btn xs primary" disabled={busy || !canMove} onClick={() => runTo(markerLoc.id)}>{!s.team.dropped ? '🪂 Drop' : 'Run'}</button>
+            )}
+            <button className="btn xs ghost" onClick={() => setMarker(null)} aria-label="Remove marker">✕</button>
           </div>
-          <button className="hud-gear" onClick={onSettings} aria-label="Settings"><span className={`dot ${connected ? 'on' : ''}`} />⚙</button>
-        </div>
-        <div className="hud-phase">P{phase} · {MATCH_PHASES[phase]?.name}</div>
-        {zone?.next_at && msUntil(zone.next_at) > 0
-          ? <div className="hud-zone warn">☢ ZONE <Countdown to={zone.next_at} /></div>
-          : <div className="hud-zone">◯ ZONE {zone?.stage ?? s.arena.zone_stage}/5</div>}
-      </div>
-
-      {/* center alerts */}
-      <div className="hud-alerts" aria-live="assertive">
-        {outside && (
-          <div className="alert bad">
-            <span className="arrow" style={{ transform: `rotate(${zoneArrow}rad)` }} aria-hidden>➤</span>
-            OUTSIDE SAFE ZONE — RUN!
-          </div>
+        ) : (
+          <div className="hud-loc">{here ? <>📍 {SHORT[here.id] || here.name}</> : travelDest ? <>🏃 To {SHORT[travelDest.id] || travelDest.name}</> : 'Open ground'}</div>
         )}
-        {red && !inRed && msUntil(red.at) > 0 && <div className="alert warn">💥 RED ZONE STRIKE IN <Countdown to={red.at} /></div>}
-        {inRed && msUntil(red.at) > 0 && <div className="alert bad">💥 GET OUT OF THE RED ZONE <Countdown to={red.at} /></div>}
-        {s.team.state === 'recovery' && <div className="alert bad">SQUAD DOWN — solve the recovery mission</div>}
-        {s.arena.paused && <div className="alert">⏸ PAUSED BY HOST</div>}
-        {s.arena.phase === 'finale' && <div className="alert warn">FINALE · Training Room 14 — open Mission</div>}
-        {!s.team.dropped && s.arena.phase === 'play' && <div className="alert info">{isCaptain ? '🪂 Tap any glowing ring to parachute there — or drag to walk' : '🪂 Your captain is choosing where to drop'}</div>}
+        <div className="hud-hp" aria-label={`Health ${hp} of 100${s.team.shield ? `, shield ${s.team.shield}` : ''}`}>
+          <div className="hp-track">
+            <i className="hp-fill" style={{ width: `${Math.max(0, Math.min(100, hp))}%`, background: hp > 50 ? '#f2f5f8' : hp > 25 ? '#ffc23d' : '#ff4d5e' }} />
+            {s.team.shield > 0 && <i className="hp-shield" style={{ width: `${Math.min(100, s.team.shield)}%` }} />}
+          </div>
+          <b>{hp}</b>
+        </div>
       </div>
 
       {/* bottom-left: joystick or role hint */}
       {isCaptain && s.arena.phase === 'play'
         ? <Joystick disabled={!canMove} onMove={(x, y) => { vec.current = { x, y }; }} />
-        : <div className="hud-bl-hint">{ROLES[s.me.role as Role]?.icon} {ROLES[s.me.role as Role]?.name} · Captain <b>{s.roles?.captain || '—'}</b> moves the squad</div>}
+        : <div className="hud-bl-hint">{ROLES[s.me.role as Role]?.icon} You are {ROLES[s.me.role as Role]?.name}. <b>{s.roles?.captain || 'The captain'}</b> moves the squad.</div>}
 
       {/* bottom-right: actions */}
       <div className="hud-actions">
-        <div className="act-col">
-          <button className="act sm" onClick={() => setZoom((z) => Math.max(0.5, z / 1.25))} aria-label="Zoom in"><Icon name="plus" /></button>
-          <button className="act sm" onClick={() => setZoom((z) => Math.min(2.2, z * 1.25))} aria-label="Zoom out"><Icon name="minus" /></button>
-        </div>
-        <div className="act-col">
-          {isCaptain && medkits > 0 && hp < 100 && s.team.state !== 'recovery' && (
-            <button className="act md good" disabled={busy} onClick={() => act('captain_use_item', { p_item: 'medkit' }, '+ HP')} aria-label="Use med kit"><Icon name="med" /><small>{medkits}</small></button>
-          )}
-          <button className="act md" onClick={openSquad} aria-label="Bag and squad"><Icon name="bag" /></button>
-        </div>
+        {isCaptain && medkits > 0 && hp < 100 && s.team.state !== 'recovery' && (
+          <button className="act md good" disabled={busy} onClick={() => act('captain_use_item', { p_item: 'medkit' }, '+ HP')} aria-label="Use med kit"><Icon name="med" /><small>{medkits}</small></button>
+        )}
         {primary && (
           <button className={`act lg ${primary.tone}`} disabled={primary.disabled} onClick={() => { buzz(15); primary!.onClick(); }}>
             <Icon name={primary.icon} /><span>{primary.label}</span>{primary.sub && <small>{primary.sub}</small>}
           </button>
         )}
       </div>
-
-      {/* tap a location: info + auto-run */}
-      <Sheet open={!!pickLoc} onClose={() => setPick(null)} title={pickLoc?.name}>
-        {pickLoc && (
-          <div className="col">
-            <div className="row wrap" style={{ gap: 6 }}>
-              <span className="chip gold">{pickLoc.reward}</span>
-              <span className="chip">Risk {'▲'.repeat(pickLoc.risk)}{'△'.repeat(Math.max(0, 3 - pickLoc.risk))}</span>
-              {cur && Math.hypot(pickLoc.x - cur[0], pickLoc.y - cur[1]) > cur[2] && <span className="chip bad">Outside safe zone</span>}
-              {(s.airdrops || []).some((a: any) => a.location === pickLoc.id) && <span className="chip warn">✈ Airdrop</span>}
-            </div>
-            <div className="muted" style={{ fontSize: 14 }}>Loot: {pickLoc.tags.join(', ')} · Squads here: {squads.filter((x: any) => x.location === pickLoc.id).map((x: any) => `#${x.number}`).join(', ') || 'none seen'}</div>
-            {isCaptain && s.arena.phase === 'play' ? (
-              <button className="btn primary big block" disabled={busy || !canMove || here?.id === pickLoc.id}
-                onClick={async () => { const r = await act('captain_move', { p_location: pickLoc.id }); if (r) { sfx.go(); toast(`${!s.team.dropped ? 'Parachuting' : 'Running'} to ${SHORT[pickLoc.id] || pickLoc.name} · ${Math.round(r.seconds)}s`, 'info'); setPick(null); } }}>
-                {here?.id === pickLoc.id ? 'You are here' : `${!s.team.dropped ? '🪂 Drop here' : '🏃 Auto-run'} · ~${runSecs}s`}
-              </button>
-            ) : <div className="notice">{isCaptain ? 'Movement opens during play.' : 'Tell your captain if you want to go here.'}</div>}
-          </div>
-        )}
-      </Sheet>
 
       {/* engage: pick a weapon */}
       <Sheet open={engage} onClose={() => setEngage(false)} title="Engage enemy squad">
@@ -464,6 +479,13 @@ export default function WorldTab({ s, token, map, refresh, openMission, openSqua
           <p className="muted" style={{ margin: 0, fontSize: 13 }}>A duel is a puzzle race: the first squad to answer wins and the loser takes damage. Pistol 25 damage (90 s, reusable) · SMG 20 (50 s, one use) · Sniper 40 (120 s, hard, one use).</p>
         </div>
       </Sheet>
+
+      {mapOpen && map && (
+        <BigMap map={map} me={myXY} yaw={me.current.yaw || 0} title={`Map · Phase ${phase} ${MATCH_PHASES[phase]?.name || ''}`}
+          squads={squads.map((x: any) => ({ id: x.id, number: x.number, pos: x.pos, me: x.id === s.team.id, allied: x.allied }))}
+          zone={zone} zoneNextAt={zone?.next_at} red={red} drops={s.airdrops || []} marker={marker} setMarker={setMarker}
+          onRun={runTo} canRun={isCaptain && s.arena.phase === 'play' && canMove} speed={world.speed} onClose={() => setMapOpen(false)} />
+      )}
     </div>
   );
 }

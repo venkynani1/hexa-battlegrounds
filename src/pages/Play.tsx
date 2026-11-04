@@ -49,6 +49,11 @@ export default function Play() {
   }, [live.error, nav]);
 
   useGameEffects(s, map);
+  useEffect(() => {
+    const g = s?.arena?.phase === 'play' || s?.arena?.phase === 'finale';
+    document.documentElement.classList.toggle('in-game', g);
+    return () => document.documentElement.classList.remove('in-game');
+  }, [s?.arena?.phase]);
   // teammates whose job is reading clues jump to the mission as soon as one starts
   const lastAct = useRef<string | null>(null);
   useEffect(() => {
@@ -66,33 +71,47 @@ export default function Play() {
   const inGame = phase === 'play' || phase === 'finale';
   const unread = isCaptain ? countUnread(s) : 0;
 
+  const close = () => setTab('world');
+  const panelTitle = tab === 'mission' ? (s.battle ? 'Duel' : 'Mission') : tab === 'squad' ? 'Squad & bag' : tab === 'comms' ? 'Captain chat' : '';
   return (
-    <div className="app" onClick={() => unlockAudio()}>
+    <div className={`app ${inGame ? 'in-game' : ''}`} onClick={() => unlockAudio()}>
       <HostOverlays overlay={s.arena.overlay} paused={s.arena.paused} />
-      {!(inGame && tab === 'world') && <TopBar s={s} onSettings={() => setSettings(true)} connected={live.connected} />}
-      {inGame && tab === 'world' && <WorldTab s={s} token={token} map={map} refresh={live.refresh} openMission={() => setTab('mission')} openSquad={() => setTab('squad')} onSettings={() => setSettings(true)} connected={live.connected} />}
-      <main className={`content ${inGame && tab === 'world' ? 'hidden' : ''}`}>
-        {phase === 'lobby' && <Lobby s={s} />}
-        {phase === 'boarding' && <Boarding s={s} />}
-        {phase === 'shuttle' && <Shuttle s={s} />}
-        {phase === 'roles' && <Roles s={s} token={token} refresh={live.refresh} />}
-        {inGame && <RoleReveal s={s} />}
-        {inGame && phase === 'play' && tab === 'mission' && <PhaseBanner overlay={s.arena.overlay} />}
-        {inGame && phase === 'finale' && <FinaleBanner s={s} />}
-        {inGame && tab === 'mission' && <MissionTab s={s} token={token} map={map} refresh={live.refresh} goMap={() => setTab('world')} goComms={() => setTab('comms')} />}
-        {inGame && tab === 'squad' && <SquadTab s={s} token={token} map={map} refresh={live.refresh} />}
-        {inGame && tab === 'comms' && isCaptain && <CommsTab s={s} token={token} refresh={live.refresh} />}
-        {(phase === 'results' || phase === 'ended') && <Results s={s} />}
-      </main>
+      {!inGame && <TopBar s={s} onSettings={() => setSettings(true)} connected={live.connected} />}
       {inGame && (
-        <nav className="tabbar" aria-label="Game sections">
-          <div className="tabbar-inner">
-            <TabBtn id="world" tab={tab} set={setTab} ico="⌖" label="World" />
-            <TabBtn id="mission" tab={tab} set={setTab} ico="◎" label={s.battle ? 'Duel' : 'Mission'} badge={s.battle ? '!' : s.mission ? '●' : undefined} />
-            <TabBtn id="squad" tab={tab} set={setTab} ico="⬡" label="Squad" badge={s.bargains?.length && isCaptain ? '!' : undefined} />
-            {isCaptain && <TabBtn id="comms" tab={tab} set={setTab} ico="✉" label="Comms" badge={unread ? String(unread) : s.codewords?.length ? '!' : undefined} />}
-          </div>
-        </nav>
+        <WorldTab s={s} token={token} map={map} refresh={live.refresh} openMission={() => setTab('mission')} openSquad={() => setTab('squad')}
+          openComms={() => setTab('comms')} unread={unread} onSettings={() => setSettings(true)} connected={live.connected} />
+      )}
+      {inGame && <RoleReveal s={s} />}
+      {/* in-game panels slide over the world: the game never disappears behind tabs */}
+      {inGame && tab !== 'world' && (
+        <>
+          <div className="gd-scrim" onClick={close} />
+          <aside className="game-drawer" aria-label={panelTitle}>
+            <header className="gd-head">
+              <div className="gd-tabs" role="tablist">
+                <button role="tab" aria-selected={tab === 'mission'} className={tab === 'mission' ? 'on' : ''} onClick={() => setTab('mission')}>{s.battle ? '⚔ Duel' : '◎ Mission'}{(s.mission || s.battle) && tab !== 'mission' && <em>●</em>}</button>
+                <button role="tab" aria-selected={tab === 'squad'} className={tab === 'squad' ? 'on' : ''} onClick={() => setTab('squad')}>⬡ Squad</button>
+                {isCaptain && <button role="tab" aria-selected={tab === 'comms'} className={tab === 'comms' ? 'on' : ''} onClick={() => setTab('comms')}>✉ Chat{unread > 0 && <em>{unread}</em>}</button>}
+              </div>
+              <button className="gd-close" onClick={close} aria-label="Back to the game">✕</button>
+            </header>
+            <div className="gd-body">
+              {tab === 'mission' && phase === 'finale' && <FinaleBanner s={s} />}
+              {tab === 'mission' && <MissionTab s={s} token={token} map={map} refresh={live.refresh} goMap={close} goComms={() => setTab('comms')} />}
+              {tab === 'squad' && <SquadTab s={s} token={token} map={map} refresh={live.refresh} />}
+              {tab === 'comms' && isCaptain && <CommsTab s={s} token={token} refresh={live.refresh} />}
+            </div>
+          </aside>
+        </>
+      )}
+      {!inGame && (
+        <main className="content">
+          {phase === 'lobby' && <Lobby s={s} />}
+          {phase === 'boarding' && <Boarding s={s} />}
+          {phase === 'shuttle' && <Shuttle s={s} />}
+          {phase === 'roles' && <Roles s={s} token={token} refresh={live.refresh} />}
+          {(phase === 'results' || phase === 'ended') && <Results s={s} />}
+        </main>
       )}
       <SettingsSheet open={settings} onClose={() => setSettings(false)} />
     </div>
@@ -365,11 +384,11 @@ function Idle({ s, token, map, refresh, goMap, goComms }: { s: any; token: strin
         <div className="panel-title">Current position</div>
         <h2 style={{ fontSize: 26 }}>{loc?.name || 'Open ground'}</h2>
         {loc && <div className="muted" style={{ fontSize: 13 }}>{loc.reward} · Risk {'▲'.repeat(loc.risk)}{'△'.repeat(3 - loc.risk)}</div>}
-        {!s.team.dropped && <p style={{ marginBottom: 0 }}>You are at Gate 1. {isCaptain ? 'Open World and tap a glowing ring to parachute there.' : 'Your captain is choosing the first drop zone.'}</p>}
+        {!s.team.dropped && <p style={{ marginBottom: 0 }}>You are at Gate 1. {isCaptain ? 'Open the map, tap a place and press Drop.' : 'Your captain is choosing the first drop zone.'}</p>}
         {s.team.dropped && !loc && <p style={{ marginBottom: 0 }} className="muted">Walk into a glowing ring to search for a mission.</p>}
         {isCaptain && (
           <div className="row wrap" style={{ marginTop: 12 }}>
-            <button className="btn primary grow" onClick={goMap}>⌖ Open world</button>
+            <button className="btn primary grow" onClick={goMap}>⌖ Back to the game</button>
             {s.team.dropped && loc && <button className="btn grow" disabled={busy || left <= 0} onClick={() => act('captain_explore', {})}>Search area ({Math.max(0, left)} left)</button>}
           </div>
         )}

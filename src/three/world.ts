@@ -21,6 +21,8 @@ export type WorldState = {
   focus?: { x: number; y: number } | null;
   locRadius?: number;
   highlight?: string | null;
+  waypoint?: { x: number; y: number } | null;
+  route?: { x: number; y: number } | null;
 };
 export type CameraMode = 'follow' | 'overview' | 'orbit';
 export type LiveMe = { x: number; y: number; moving: boolean; joy?: boolean; yaw?: number };
@@ -142,6 +144,9 @@ export class WorldScene {
   private highlightRing!: THREE.Mesh;
   private ray = new THREE.Raycaster();
   private animated: THREE.Object3D[] = [];
+  private waypoint!: THREE.Group;
+  private routeLine!: THREE.Mesh;
+  private routeTo: THREE.Vector3 | null = null;
   private trees: { p: THREE.Vector3; s: number }[] = [];
   private treeMeshes: THREE.InstancedMesh[] = [];
   private treeHidden = '';
@@ -181,6 +186,16 @@ export class WorldScene {
     this.highlightRing = new THREE.Mesh(new THREE.RingGeometry(0.8, 1, 48), new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.9, depthWrite: false, side: THREE.DoubleSide }));
     this.highlightRing.rotation.x = -Math.PI / 2; this.highlightRing.position.y = 0.35; this.highlightRing.visible = false;
     this.scene.add(this.highlightRing);
+    // marker beacon (yellow) and the path the squad is auto-running along
+    this.waypoint = new THREE.Group();
+    const wb = new THREE.Mesh(new THREE.CylinderGeometry(0.35, 0.35, 70, 10, 1, true), new THREE.MeshBasicMaterial({ color: 0xffd23d, transparent: true, opacity: 0.5, depthWrite: false, blending: THREE.AdditiveBlending, fog: false }));
+    wb.position.y = 35;
+    const wr = new THREE.Mesh(new THREE.RingGeometry(1.2, 1.6, 32), new THREE.MeshBasicMaterial({ color: 0xffd23d, side: THREE.DoubleSide, transparent: true, depthWrite: false }));
+    wr.rotation.x = -Math.PI / 2; wr.position.y = 0.4; wr.name = 'ring';
+    this.waypoint.add(wb, wr); this.waypoint.visible = false;
+    this.routeLine = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), new THREE.MeshBasicMaterial({ color: 0xffd23d, transparent: true, opacity: 0.55, depthWrite: false, side: THREE.DoubleSide }));
+    this.routeLine.rotation.x = -Math.PI / 2; this.routeLine.visible = false;
+    this.scene.add(this.waypoint, this.routeLine);
 
     this.ro = new ResizeObserver(() => this.resize());
     this.ro.observe(canvas.parentElement || canvas);
@@ -343,7 +358,7 @@ export class WorldScene {
     // fountain + kiosks
     const fountain = byId.get('fountain');
     if (fountain) {
-      const c = W(fountain.x, fountain.y);
+      const c = W(fountain.x, fountain.y).add(new THREE.Vector3(0, 0, -6.5)); // beside the spot squads stand on
       const basin = new THREE.Mesh(new THREE.CylinderGeometry(3, 3.2, 0.8, 32), new THREE.MeshStandardMaterial({ color: 0xd9d4c8, roughness: 0.7 }));
       basin.position.set(c.x, 0.4, c.z); basin.castShadow = basin.receiveShadow = true;
       const water = new THREE.Mesh(new THREE.CylinderGeometry(2.7, 2.7, 0.15, 32), new THREE.MeshStandardMaterial({ color: 0x4fb3e8, roughness: 0.05, metalness: 0.3, transparent: true, opacity: 0.9 }));
@@ -581,6 +596,9 @@ export class WorldScene {
     }
     for (const [k, g] of this.battles) if (!bseen.has(k)) { this.scene.remove(g); this.battles.delete(k); }
 
+    if (st.waypoint) { const p = W(st.waypoint.x, st.waypoint.y); this.waypoint.position.set(p.x, 0, p.z); this.waypoint.visible = true; }
+    else this.waypoint.visible = false;
+    this.routeTo = st.route ? W(st.route.x, st.route.y) : null;
     if (st.focus) this.focus.copy(W(st.focus.x, st.focus.y));
     const hl = st.highlight ? this.locXY.get(st.highlight) : null;
     if (hl) { const p = W(hl.x, hl.y); this.highlightRing.visible = true; this.highlightRing.position.set(p.x, 0.35, p.z); }
@@ -678,6 +696,16 @@ export class WorldScene {
       }
     }
     if (live) live.yaw = this.yaw;
+    // ground path from the squad to its auto-run destination
+    if (this.routeTo && meObj) {
+      const a = meObj.group.position; const b = this.routeTo;
+      const len = Math.hypot(b.x - a.x, b.z - a.z);
+      this.routeLine.visible = len > 1;
+      this.routeLine.scale.set(0.5, len, 1);
+      this.routeLine.position.set((a.x + b.x) / 2, 0.32, (a.z + b.z) / 2);
+      this.routeLine.rotation.set(-Math.PI / 2, 0, Math.atan2(b.x - a.x, b.z - a.z) + Math.PI);
+    } else this.routeLine.visible = false;
+    if (this.waypoint.visible && !this.reduced) this.waypoint.getObjectByName('ring')!.scale.setScalar(1 + Math.sin(t * 4) * 0.15);
 
     if (!this.reduced) {
       this.wallTex.offset.y = (t * 0.1) % 1;
@@ -740,7 +768,7 @@ export class WorldScene {
       const m = lb.sprite.material as THREE.SpriteMaterial;
       // in the squad view: hide the label of the place you're standing in and fade far ones
       const standing = this.mode === 'follow' && meObj && lb.pos.distanceTo(meObj.group.position.clone().setY(lb.pos.y)) < 5;
-      m.opacity = standing ? 0 : this.mode === 'follow' ? Math.max(0, Math.min(1, (50 * this.zoom - d) / 12)) : 0.9;
+      m.opacity = standing ? 0 : this.mode === 'follow' ? Math.max(0, Math.min(1, (32 * this.zoom - d) / 8)) : 0.9;
       lb.sprite.visible = m.opacity > 0.02;
     }
     this.renderer.render(this.scene, this.camera);
