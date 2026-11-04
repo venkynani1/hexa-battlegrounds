@@ -774,7 +774,7 @@ function Results({ s }: { s: any }) {
       <div className="panel center col" style={{ alignItems: 'center', padding: 30 }}>
         <div className="kind-tag">Results sealed</div>
         <div className="mega" style={{ fontSize: 48 }}>Eyes on the big screen</div>
-        <p className="muted">The host will reveal the champion shortly.</p>
+        <p className="muted">{s.arena?.overlay?.auto?.on ? 'The champion is revealed in a few seconds.' : 'The host will reveal the champion shortly.'}</p>
       </div>
     );
   }

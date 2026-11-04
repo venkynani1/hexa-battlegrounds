@@ -2,8 +2,9 @@
 // (shuttle_departed_at / shuttle_arrive_at), so every phone and the projector show the same
 // moment, a refresh resumes at the right point, and no device can arrive "early".
 import { lazy, Suspense, useMemo } from 'react';
-import { progress, secondsLeft, serverTime, useNow } from '../lib/time';
+import { msUntil, progress, secondsLeft, serverTime, useNow } from '../lib/time';
 import { ROLES, ROLE_ORDER, Role } from '../lib/game';
+import { Countdown } from './ui';
 
 const pad2 = (n: number | null | undefined) => String(n ?? 0).padStart(2, '0');
 export const busCode = (bus?: number | null) => `HBX-${pad2(bus || 1)}`;
@@ -56,6 +57,7 @@ export function BusInterior({ s }: { s: any }) {
         <div className="bar" style={{ marginTop: 8 }}><i style={{ width: `${(n / 4) * 100}%` }} /></div>
         <p className="muted" style={{ margin: '8px 0 0', fontSize: 13 }}>
           {n < 4 ? 'Your squad needs exactly 4 players. Teammates join with the same squad number and PIN.'
+            : boarding && s.arena.overlay?.auto?.on && s.arena.overlay.auto.at && msUntil(s.arena.overlay.auto.at) > 0 ? <>All aboard. The bus leaves in <Countdown to={s.arena.overlay.auto.at} />.</>
             : boarding ? 'All aboard. The host will start the engine any moment.' : 'Squad ready. Waiting for the host to open the doors.'}
         </p>
       </div>

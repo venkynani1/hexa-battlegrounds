@@ -674,3 +674,25 @@ html.in-game .toast { padding: 7px 12px; font-size: 13px; }
 .coach-card.at-tl { left: 16px; top: calc(150px + env(safe-area-inset-top, 0px)); }
 .coach-card.at-br { right: 16px; bottom: calc(150px + env(safe-area-inset-bottom, 0px)); }
 @media (orientation: landscape) and (max-height: 520px) { .coach-card.at-bl { bottom: 150px; } .coach-card.at-tl { top: 120px; } .coach-card.at-br { bottom: 110px; } }
+
+/* ── Host: automatic match ───────────────────────────────────────────── */
+.auto-panel.on { border-color: rgba(93, 255, 158, 0.45); }
+.auto-panel.on::before, .auto-panel.on::after { border-color: var(--green); }
+.auto-lengths { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin: 12px 0; }
+.auto-lengths button {
+  display: flex; flex-direction: column; gap: 2px; align-items: flex-start; text-align: left;
+  padding: 10px 12px; border-radius: 10px; border: 1px solid rgba(255, 255, 255, 0.14);
+  background: rgba(255, 255, 255, 0.04); color: inherit; font: inherit; cursor: pointer;
+  transition: border-color 0.15s ease, background-color 0.15s ease, transform 0.1s ease;
+}
+.auto-lengths button:active { transform: scale(0.97); }
+.auto-lengths button b { font-size: 15px; }
+.auto-lengths button span { font-size: 11px; opacity: 0.7; }
+.auto-lengths button.on { border-color: var(--green); background: rgba(93, 255, 158, 0.1); }
+.auto-start { width: 100%; font-size: 20px; padding: 14px; letter-spacing: 0.08em; }
+.auto-row { display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap;
+  padding: 10px 0; border-top: 1px solid rgba(255, 255, 255, 0.08); margin-top: 10px; }
+@media (max-width: 560px) { .auto-lengths { grid-template-columns: 1fr; } }
+.manual-pacing { margin: 4px 0 14px; }
+.manual-pacing > summary { cursor: pointer; color: var(--muted); font-size: 13px; padding: 6px 2px; list-style-position: inside; }
+.manual-pacing[open] > summary { margin-bottom: 8px; }

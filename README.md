@@ -43,7 +43,7 @@ Create a repository and push this folder.
 ### 4. Create the game database
 1. Open the Supabase dashboard (Vercel → Storage → your database → **Open in Supabase**).
 2. **SQL Editor → New query** → paste [`supabase/setup/part-01.sql`](supabase/setup) → **Run**, then repeat for `part-02.sql` … `part-28.sql` **in order** (a new query each time is fine). Each part is a single line under 18,000 characters, because the editor accepts at most 100,000 characters per query and some copy paths cut text at 20,000. Together they create every table, the game engine, the map and the 191-challenge library. Re-running them is safe.
-   - **Already ran `supabase/upgrade-2` (open world)?** Run only [`supabase/upgrade-3/upgrade3-01.sql`](supabase/upgrade-3) … `upgrade3-15.sql`, in order. They add free hints, answer reveals with a points penalty and the easier challenge pack.
+   - **Already ran `supabase/upgrade-2` (open world)?** Run only [`supabase/upgrade-3/upgrade3-01.sql`](supabase/upgrade-3) … `upgrade3-22.sql`, in order. They add free hints, answer reveals with a points penalty, the easier challenge pack and the **automatic match** (one *Start match* runs the whole game).
    - **Already ran `supabase/upgrade` (match phases)?** Run only [`supabase/upgrade-2/upgrade2-01.sql`](supabase/upgrade-2) … `upgrade2-22.sql`, in order. They add the open world (positions, joystick movement, circular zone, red zones), challenge pack 2 and remove trial mode, without touching squads or scores. Each part is under ~10,000 characters.
    - **Only ran the original setup (part-01 … part-19)?** Run everything in [`supabase/upgrade/`](supabase/upgrade) (`upgrade-01` … `upgrade-28`) in order — it contains both upgrades.
    - Easiest of all for any upgrade: `DATABASE_URL="<POSTGRES_URL_NON_POOLING>" npm run db:setup` runs every migration (safe to re-run).
@@ -91,7 +91,7 @@ supabase/migrations/   0001 schema · 0002 core engine & tick · 0003 player/cap
 supabase/setup/        all migrations packed into paste-able parts (fresh install, run in order)
 supabase/upgrade/      incremental migrations 0100+ (databases that ran only the original setup)
 supabase/upgrade-2/    incremental migrations 0200+ (databases that already ran supabase/upgrade)
-supabase/upgrade-3/    incremental migrations 0300+ (databases that already ran supabase/upgrade-2)
+supabase/upgrade-3/    incremental migrations 0300+ incl. autopilot 0400 (databases that already ran supabase/upgrade-2)
 content/               editable campus map, items and the challenge generators (missions.mjs, missions2.mjs)
 src/pages/             Join, Play (world HUD + four role views), Host console, Screen (projector)
 src/three/             3D campus world and 3D shuttle bus (three.js, lazy-loaded)

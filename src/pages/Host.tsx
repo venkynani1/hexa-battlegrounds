@@ -73,7 +73,7 @@ function Dashboard({ token, onLogout }: { token: string; onLogout: () => void })
   const [topics, setTopics] = useState<string[]>([]);
   const live = useLive<any>(fetcher, {
     topics, pollMs: 4000, pollFastMs: 2500,
-    deadlines: (d) => (d?.arenas || []).flatMap((a: any) => [a.shuttle_arrive_at, a.roles_deadline, a.zone_next_at]),
+    deadlines: (d) => (d?.arenas || []).flatMap((a: any) => [a.shuttle_arrive_at, a.roles_deadline, a.zone_next_at, a.auto?.at]),
   });
   const d = live.data;
   const [section, setSection] = useState<Section>('control');
@@ -134,8 +134,8 @@ function Dashboard({ token, onLogout }: { token: string; onLogout: () => void })
             {d.metrics.host_errors > 0 && <span className="chip bad">{d.metrics.host_errors} refused cmds</span>}
           </div>
         </div>
-        {section === 'control' && <PacingPanel d={d} token={token} refresh={live.refresh} arena={selArena || arenas.find((a: any) => a.phase === 'play') || arenas[0] || null} />}
-        {section === 'control' && <Control d={d} arenas={arenas} arena={arena} cmd={cmd} map={map} />}
+        {section === 'control' && <Control d={d} arenas={arenas} arena={arena} cmd={cmd} map={map}
+          pacing={arenas.some((a: any) => a.auto?.on) ? null : <PacingPanel d={d} token={token} refresh={live.refresh} arena={selArena || arenas.find((a: any) => a.phase === 'play') || arenas[0] || null} />} />}
         {section === 'squads' && <Squads d={d} teams={teams} arenas={arenas} cmd={cmd} token={token} map={map} />}
         {section === 'map' && map && <MapControl d={d} arenas={arenas} selArena={selArena} setArena={setArena} cmd={cmd} map={map} reloadMap={() => setMapKey((k) => k + 1)} />}
         {section === 'missions' && <Missions token={token} />}
@@ -152,11 +152,13 @@ function Dashboard({ token, onLogout }: { token: string; onLogout: () => void })
 type Cmd = (arenaId: string | null, command: string, args?: any, reason?: string, quiet?: boolean) => Promise<any>;
 
 // ── Control ─────────────────────────────────────────────────────────────
-function Control({ d, arenas, arena, cmd, map }: { d: any; arenas: any[]; arena: string; cmd: Cmd; map: MapData | null }) {
+function Control({ d, arenas, arena, cmd, map, pacing }: { d: any; arenas: any[]; arena: string; cmd: Cmd; map: MapData | null; pacing: React.ReactNode }) {
   useNow(500);
   const list = arena === 'all' ? arenas : arenas.filter((a: any) => a.id === arena);
   return (
     <>
+      <AutoPanel d={d} list={list} all={arena === 'all'} cmd={cmd} />
+      {pacing && <details className="manual-pacing"><summary>Manual match pacing (advanced)</summary>{pacing}</details>}
       {arena === 'all' && arenas.length > 1 && (
         <div className="panel warn">
           <div className="panel-title">All maps at once</div>
@@ -180,6 +182,64 @@ function Control({ d, arenas, arena, cmd, map }: { d: any; arenas: any[]; arena:
   );
 }
 
+// ── Automatic match ─────────────────────────────────────────────────────
+const LENGTHS: [string, string, string][] = [
+  ['quick', 'Quick', '≈ 15 min · 1 finale battle'],
+  ['standard', 'Standard', '≈ 35 min · 2 finale battles'],
+  ['full', 'Full', '≈ 75 min · 3 finale battles'],
+];
+
+function AutoPanel({ d, list, all, cmd }: { d: any; list: any[]; all: boolean; cmd: Cmd }) {
+  const [len, setLen] = useState('standard');
+  const running = list.filter((a: any) => a.auto?.on);
+  const startable = list.filter((a: any) => !a.auto?.on && a.phase !== 'ended');
+  const ready = d.teams.filter((t: any) => t.ready && list.some((a: any) => a.id === t.arena_id)).length;
+  const target = all ? null : list[0]?.id ?? null;
+  const start = () => {
+    const where = all && list.length > 1 ? `all ${list.length} maps` : list[0]?.name;
+    if (!confirm(`Start an automatic ${len} match on ${where}?\n\nBoarding, the bus, roles, phases, zone, airdrops, red zones, Squad 00, finale rounds and the results all run by themselves. You can still pause or override anything.`)) return;
+    cmd(target, 'start_match', { length: len });
+  };
+  return (
+    <div className={`panel auto-panel ${running.length ? 'on' : ''}`}>
+      <div className="row between wrap">
+        <div className="panel-title" style={{ margin: 0 }}>Automatic match</div>
+        {running.length > 0 && <span className="chip good"><span className="dot on" />Autopilot running</span>}
+      </div>
+      {startable.length > 0 && (
+        <>
+          <div className="auto-lengths" role="radiogroup" aria-label="Match length">
+            {LENGTHS.map(([id, name, sub]) => (
+              <button key={id} role="radio" aria-checked={len === id} className={len === id ? 'on' : ''} onClick={() => setLen(id)}>
+                <b>{name}</b><span>{sub}</span>
+              </button>
+            ))}
+          </div>
+          <button className="btn primary auto-start" disabled={ready === 0} onClick={start}>▶ START MATCH</button>
+          <p className="muted" style={{ fontSize: 12, margin: '8px 0 0' }}>
+            {ready === 0 ? 'Waiting for at least one complete squad (4 players).' : `${ready} squad${ready === 1 ? '' : 's'} ready. One press runs everything — from boarding to the winner reveal.`}
+          </p>
+        </>
+      )}
+      {running.map((a: any) => (
+        <div key={a.id} className="auto-row">
+          <div className="col" style={{ gap: 2 }}>
+            <span className="muted" style={{ fontSize: 12 }}>{a.name} · {a.auto.length || 'standard'}{a.paused ? ' · paused' : ''}</span>
+            <b>{a.auto.label}{a.auto.at && msUntil(a.auto.at) > 0 && !a.paused && <> in <Countdown to={a.auto.at} /></>}</b>
+          </div>
+          <div className="row" style={{ gap: 6 }}>
+            {a.paused ? <button className="btn sm primary" onClick={() => cmd(a.id, 'resume')}>▶ Resume</button> : <button className="btn sm" onClick={() => cmd(a.id, 'pause')}>⏸ Pause</button>}
+            <button className="btn sm ghost" onClick={() => confirm(`Take manual control of ${a.name}? Nothing will happen on its own until you start the autopilot again.`) && cmd(a.id, 'autopilot_off')}>Manual control</button>
+          </div>
+        </div>
+      ))}
+      {!running.length && list.some((a: any) => !['lobby', 'boarding', 'ended'].includes(a.phase)) && (
+        <p className="muted" style={{ fontSize: 12, margin: '8px 0 0' }}>A match is already running by hand. Start match hands it to the autopilot from where it is now.</p>
+      )}
+    </div>
+  );
+}
+
 function ArenaCard({ a, d, cmd }: { a: any; d: any; cmd: Cmd }) {
   const teams = d.teams.filter((t: any) => t.arena_id === a.id);
   const ready = teams.filter((t: any) => t.ready).length;
@@ -188,7 +248,7 @@ function ArenaCard({ a, d, cmd }: { a: any; d: any; cmd: Cmd }) {
   const recovering = teams.filter((t: any) => t.state === 'recovery').length;
   return (
     <div className={`panel ${a.paused ? 'warn' : ''}`}>
-      <div className="row between"><h3 style={{ fontSize: 22 }}>{a.name}</h3><span className="chip">{ready}/{teams.length} squads ready</span></div>
+      <div className="row between"><h3 style={{ fontSize: 22 }}>{a.name}</h3><div className="row" style={{ gap: 6 }}>{a.auto?.on && <span className="chip good">AUTO</span>}<span className="chip">{ready}/{teams.length} squads ready</span></div></div>
       <div className="phase-steps" style={{ margin: '10px 0' }}>
         {PHASES.slice(0, 7).map((p, i) => <span key={p} className={i < idx ? 'done' : i === idx ? 'now' : ''}>{p}</span>)}
       </div>

@@ -33,10 +33,28 @@
 - [ ] Reset the rehearsal map: Game control → **Reset map** (type `RESET`) — squads and players stay, gameplay is wiped. Or create a fresh event code for the real game.
 - [ ] Print the PIN sheet and keep a spare laptop logged into `/host`.
 
+## Automatic match (recommended)
+Game control → **Automatic match**: pick a length and press **▶ START MATCH** once (on *All maps* it starts every map).
+
+| Length | Play time | Finale | Total |
+|---|---|---|---|
+| Quick | phases at 1, 3, 5, 7 min · finale at 9 min | 1 battle round | ≈ 15 min |
+| Standard | phases at 2, 6, 11, 16 min · finale at 21 min | 2 battle rounds | ≈ 35 min |
+| Full | phases at 3, 15, 30, 45 min · finale at 55 min | 3 battle rounds | ≈ 75 min |
+
+After that nothing needs a button: boarding countdown → bus → role claim → Phases 0–4 (zone shrinks, airdrops, red zones from Phase 2, a Squad 00 transmission each phase and bargains in Phases 2 and 3) → finale in Training Room 14 (entry round A, exchange round B, battle round(s) C, Squad 00 reveal D, final code E). Each finale round ends early once every squad has finished it, with a 10 s break before the next → results lock → winner reveal → grand champion when every map has its winner.
+
+- The panel shows what happens next and when (also shown on the projector and phones).
+- **Pause** freezes everything, including the autopilot's countdown. **Resume** carries on.
+- Any manual button still works (Drive early, Next phase, Begin finale, Launch round, Lock results…). The autopilot follows from the new state.
+- **Manual control** switches the autopilot off for that map. **Start match** again hands it back from wherever the match is.
+- The autopilot runs inside the game's own clock, which every phone, the projector and this console keep ticking. Keep at least the projector or this page open during the match.
+- Reset map turns the autopilot off.
+
 ## Running the game — phases
 Each map card shows the current **match phase** with *◀ / Next phase ▶* and *Hide rankings*. With automatic pacing the phases advance on the timeline shown in Match pacing; the zone contracts by itself toward each phase's target (*Cancel* holds it). Duels are locked until Phase 2. *Hide rankings* seals the leaderboard on the projector and on phones without changing any score.
 
-## Running the game
+## Running the game by hand
 Follow the run-sheet in [GAME_DESIGN.md](GAME_DESIGN.md#120-minute-run-sheet-per-map-parallel-maps-run-the-same-sheet). Typical sequence per map (or *All maps*):
 1. **Open boarding** (assigns buses). You can start with any number of complete squads from 1 to 15; incomplete squads stay in the lobby. An empty map is refused.
 2. **DRIVE** → 10 s shuttle → Gate 1 role claim (15 s) → map revealed.

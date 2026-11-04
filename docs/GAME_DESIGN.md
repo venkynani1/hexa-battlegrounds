@@ -98,7 +98,7 @@ The match runs through six named phases. The current phase, its rules and the ti
 | 2 First Contact | Competition begins | **Puzzle duels unlock** (setting `duel_phase`). First contraction announced. | 1 |
 | 3 Conflict & Intelligence | Risk versus reward | Mission picker prefers hard missions (150 points). Two contractions. | 3 |
 | 4 Final Convergence | High-stakes comeback | Only Hexavarsity stays safe; last chance for points before the finale. | 4 |
-| 5 Training Room 14 | Final showdown | Started only by *Begin finale*; synchronized rounds A–F. | 5 |
+| 5 Training Room 14 | Final showdown | Started by *Begin finale*, or on the timetable in an automatic match; synchronized rounds A–F. | 5 |
 
 Phases advance automatically on the `phase_schedule` (minutes after play starts) when `auto_pacing` = 1, or manually with *Next phase*. Whenever the zone is below the current phase's target, the server announces the next contraction `zone_warning` seconds ahead (white **next circle** on every map and minimap, with a countdown), then shrinks it. *Cancel zone* holds contraction until the host acts again.
 
@@ -112,6 +112,9 @@ Phases advance automatically on the `phase_schedule` (minutes after play starts)
 | Quick demo | 1, 3, 5, 7 | 30 s | 12 s | 70 % | 8–12 min |
 | Rehearsal | 2, 7, 13, 19 | 45 s | 20 s | 85 % | 20–30 min |
 | Full event | 3, 20, 40, 58 | 90 s | 30 s | 100 % | 60–90 min |
+
+## Automatic match (migration 0400)
+One *Start match* (Quick ≈ 15 min, Standard ≈ 35 min, Full ≈ 75 min) runs the whole match like a battle-royale server: boarding countdown, bus, role claim, Phases 0–4 on a timetable, the zone, airdrops and red zones, a Squad 00 transmission at the start of every phase with bargains in Phases 2 and 3, then the finale rounds (each ends early once every squad has finished), results, winner and grand champion. Phones and the projector show what comes next and when. The host keeps Pause, every manual button, and *Manual control*.
 
 ## Finale (all squads simultaneously)
 | Stage | Round | Max points |

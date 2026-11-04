@@ -11,13 +11,16 @@ export function PhaseBanner({ overlay, big = false }: { overlay: any; big?: bool
   const info = MATCH_PHASES[ph];
   const next = m.next_at && msUntil(m.next_at) > 0 ? m.next_at : null;
   const duelsIn = (m.duel_phase ?? 2) - ph;
+  // automatic match: show what happens next (phase, finale round, results) when the autopilot knows
+  const auto = overlay?.auto?.on && overlay.auto.at && msUntil(overlay.auto.at) > 0 ? overlay.auto : null;
   return (
     <div className="phase-banner" style={big ? { padding: 16 } : undefined} role="status" aria-live="polite">
       <span className="ph-n" style={big ? { fontSize: 44 } : undefined} aria-hidden>{ph}</span>
       <div className="grow" style={{ minWidth: 0 }}>
         <div className="row between" style={{ gap: 6 }}>
           <b className="up" style={{ fontSize: big ? 22 : 14 }}>Phase {ph} · {info.name}</b>
-          {next && <span className="chip">Next in <Countdown to={next} /></span>}
+          {auto ? <span className="chip">{auto.label} in <Countdown to={auto.at} /></span>
+            : next && <span className="chip">Next in <Countdown to={next} /></span>}
         </div>
         <div className="muted" style={{ fontSize: big ? 16 : 12 }}>{info.theme} — {info.rules}{duelsIn > 0 ? ` Duels unlock in phase ${m.duel_phase ?? 2}.` : ''}</div>
         <div className="phase-track" style={{ marginTop: 6 }} aria-hidden>

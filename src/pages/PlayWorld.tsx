@@ -380,6 +380,7 @@ export default function WorldTab({ s, token, map, refresh, openMission, openSqua
     const r = await act('captain_move', { p_location: id });
     if (r) { sfx.go(); toast(`${!s.team.dropped ? 'Parachuting' : 'Running'} to ${SHORT[id] || locName(map, id)} · ${Math.round(r.seconds)}s`, 'info'); setMapOpen(false); }
   }
+  const auto = s.arena.overlay?.auto?.on ? s.arena.overlay.auto : null;
   // one banner, most urgent first (no stacked boxes over the view)
   const banner: { tone: string; text: React.ReactNode; arrow?: number } | null =
     s.arena.paused ? { tone: '', text: '⏸ Paused by the host' }
@@ -387,8 +388,10 @@ export default function WorldTab({ s, token, map, refresh, openMission, openSqua
     : inRed && msUntil(red.at) > 0 ? { tone: 'bad', text: <>Red zone! Get out <Countdown to={red.at} /></> }
     : s.team.state === 'recovery' ? { tone: 'bad', text: 'Squad down — solve the recovery puzzle' }
     : red && msUntil(red.at) > 0 ? { tone: 'warn', text: <>💥 Red zone strike in <Countdown to={red.at} /></> }
+    : s.arena.phase === 'finale' && auto?.at && auto.label !== 'Round ends' && msUntil(auto.at) > 0 ? { tone: 'warn', text: <>Next: {auto.label} in <Countdown to={auto.at} /></> }
     : s.arena.phase === 'finale' ? { tone: 'warn', text: 'Finale in Training Room 14 — open the mission' }
     : !s.team.dropped && s.arena.phase === 'play' ? { tone: 'info', text: isCaptain ? '🪂 Open the map and pick where to drop' : '🪂 Your captain is picking a drop point' }
+    : s.arena.phase === 'play' && auto?.label === 'Finale' && auto.at && msUntil(auto.at) > 0 && msUntil(auto.at) < 120_000 ? { tone: 'warn', text: <>🏁 Finale in Training Room 14 in <Countdown to={auto.at} /></> }
     : zoneWarn ? { tone: 'zone', text: <>Safe zone shrinking in <Countdown to={zone.next_at} /></> }
     : null;
   const travelDest = s.team.state === 'traveling' && s.team.travel_to ? map?.locations.find((l) => l.id === s.team.travel_to) : null;
