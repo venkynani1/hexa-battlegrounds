@@ -90,6 +90,7 @@ if (cur) parts.push(cur);
 // Upgrade bundles: only incremental migrations, in small pastes (flaky dashboard connections choke on big ones).
 //   supabase/upgrade/    0100+  — databases that only ran the original setup
 //   supabase/upgrade-2/  0200+  — databases that already ran supabase/upgrade (P0)
+//   supabase/upgrade-3/  0300+  — databases that already ran supabase/upgrade-2 (open world)
 function bundleUpgrade(minVersion, folder, prefix, who) {
   const upDir = new URL(`../supabase/${folder}/`, import.meta.url);
   rmSync(upDir, { recursive: true, force: true });
@@ -112,6 +113,7 @@ function bundleUpgrade(minVersion, folder, prefix, who) {
 }
 bundleUpgrade(100, 'upgrade', 'upgrade', 'Only for databases that already ran setup part-01…;');
 bundleUpgrade(200, 'upgrade-2', 'upgrade2', 'For databases that already ran supabase/upgrade (match phases);');
+bundleUpgrade(300, 'upgrade-3', 'upgrade3', 'For databases that already ran supabase/upgrade-2 (open world);');
 
 parts.forEach((p, i) => {
   const text = `/* HEXA BATTLEGROUNDS setup — PART ${i + 1} OF ${parts.length}. Run parts in order. Safe to re-run. */ ${p.trim()}\n`;

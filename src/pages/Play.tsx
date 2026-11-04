@@ -444,6 +444,22 @@ function ActivityCard({ a, s, token, refresh, battle = false }: { a: any; s: any
     try { await rpc('captain_hint', { p_token: token, p_instance: a.id }); sfx.tap(); } catch (e) { toast(friendly(e), 'bad'); }
     refresh();
   }
+  const revealed: Record<string, string> = a.revealed || {};
+  const [confirmReveal, setConfirmReveal] = useState<number | null>(null);
+  async function reveal(i: number) {
+    setConfirmReveal(null);
+    try {
+      const r = await rpc('captain_reveal', { p_token: token, p_instance: a.id, p_part: i });
+      setAnswers((x) => x.map((v, j) => (j === i ? r.answer : v)));
+      sfx.tap(); buzz(20);
+      if (r.cost) toast(`Answer revealed · −${r.cost} points`, 'warn');
+    } catch (e) { toast(friendly(e), 'bad'); }
+    refresh();
+  }
+  useEffect(() => {
+    // fill boxes the squad already paid to reveal (e.g. after a reload)
+    if (Object.keys(revealed).length) setAnswers((x) => x.map((v, j) => (revealed[String(j)] && !v ? revealed[String(j)] : v)));
+  }, [a.id, JSON.stringify(revealed)]);
 
   const clue = a.clue;
   const revealLeft = clue?.reveal_seconds && !clue.expired ? Math.max(0, clue.reveal_seconds - Math.floor((serverTime() - new Date(a.started_at).getTime()) / 1000)) : null;
@@ -488,19 +504,33 @@ function ActivityCard({ a, s, token, refresh, battle = false }: { a: any; s: any
       {isCaptain && (
         <div className="col" style={{ gap: 8 }}>
           <p className="muted" style={{ margin: 0, fontSize: 13 }}>Your Scout, Decoder and Intel Officer each hold a different piece. Ask them!</p>
-          {parts.map((label, i) => (
-            <div key={i} className="field">
-              <label htmlFor={`ans${i}`}>{label}</label>
-              <input id={`ans${i}`} className="input mono" value={answers[i] || ''} autoComplete="off" autoCapitalize="characters" spellCheck={false}
-                onChange={(e) => setAnswers((x) => x.map((v, j) => (j === i ? e.target.value : v)))}
-                onKeyDown={(e) => { if (e.key === 'Enter' && i === parts.length - 1) submit(); }} />
-            </div>
-          ))}
+          {parts.map((label, i) => {
+            const canReveal = !battle && a.reveal_cost > 0 && a.revealable?.[i] !== false;
+            const isRevealed = revealed[String(i)] !== undefined;
+            return (
+              <div key={i} className="field">
+                <label htmlFor={`ans${i}`}>{label}</label>
+                <div className="answer-row">
+                  <input id={`ans${i}`} className={`input mono grow ${isRevealed ? 'revealed' : ''}`} value={answers[i] || ''} autoComplete="off" autoCapitalize="characters" spellCheck={false}
+                    enterKeyHint={i === parts.length - 1 ? 'done' : 'next'}
+                    onChange={(e) => setAnswers((x) => x.map((v, j) => (j === i ? e.target.value : v)))}
+                    onKeyDown={(e) => { if (e.key === 'Enter' && i === parts.length - 1) submit(); }} />
+                  {canReveal && !isRevealed && (
+                    confirmReveal === i
+                      ? <button className="btn sm warn" onClick={() => reveal(i)}>−{a.reveal_cost} pts?</button>
+                      : <button className="btn sm ghost" onClick={() => setConfirmReveal(i)} aria-label={`Reveal the answer for ${label}`}>👁 Reveal</button>
+                  )}
+                  {isRevealed && <span className="chip warn">revealed</span>}
+                </div>
+              </div>
+            );
+          })}
           {a.hint && <div className="notice gold">💡 {a.hint}</div>}
           <div className="row">
             <button className={`btn big grow ${battle ? 'danger' : 'primary'}`} disabled={busy} onClick={submit}>{busy ? 'Checking…' : 'Submit answer'}</button>
-            {!battle && !a.hint && a.hint_cost != null && <button className="btn ghost" onClick={hint} disabled={busy || s.team.coins < a.hint_cost}>Hint<br />{a.hint_cost}c</button>}
+            {!battle && !a.hint && a.hint_cost != null && <button className="btn ghost" onClick={hint} disabled={busy || s.team.coins < a.hint_cost}>💡 Hint<br /><small>{a.hint_cost ? `${a.hint_cost}c` : 'free'}</small></button>}
           </div>
+          {!battle && a.reveal_cost > 0 && <p className="muted" style={{ margin: 0, fontSize: 12 }}>Stuck? 💡 Hint is free. 👁 Reveal shows one box's answer for −{a.reveal_cost} points (tap twice to confirm).</p>}
         </div>
       )}
     </div>

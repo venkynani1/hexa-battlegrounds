@@ -144,3 +144,32 @@ test('red zone: warned first, then squads inside take damage once', async () => 
   await cmd(ev.token, arena, 'red_cancel');
   assert.equal((await one(`select red_at from arenas where id = $1`, [arena])).red_at, null);
 });
+
+test('hints are free; revealing an answer box shows it to the captain only and costs points once', async () => {
+  await db.query(`update mission_instances set status = 'cancelled' where status = 'active'`);
+  await db.query(`update teams set state = 'idle', hp = 100, points = 500 where id = $1`, [sq[1].id]);
+  const inst = (await one(`select _start_instance($1, 'mission-riddle-0', 'fountain') id`, [sq[1].id])).id;
+  const h = await call('captain_hint', sq[1].captain, inst);
+  assert.ok(h.hint);
+  assert.equal((await one(`select points, coins from teams where id = $1`, [sq[1].id])).points, 500, 'hint is free');
+  let st = await call('player_state', sq[1].captain);
+  const cost = st.mission.reveal_cost;
+  assert.ok(cost > 0 && cost < 100);
+  await fails(call('captain_reveal', sq[1].scout, inst, 0), 'NOT_CAPTAIN');
+  const r = await call('captain_reveal', sq[1].captain, inst, 1);
+  const parts = (await one(`select parts from mission_templates where id = 'mission-riddle-0'`)).parts;
+  assert.equal(r.answer, parts[1].accept[0]);
+  assert.equal((await one(`select points from teams where id = $1`, [sq[1].id])).points, 500 - cost);
+  const again = await call('captain_reveal', sq[1].captain, inst, 1);
+  assert.equal(again.cost, 0, 'revealing the same box twice is free');
+  assert.equal((await one(`select points from teams where id = $1`, [sq[1].id])).points, 500 - cost);
+  st = await call('player_state', sq[1].captain);
+  assert.equal(st.mission.revealed['1'], parts[1].accept[0]);
+  const scout = await call('player_state', sq[1].scout);
+  assert.equal(scout.mission.revealed, undefined, 'teammates never receive answers');
+  // solving still pays the mission reward (no 20 % hint cut any more)
+  const answers = parts.map((p) => p.accept[0]);
+  const res = await call('captain_submit', sq[1].captain, inst, answers, 'idem-reveal-1');
+  assert.equal(res.correct, true);
+  assert.equal(res.points, 100);
+});

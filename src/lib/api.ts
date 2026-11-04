@@ -75,6 +75,7 @@ const MESSAGES: Record<string, string> = {
   NETWORK: 'Connection problem — retrying…',
   DUELS_LOCKED: 'Duels are locked until Phase 2 — First Contact.',
   NO_READY_SQUADS: 'No complete squad (4/4) on this map yet. Any number from 1 to 15 squads can play.',
+  NO_REVEAL_HERE: 'Answers can’t be revealed in duels, airdrop races or the finale.',
   NOT_AT_LOCATION: 'Walk into a location ring first, then search.',
   RED_ZONE_ACTIVE: 'A red zone is already incoming on this map.',
   BAD_PHASE: 'Choose a phase between 0 and 4. The finale starts with Begin finale.',

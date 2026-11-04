@@ -92,9 +92,52 @@ function Joystick({ onMove, disabled }: { onMove: (x: number, y: number) => void
   );
 }
 
+// ── Icons (simple line icons, original) ─────────────────────────────────
+type IconName = 'search' | 'crate' | 'target' | 'puzzle' | 'med' | 'bag' | 'plus' | 'minus';
+const ICONS: Record<IconName, string> = {
+  search: 'M10.5 4a6.5 6.5 0 1 1 0 13 6.5 6.5 0 0 1 0-13Zm4.8 11.3L20 20',
+  crate: 'M4 8l8-4 8 4v8l-8 4-8-4V8Zm0 0l8 4 8-4M12 12v8',
+  target: 'M12 3v4M12 17v4M3 12h4M17 12h4M12 7a5 5 0 1 1 0 10 5 5 0 0 1 0-10Zm0 4a1 1 0 1 1 0 2 1 1 0 0 1 0-2Z',
+  puzzle: 'M9 4h3a2 2 0 1 1 4 0h3v5a2 2 0 1 1 0 4v6h-5a2 2 0 1 0-4 0H5v-5a2 2 0 1 0 0-4V4h4Z',
+  med: 'M10 4h4v6h6v4h-6v6h-4v-6H4v-4h6V4Z',
+  bag: 'M8 7V5a4 4 0 0 1 8 0v2M5 7h14l-1 13H6L5 7Zm4 5h6',
+  plus: 'M12 5v14M5 12h14',
+  minus: 'M5 12h14',
+};
+function Icon({ name }: { name: IconName }) {
+  return (
+    <svg className="ico" viewBox="0 0 24 24" aria-hidden width="26" height="26">
+      <path d={ICONS[name]} fill={name === 'med' ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth={name === 'med' ? 0 : 2.2} strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+// ── Compass strip (heading of the camera) ───────────────────────────────
+const CARD = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'];
+function Compass({ src }: { src: { current: { yaw?: number } } }) {
+  const [yaw, setYaw] = useState(src.current.yaw || 0);
+  useEffect(() => {
+    let raf = 0;
+    const f = () => { raf = requestAnimationFrame(f); const y = src.current.yaw || 0; setYaw((p) => (Math.abs(p - y) > 0.004 ? y : p)); };
+    raf = requestAnimationFrame(f);
+    return () => cancelAnimationFrame(raf);
+  }, [src]);
+  const deg = ((yaw * 180) / Math.PI % 360 + 360) % 360;
+  const ticks = [];
+  for (let d = -60; d <= 60; d += 15) {
+    const a = Math.round((deg + d) / 15) * 15;
+    const off = a - deg;
+    if (Math.abs(off) > 60) continue;
+    const norm = ((a % 360) + 360) % 360;
+    const lab = norm % 45 === 0 ? CARD[norm / 45] : '';
+    ticks.push(<span key={a} className={`cp-t ${norm % 45 === 0 ? 'big' : ''}`} style={{ left: `${50 + (off / 60) * 50}%` }}>{lab}</span>);
+  }
+  return <div className="compass" aria-label={`Facing ${CARD[Math.round(deg / 45) % 8]}`}>{ticks}<i className="cp-mark" /></div>;
+}
+
 // ── Minimap ─────────────────────────────────────────────────────────────
-function MiniMap({ map, me, squads, zone, red, drops, onClick, overview }: {
-  map: MapData; me: XY | null; squads: any[]; zone: any; red: any; drops: any[]; onClick: () => void; overview: boolean;
+function MiniMap({ map, me, yaw, squads, zone, red, drops, onClick, overview }: {
+  map: MapData; me: XY | null; yaw: number; squads: any[]; zone: any; red: any; drops: any[]; onClick: () => void; overview: boolean;
 }) {
   const cur = zone?.cur; const nxt = zone?.next;
   return (
@@ -112,7 +155,8 @@ function MiniMap({ map, me, squads, zone, red, drops, onClick, overview }: {
         {red && <circle cx={red.x} cy={red.y} r={red.r} fill="#ff2238" opacity="0.45" />}
         {drops.map((d: any) => { const l = map.locations.find((x) => x.id === d.location); return l ? <rect key={d.id} x={l.x - 0.02} y={l.y - 0.02} width="0.04" height="0.04" fill={TIER_COLOR[d.tier] || '#ffc23d'} /> : null; })}
         {squads.filter((x) => x.pos && !x.me).map((x) => <circle key={x.id} cx={x.pos[0]} cy={x.pos[1]} r="0.02" fill={x.allied ? '#5dff9e' : '#ff4d5e'} />)}
-        {me && <circle cx={me[0]} cy={me[1]} r="0.03" fill="#3ef0ff" stroke="#fff" strokeWidth="0.008" />}
+        {me && <path d={`M ${me[0]} ${me[1]} L ${me[0] + Math.sin(yaw - 0.5) * 0.16} ${me[1] - Math.cos(yaw - 0.5) * 0.16} A 0.16 0.16 0 0 1 ${me[0] + Math.sin(yaw + 0.5) * 0.16} ${me[1] - Math.cos(yaw + 0.5) * 0.16} Z`} fill="#ffffff" opacity="0.22" />}
+        {me && <path d={`M ${me[0] + Math.sin(yaw) * 0.045} ${me[1] - Math.cos(yaw) * 0.045} L ${me[0] + Math.sin(yaw + 2.5) * 0.03} ${me[1] - Math.cos(yaw + 2.5) * 0.03} L ${me[0] + Math.sin(yaw - 2.5) * 0.03} ${me[1] - Math.cos(yaw - 2.5) * 0.03} Z`} fill="#3ef0ff" stroke="#fff" strokeWidth="0.006" />}
       </svg>
       <span className="mm-tag">{overview ? 'SQUAD VIEW' : 'FULL MAP'}</span>
     </button>
@@ -151,7 +195,7 @@ export default function WorldTab({ s, token, map, refresh, openMission, openSqua
 
   // ── own position: prediction while steering, server truth otherwise ──
   const serverPos = travelPos(s, map);
-  const me = useRef<{ x: number; y: number; moving: boolean }>({ x: serverPos?.[0] ?? 0.5, y: serverPos?.[1] ?? 0.93, moving: false });
+  const me = useRef<{ x: number; y: number; moving: boolean; joy?: boolean; yaw?: number }>({ x: serverPos?.[0] ?? 0.5, y: serverPos?.[1] ?? 0.93, moving: false, yaw: 0 });
   const vec = useRef({ x: 0, y: 0 });
   const steering = useRef(false);
   const lastSend = useRef(0);
@@ -196,11 +240,15 @@ export default function WorldTab({ s, token, map, refresh, openMission, openSqua
       const mag = Math.hypot(v.x, v.y);
       if (mag > 0 && canMove) {
         steering.current = true;
-        me.current.x = clamp01(me.current.x + v.x * world.speed * dt);
-        me.current.y = clamp01(me.current.y + v.y * world.speed * dt);
-        me.current.moving = true;
+        // the joystick is relative to where the camera looks (push up = run forward)
+        const yaw = me.current.yaw || 0; const c = Math.cos(yaw); const sn = Math.sin(yaw);
+        const wx = c * v.x - sn * v.y; const wy = sn * v.x + c * v.y;
+        me.current.x = clamp01(me.current.x + wx * world.speed * dt);
+        me.current.y = clamp01(me.current.y + wy * world.speed * dt);
+        me.current.moving = true; me.current.joy = true;
         if (t - lastSend.current > 260) sendSteer();
       } else {
+        me.current.joy = false;
         if (steering.current) { steering.current = false; me.current.moving = false; setTimeout(() => sendSteer(true), 40); }
         const tp = travelPos(s, map);
         if (s.team.state === 'traveling' && tp) { me.current.x = tp[0]; me.current.y = tp[1]; me.current.moving = true; }
@@ -224,7 +272,8 @@ export default function WorldTab({ s, token, map, refresh, openMission, openSqua
   const cur = zone?.cur as number[] | undefined;
   const outside = cur && cur[2] < 0.86 && Math.hypot(myXY[0] - cur[0], myXY[1] - cur[1]) > cur[2];
   const inRed = red && Math.hypot(myXY[0] - red.x, myXY[1] - red.y) <= red.r;
-  const zoneArrow = outside && cur ? Math.atan2(cur[0] - myXY[0], -(cur[1] - myXY[1])) : 0;
+  const zoneArrow = outside && cur ? Math.atan2(cur[0] - myXY[0], -(cur[1] - myXY[1])) - (me.current.yaw || 0) : 0;
+  const alive = squads.filter((x: any) => x.state !== 'recovery').length;
   const phase = s.arena.overlay?.match?.phase ?? 0;
 
   // 3D state (positions of others come from the server; own squad from the prediction above)
@@ -255,13 +304,13 @@ export default function WorldTab({ s, token, map, refresh, openMission, openSqua
   const runSecs = pickLoc ? (!s.team.dropped ? 8 : Math.max(1, Math.round(Math.hypot(pickLoc.x - myXY[0], pickLoc.y - myXY[1]) / world.speed))) : 0;
 
   // primary context action
-  let primary: { label: string; sub?: string; tone: string; onClick: () => void; disabled?: boolean } | null = null;
-  if (s.battle) primary = { label: 'DUEL', sub: 'answer now', tone: 'danger', onClick: openMission };
-  else if (s.mission) primary = { label: 'SOLVE', sub: s.mission.title, tone: 'primary', onClick: openMission };
-  else if (s.team.state === 'recovery') primary = { label: 'REVIVE', sub: 'recovery', tone: 'good', onClick: openMission };
-  else if (isCaptain && dropsHere.length) primary = { label: 'CRACK', sub: `${dropsHere[0].tier} crate`, tone: 'gold', disabled: busy, onClick: () => act('captain_claim_airdrop', { p_airdrop: dropsHere[0].id }).then((r) => r && openMission()) };
-  else if (isCaptain && enemiesNear.length && !duelsLocked) primary = { label: 'ENGAGE', sub: `SQ ${enemiesNear[0].number}`, tone: 'danger', disabled: busy || !!cooldown, onClick: () => setEngage(true) };
-  else if (isCaptain && here && s.arena.phase === 'play') primary = { label: 'SEARCH', sub: searchesLeft > 0 ? `${searchesLeft} left` : 'area empty', tone: 'primary', disabled: busy || searchesLeft <= 0 || s.team.state !== 'idle', onClick: () => act('captain_explore', {}).then((r) => r && openMission()) };
+  let primary: { label: string; icon: IconName; sub?: string; tone: string; onClick: () => void; disabled?: boolean } | null = null;
+  if (s.battle) primary = { icon: 'target', label: 'DUEL', sub: 'answer now', tone: 'danger', onClick: openMission };
+  else if (s.mission) primary = { icon: 'puzzle', label: 'SOLVE', sub: s.mission.title, tone: 'primary', onClick: openMission };
+  else if (s.team.state === 'recovery') primary = { icon: 'med', label: 'REVIVE', sub: 'recovery', tone: 'good', onClick: openMission };
+  else if (isCaptain && dropsHere.length) primary = { icon: 'crate', label: 'CRACK', sub: `${dropsHere[0].tier} crate`, tone: 'gold', disabled: busy, onClick: () => act('captain_claim_airdrop', { p_airdrop: dropsHere[0].id }).then((r) => r && openMission()) };
+  else if (isCaptain && enemiesNear.length && !duelsLocked) primary = { icon: 'target', label: 'ENGAGE', sub: `SQ ${enemiesNear[0].number}`, tone: 'danger', disabled: busy || !!cooldown, onClick: () => setEngage(true) };
+  else if (isCaptain && here && s.arena.phase === 'play') primary = { icon: 'search', label: 'SEARCH', sub: searchesLeft > 0 ? `${searchesLeft} left` : 'area empty', tone: 'primary', disabled: busy || searchesLeft <= 0 || s.team.state !== 'idle', onClick: () => act('captain_explore', {}).then((r) => r && openMission()) };
   const medkits = s.inventory?.medkit || 0;
   const weapons = Object.entries(s.inventory || {}).filter(([k]) => ['pistol', 'smg', 'sniper'].includes(k)) as [string, number][];
   const hp = s.team.hp;
@@ -280,6 +329,12 @@ export default function WorldTab({ s, token, map, refresh, openMission, openSqua
               airdrops={s.airdrops} selected={pick} onSelect={(id) => setPick(id)} height="60vh" />
           </div>
         ) : null}
+      </div>
+
+      {/* top centre: compass and squads left */}
+      <div className="hud-top">
+        <Compass src={me} />
+        <div className="hud-alive"><b>{alive}</b><span>SQUADS</span></div>
       </div>
 
       {/* top-left: squad status */}
@@ -313,7 +368,7 @@ export default function WorldTab({ s, token, map, refresh, openMission, openSqua
 
       {/* top-right: minimap + score */}
       <div className="hud-tr">
-        {map && <MiniMap map={map} me={myXY} squads={squads.map((x: any) => ({ ...x, me: x.id === s.team.id }))} zone={zone} red={red} drops={s.airdrops || []}
+        {map && <MiniMap map={map} me={myXY} yaw={me.current.yaw || 0} squads={squads.map((x: any) => ({ ...x, me: x.id === s.team.id }))} zone={zone} red={red} drops={s.airdrops || []}
           overview={mode === 'overview'} onClick={() => { sfx.tap(); setMode((m) => (m === 'follow' ? 'overview' : 'follow')); }} />}
         <div className="row" style={{ gap: 6 }}>
           <div className="hud-stats">
@@ -352,18 +407,18 @@ export default function WorldTab({ s, token, map, refresh, openMission, openSqua
       {/* bottom-right: actions */}
       <div className="hud-actions">
         <div className="act-col">
-          <button className="act sm" onClick={() => setZoom((z) => Math.max(0.5, z / 1.25))} aria-label="Zoom in">＋</button>
-          <button className="act sm" onClick={() => setZoom((z) => Math.min(2.2, z * 1.25))} aria-label="Zoom out">－</button>
+          <button className="act sm" onClick={() => setZoom((z) => Math.max(0.5, z / 1.25))} aria-label="Zoom in"><Icon name="plus" /></button>
+          <button className="act sm" onClick={() => setZoom((z) => Math.min(2.2, z * 1.25))} aria-label="Zoom out"><Icon name="minus" /></button>
         </div>
         <div className="act-col">
           {isCaptain && medkits > 0 && hp < 100 && s.team.state !== 'recovery' && (
-            <button className="act md good" disabled={busy} onClick={() => act('captain_use_item', { p_item: 'medkit' }, '+ HP')} aria-label="Use med kit">✚<small>{medkits}</small></button>
+            <button className="act md good" disabled={busy} onClick={() => act('captain_use_item', { p_item: 'medkit' }, '+ HP')} aria-label="Use med kit"><Icon name="med" /><small>{medkits}</small></button>
           )}
-          <button className="act md" onClick={openSquad} aria-label="Bag and squad">🎒</button>
+          <button className="act md" onClick={openSquad} aria-label="Bag and squad"><Icon name="bag" /></button>
         </div>
         {primary && (
           <button className={`act lg ${primary.tone}`} disabled={primary.disabled} onClick={() => { buzz(15); primary!.onClick(); }}>
-            <span>{primary.label}</span>{primary.sub && <small>{primary.sub}</small>}
+            <Icon name={primary.icon} /><span>{primary.label}</span>{primary.sub && <small>{primary.sub}</small>}
           </button>
         )}
       </div>

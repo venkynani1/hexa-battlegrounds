@@ -1,5 +1,18 @@
 // 3D shuttle bus with the squad seated inside (cutaway roof), parked at SIPCOT or driving to Gate 1.
 import * as THREE from 'three';
+import { makePerson } from './people';
+
+// A seated person (shared character model): thighs forward, shins down.
+function seated(team: number, seed: number, opts: { hood?: boolean } = {}) {
+  const p = makePerson({ team, seed, hood: opts.hood, cap: false });
+  const u = p.userData;
+  u.legL.rotation.x = u.legR.rotation.x = Math.PI / 2;
+  u.armL.rotation.x = u.armR.rotation.x = -0.6;
+  p.position.y = -0.45;
+  const g = new THREE.Group(); g.add(p);
+  g.userData.head = u.torso;
+  return g;
+}
 
 export type Seat = { name: string; role?: string | null; me?: boolean; online?: boolean } | null;
 const ROLE_HEX: Record<string, number> = { captain: 0xffc23d, scout: 0x3ef0ff, decoder: 0xb07cff, intel: 0x5dff9e };
@@ -72,13 +85,13 @@ export class BusScene {
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    this.scene.background = new THREE.Color(0x0b1424);
-    this.scene.fog = new THREE.Fog(0x0b1424, 30, 90);
+    this.scene.background = new THREE.Color(0xbfdcf2);
+    this.scene.fog = new THREE.Fog(0xbfdcf2, 40, 110);
     this.scene.add(new THREE.HemisphereLight(0xa8ccff, 0x1a1410, 1.25));
     const sun = new THREE.DirectionalLight(0xffe0b0, 1.5); sun.position.set(-10, 20, 12); this.scene.add(sun);
 
     // road + verge
-    const ground = new THREE.Mesh(new THREE.PlaneGeometry(400, 200), new THREE.MeshLambertMaterial({ color: 0x1c3324 }));
+    const ground = new THREE.Mesh(new THREE.PlaneGeometry(400, 200), new THREE.MeshLambertMaterial({ color: 0x5f9b45 }));
     ground.rotation.x = -Math.PI / 2; ground.position.y = -0.02;
     const road = new THREE.Mesh(new THREE.PlaneGeometry(400, 9), new THREE.MeshLambertMaterial({ color: 0x2a313d }));
     road.rotation.x = -Math.PI / 2; road.position.y = 0;
@@ -174,8 +187,8 @@ export class BusScene {
     board.position.set(-L / 2 - 0.09, 2.15, 0); board.rotation.y = -Math.PI / 2;
     this.bus.add(board);
     // driver (Squad 00?)
-    const drv = person(0x111111, { hood: true });
-    drv.position.set(-4.4, 0.9, -0.9); drv.rotation.y = Math.PI / 2;
+    const drv = seated(0x111111, 0, { hood: true });
+    drv.position.set(-4.4, 1.4, -0.9); drv.rotation.y = Math.PI / 2;
     const wheel = new THREE.Mesh(new THREE.TorusGeometry(0.32, 0.05, 8, 20), new THREE.MeshStandardMaterial({ color: 0x222222 }));
     wheel.position.set(-4.95, 1.75, -0.9); wheel.rotation.y = Math.PI / 2; wheel.rotation.x = 0.4;
     this.bus.add(drv, wheel);
@@ -210,9 +223,9 @@ export class BusScene {
         slot.add(empty);
         return;
       }
-      const fig = person(p.role ? ROLE_HEX[p.role] ?? SHIRTS[i] : SHIRTS[i]);
-      fig.rotation.y = -Math.PI / 2; // facing forward (−x)
-      fig.position.y = 0.05;
+      const fig = seated(p.role ? ROLE_HEX[p.role] ?? SHIRTS[i] : SHIRTS[i], i * 3 + p.name.length);
+      fig.rotation.y = Math.PI / 2; // facing forward (−x)
+      fig.position.y = 0.5;
       if (p.online === false) fig.traverse((o: any) => { if (o.material) { o.material = o.material.clone(); o.material.transparent = true; o.material.opacity = 0.45; } });
       slot.add(fig);
       this.people.push(fig);

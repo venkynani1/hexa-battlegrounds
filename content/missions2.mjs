@@ -36,11 +36,17 @@ function add(t) {
 }
 const ROLE_NAMES = ['Scout', 'Decoder', 'Intel'];
 // Three independent panels, one per phone; the captain types all three answers.
+// "(9 letters)" / "(2 words: 4 + 4)" — printed under every word puzzle so it is easier to guess.
+const shape = (ans) => {
+  const w = String(ans).trim().split(/\s+/);
+  return w.length === 1 ? `${w[0].replace(/[^A-Z0-9]/gi, '').length} letters` : `${w.length} words: ${w.map((x) => x.replace(/[^A-Z0-9]/gi, '').length).join(' + ')}`;
+};
 function triple({ id, family, kind, tags, category, title, objective, items, panelTitle, hint, mono = false, big = false }) {
   const clues = {};
   ['scout', 'decoder', 'intel'].forEach((role, i) => {
-    clues[role] = { title: `${panelTitle} ${i + 1}`, body: items[i].q, mono, big };
+    clues[role] = { title: `${panelTitle} ${i + 1}`, body: `${items[i].q}\n\n(${shape(items[i].a[0])} · starts with ${items[i].a[0][0]})`, mono, big: big && !mono };
   });
+  hint = `${hint} Answers start with: ${items.map((it) => it.a[0].slice(0, 2) + '…').join(', ')}`;
   add({
     id, family, kind, tags, category, title, objective, clues, hint,
     parts: items.map((it, i) => ({ label: `${panelTitle} ${i + 1} (${ROLE_NAMES[i]})`, accept: it.a })),
@@ -75,21 +81,21 @@ const PIC = [
 
 // ───────────── Riddles ─────────────
 const RIDDLES = [
-  ['I have keys but open no locks. I have space but no room. You can enter, but you can\'t go inside.', ['KEYBOARD'], 'a keyboard'],
-  ['The more you take, the more you leave behind.', ['FOOTSTEPS', 'FOOTSTEP', 'STEPS'], 'footsteps'],
-  ['What has to be broken before you can use it?', ['EGG', 'AN EGG'], 'an egg'],
-  ['I\'m tall when I\'m young and short when I\'m old.', ['CANDLE', 'A CANDLE'], 'a candle'],
-  ['I have a neck but no head, and I wear a cap.', ['BOTTLE', 'A BOTTLE'], 'a bottle'],
-  ['I have many teeth but I can\'t bite.', ['COMB', 'A COMB', 'ZIP', 'ZIPPER'], 'a comb'],
-  ['What gets wetter the more it dries?', ['TOWEL', 'A TOWEL'], 'a towel'],
-  ['I have cities but no houses, forests but no trees, water but no fish.', ['MAP', 'A MAP'], 'a map'],
-  ['What can you catch but never throw?', ['COLD', 'A COLD'], 'a cold'],
-  ['I have one eye but cannot see.', ['NEEDLE', 'A NEEDLE'], 'a needle'],
-  ['I speak without a mouth and hear without ears.', ['ECHO', 'AN ECHO'], 'an echo'],
-  ['What goes up but never comes down?', ['AGE', 'YOUR AGE'], 'your age'],
-  ['I have a head and a tail but no body.', ['COIN', 'A COIN'], 'a coin'],
-  ['The more of me there is, the less you see.', ['DARKNESS', 'DARK', 'FOG'], 'darkness'],
-  ['What has hands but can\'t clap?', ['CLOCK', 'A CLOCK', 'WATCH'], 'a clock'],
+  ['I have keys but open no locks. You type on me every day.', ['KEYBOARD'], 'a keyboard'],
+  ['What has to be broken before you can use it? (Breakfast!)', ['EGG', 'AN EGG'], 'an egg'],
+  ['I am tall when I am new and short when I am old. I give light.', ['CANDLE', 'A CANDLE'], 'a candle'],
+  ['What has hands and a face but cannot clap or smile?', ['CLOCK', 'A CLOCK', 'WATCH'], 'a clock'],
+  ['What has a neck and a cap but no head? You drink from it.', ['BOTTLE', 'A BOTTLE'], 'a bottle'],
+  ['What gets wetter the more it dries? You use it after a bath.', ['TOWEL', 'A TOWEL'], 'a towel'],
+  ['What has many teeth but never bites? It fixes your hair.', ['COMB', 'A COMB'], 'a comb'],
+  ['What has four legs but cannot walk? You eat lunch on it.', ['TABLE', 'A TABLE'], 'a table'],
+  ['What has a head and a tail but no body? It is money.', ['COIN', 'A COIN'], 'a coin'],
+  ['What has one eye but cannot see? You use it with thread.', ['NEEDLE', 'A NEEDLE'], 'a needle'],
+  ['What falls from the sky but never gets hurt? You need an umbrella.', ['RAIN'], 'rain'],
+  ['What has many pages and words but never speaks?', ['BOOK', 'A BOOK'], 'a book'],
+  ['I ring, I have a screen, and you carry me everywhere.', ['PHONE', 'MOBILE', 'CELLPHONE', 'A PHONE'], 'a phone'],
+  ['I am full of holes but still hold water. I clean dishes.', ['SPONGE', 'A SPONGE'], 'a sponge'],
+  ['What goes up when you get older, and never comes down?', ['AGE', 'YOUR AGE'], 'your age'],
 ];
 
 // ───────────── Emoji movies ─────────────
@@ -170,10 +176,12 @@ function sudoku(n, kind, tags) {
   if (r() < 0.5) sol = sol.map((row) => [row[1], row[0], row[2], row[3]]);
   // remove cells while the combined puzzle stays uniquely solvable
   const puzzle = sol.map((row) => [...row]);
+  let blanks0 = 0;
   for (const k of shuffle(r, [...Array(16).keys()])) {
+    if (blanks0 >= 8) break; // easier: at least 8 of 16 numbers are given
     const rr = Math.floor(k / 4); const cc = k % 4;
     const keep = puzzle[rr][cc]; puzzle[rr][cc] = 0;
-    if (sudokuSolutions(puzzle).length !== 1) puzzle[rr][cc] = keep;
+    if (sudokuSolutions(puzzle).length !== 1) puzzle[rr][cc] = keep; else blanks0++;
   }
   // code cells: 4 blank cells, one per row where possible
   const zeros = [];

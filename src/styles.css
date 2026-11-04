@@ -496,3 +496,38 @@ h1 { letter-spacing: 0.01em; }
   .hud-mission { animation: none; }
   .sheet { animation: fade 200ms ease; }
 }
+
+.input.revealed { border-color: var(--gold); color: var(--gold); }
+
+/* ═══════════ Battle HUD v2 (daylight world, third-person camera) ═══════════ */
+.world-screen { background: #cde4f5; }
+.hud-top { position: absolute; top: calc(6px + env(safe-area-inset-top, 0px)); left: 50%; transform: translateX(-50%); z-index: 10; display: flex; flex-direction: column; align-items: center; gap: 4px; pointer-events: none; }
+.compass { position: relative; width: min(38vw, 170px); height: 24px; overflow: hidden; border-radius: 6px; background: linear-gradient(90deg, transparent, rgba(8, 14, 26, 0.55) 20%, rgba(8, 14, 26, 0.55) 80%, transparent); }
+.cp-t { position: absolute; top: 4px; transform: translateX(-50%); font: 700 11px var(--font-head); color: rgba(255, 255, 255, 0.75); letter-spacing: 0.04em; }
+.cp-t.big { color: #fff; font-size: 13px; }
+.cp-t::after { content: ''; position: absolute; left: 50%; top: -4px; width: 1px; height: 3px; background: rgba(255, 255, 255, 0.7); }
+.cp-mark { position: absolute; left: 50%; bottom: 0; width: 0; height: 0; border-left: 5px solid transparent; border-right: 5px solid transparent; border-bottom: 6px solid #ffc23d; transform: translateX(-50%); }
+.hud-alive { display: flex; gap: 5px; align-items: baseline; padding: 2px 10px; border-radius: 6px; background: rgba(8, 14, 26, 0.6); font-family: var(--font-head); font-variant-numeric: tabular-nums; }
+.hud-alive b { font-size: 16px; color: #fff; }
+.hud-alive span { font-size: 10px; letter-spacing: 0.14em; color: rgba(255, 255, 255, 0.75); }
+.hud-tl { width: min(40vw, 200px); }
+.hud-card { background: rgba(8, 14, 26, 0.55); border-color: rgba(255, 255, 255, 0.14); }
+.act { border-color: rgba(255, 255, 255, 0.75); background: rgba(10, 14, 22, 0.45); backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px); box-shadow: 0 4px 14px rgba(0, 0, 0, 0.3); }
+.act .ico { display: block; }
+.act.sm .ico { width: 20px; height: 20px; }
+.act.lg { gap: 1px; font-size: 15px; }
+.act.lg .ico { width: 30px; height: 30px; }
+.act.md .ico { width: 24px; height: 24px; }
+.joy-base { border: 2px solid rgba(255, 255, 255, 0.6); background: radial-gradient(circle, rgba(255, 255, 255, 0.18), rgba(10, 14, 22, 0.35)); }
+.joy-knob { background: radial-gradient(circle at 35% 30%, #ffffff, #c9d6e6); }
+.joy-hint { color: rgba(255, 255, 255, 0.85); text-shadow: 0 1px 3px rgba(0, 0, 0, 0.6); }
+.hud-loc, .hud-phase, .hud-zone, .hud-stats, .hud-gear { background: rgba(8, 14, 26, 0.6); border-color: rgba(255, 255, 255, 0.14); }
+.kf { background: rgba(8, 14, 26, 0.62); }
+.world-loading { background: #cde4f5; color: #24405f; }
+
+.hud-tl { width: min(36vw, 146px); }
+.hud-team { grid-template-columns: 1fr; gap: 2px; }
+.hud-mate { font-size: 10.5px; }
+.compass { width: min(23vw, 92px); }
+.minimap { width: min(28vw, 112px); }
+.hud-name { display: none; }

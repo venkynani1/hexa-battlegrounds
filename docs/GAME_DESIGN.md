@@ -23,6 +23,11 @@ Each squad has a position on the campus (0–1 coordinates). The captain steers 
 ## Core loop (per squad, runs in parallel for every squad)
 Run or auto-run to a location → arrive (encounter check, mission starts) → each teammate reads their clue → squad talks → captain submits (3 attempts) → reward (points, coins, location loot) or failure (−10 HP) → search again (2 missions per visit) or move. Leaving a location forfeits its mission without penalty.
 
+## Help: free hints and answer reveals (migration 0300)
+- **💡 Hint** is free and no longer reduces the reward. For word puzzles it also lists the first letters of every answer.
+- **👁 Reveal** (captain only, tap twice to confirm) fills one answer box and immediately deducts points: `reveal_pct` (50 %) of the mission's points, split across its boxes, so revealing everything still leaves half the reward. Allowed in missions, relays (not the partner's codeword) and recovery; never in duels, airdrop races or finale rounds. Teammates never receive answers.
+- Word puzzles print the answer length and first letter under each clue, riddles are everyday objects, and mini sudokus give at least 8 of the 16 numbers.
+
 ## Challenge library (191 reviewed templates, generated from fixed seeds)
 
 Pack 2 (migrations 0210+): **Picture Riddles** (🪜 + 👨 = STEPFATHER; one emoji pair per teammate), **Riddle Room** (one riddle per teammate), **Emoji Cinema** (films in emoji, Hollywood and Indian; also a pistol duel), **Tech Quick-Fire** (one-word tech questions; also the SMG duel), **Mini Sudoku Vault** (4×4: Scout holds rows 1–2, Decoder rows 3–4, Intel the code cells; also sniper duels and airdrop locks), **Fruit Slash** (Scout plays a slicing mini-game that reveals each fruit's digit, Intel knows the fruit order, Decoder the transform; also airdrop locks).
