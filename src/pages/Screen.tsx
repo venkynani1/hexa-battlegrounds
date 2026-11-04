@@ -386,7 +386,7 @@ function ResultsScreen({ s }: { s: any }) {
       )}
       {step >= 6 && (tie
         ? <div className="mega" style={{ color: 'var(--orange)', fontSize: 'clamp(30px,5vw,80px)' }}>Tie at the top — tiebreaker challenge!</div>
-        : <div className="mega gold glitch" style={{ fontSize: 'clamp(36px,6.5vw,120px)' }}>Winner winner chicken dinner!</div>)}
+        : <div className="mega gold glitch" style={{ fontSize: 'clamp(36px,6.5vw,120px)' }}>Champions of Operation Siruseri!</div>)}
     </div>
   );
 }

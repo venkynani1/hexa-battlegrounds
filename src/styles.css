@@ -696,3 +696,6 @@ html.in-game .toast { padding: 7px 12px; font-size: 13px; }
 .manual-pacing { margin: 4px 0 14px; }
 .manual-pacing > summary { cursor: pointer; color: var(--muted); font-size: 13px; padding: 6px 2px; list-style-position: inside; }
 .manual-pacing[open] > summary { margin-bottom: 8px; }
+/* phones: never let a wide element push the page sideways */
+html, body { overflow-x: clip; }
+.app { max-width: 100vw; overflow-x: clip; }

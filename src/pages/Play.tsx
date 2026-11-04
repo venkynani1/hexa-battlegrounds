@@ -62,6 +62,8 @@ export default function Play() {
     lastAct.current = act;
   }, [s?.battle?.id, s?.mission?.id]);
 
+  // a new screen (lobby → bus → game → results) always starts at the top-left, never half-scrolled
+  useEffect(() => { try { window.scrollTo(0, 0); document.documentElement.scrollLeft = 0; } catch { /* ignore */ } }, [s?.arena?.phase]);
   if (!token) return null;
   if (!s) return <Loading text={live.error ? friendly(live.error) : 'Connecting to your squad…'} />;
 
@@ -785,7 +787,7 @@ function Results({ s }: { s: any }) {
         <div className="kind-tag">Final placement</div>
         <div className="mega" style={{ fontSize: 72, color: mine?.rank === 1 ? 'var(--gold)' : undefined }}>#{mine?.rank ?? '—'}</div>
         <div>{mine?.points} points · {mine?.missions} missions · {mine?.battles} battle wins</div>
-        {mine?.rank === 1 && <div className="mega gold" style={{ fontSize: 30, marginTop: 10 }}>Winner winner chicken dinner!</div>}
+        {mine?.rank === 1 && <div className="mega gold" style={{ fontSize: 28, marginTop: 10, whiteSpace: 'normal', overflowWrap: 'anywhere' }}>Champions of Siruseri!</div>}
       </div>
       <div className="panel">
         <div className="panel-title">Top squads</div>
