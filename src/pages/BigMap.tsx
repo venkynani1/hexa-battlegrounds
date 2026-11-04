@@ -36,7 +36,7 @@ export default function BigMap({ map, me, yaw, squads, zone, zoneNextAt, red, dr
   const gesture = useRef<{ d0: number; k0: number; moved: boolean; start: { x: number; y: number }; v0: typeof view } | null>(null);
 
   // centre on the squad when opened
-  useEffect(() => { if (me) setView({ k: 1.6, x: V / 2 - me[0] * V * 1.6 + 0, y: V / 2 - me[1] * V * 1.6 }); }, []);
+  // opens on the whole campus; pinch in for detail
 
   const byId = useMemo(() => new Map(map.locations.map((l) => [l.id, l])), [map]);
   const blocks = useMemo(() => {
@@ -110,7 +110,10 @@ export default function BigMap({ map, me, yaw, squads, zone, zoneNextAt, red, dr
   const k = view.k;
   const fs = (n: number) => n / Math.sqrt(k); // labels shrink less than the map grows
   const cur = zone?.cur as number[] | undefined; const nxt = zone?.next as number[] | undefined;
-  const majors = map.locations.filter((l) => l.kind !== 'start' && (!l.building || !BUILD[l.building] || l.kind === 'building'));
+  // names appear in tiers as you zoom in, so the map never turns into a wall of text
+  const tier = (l: (typeof map.locations)[0]) => l.id === 'tr14' || l.kind === 'gate' || l.kind === 'sports' || l.id === 'fountain' ? 1
+    : !l.building || !BUILD[l.building] ? 2 : l.kind === 'building' ? 0 : 3;
+  const majors = map.locations.filter((l) => l.kind !== 'start' && (tier(l) === 1 || (tier(l) === 2 && k >= 1.7)));
 
   return (
     <div className="bigmap" role="dialog" aria-label="Campus map">
@@ -134,16 +137,15 @@ export default function BigMap({ map, me, yaw, squads, zone, zoneNextAt, red, dr
             const A = byId.get(a); const B = byId.get(b);
             if (!A || !B || (A.building && A.building === B.building)) return null;
             return <g key={`${a}-${b}`}>
-              <line x1={A.x * V} y1={A.y * V} x2={B.x * V} y2={B.y * V} stroke="#c9c2b4" strokeWidth={34} strokeLinecap="round" />
-              <line x1={A.x * V} y1={A.y * V} x2={B.x * V} y2={B.y * V} stroke="#4a4f57" strokeWidth={24} strokeLinecap="round" />
-              <line x1={A.x * V} y1={A.y * V} x2={B.x * V} y2={B.y * V} stroke="#efe9d8" strokeWidth={2} strokeDasharray="14 12" />
+              <line x1={A.x * V} y1={A.y * V} x2={B.x * V} y2={B.y * V} stroke="#d9d3c4" strokeWidth={15} strokeLinecap="round" />
+              <line x1={A.x * V} y1={A.y * V} x2={B.x * V} y2={B.y * V} stroke="#6b7079" strokeWidth={10} strokeLinecap="round" />
             </g>;
           })}
           {/* buildings */}
           {blocks.map((b) => (
             <g key={b.id}>
               <rect x={b.x0 * V + 6} y={b.y0 * V + 8} width={(b.x1 - b.x0) * V} height={(b.y1 - b.y0) * V} rx={6} fill="rgba(0,0,0,0.25)" />
-              <rect x={b.x0 * V} y={b.y0 * V} width={(b.x1 - b.x0) * V} height={(b.y1 - b.y0) * V} rx={6} fill={BUILD[b.id].fill} stroke="#5b5f66" strokeWidth={3} />
+              <rect x={b.x0 * V} y={b.y0 * V} width={(b.x1 - b.x0) * V} height={(b.y1 - b.y0) * V} rx={8} fill={BUILD[b.id].fill} stroke="rgba(40,46,54,0.55)" strokeWidth={2} />
             </g>
           ))}
           {/* sports & plaza */}
@@ -153,7 +155,7 @@ export default function BigMap({ map, me, yaw, squads, zone, zoneNextAt, red, dr
           {byId.get('fountain') && <circle cx={byId.get('fountain')!.x * V} cy={byId.get('fountain')!.y * V} r={16} fill="#4fb3e8" stroke="#e6e1d6" strokeWidth={5} />}
           {/* grid */}
           {Array.from({ length: 9 }, (_, i) => (
-            <g key={i} opacity={0.35}>
+            <g key={i} opacity={0.18}>
               <line x1={i * 125} y1={0} x2={i * 125} y2={V} stroke="#fff" strokeWidth={1.5 / k} />
               <line x1={0} y1={i * 125} x2={V} y2={i * 125} stroke="#fff" strokeWidth={1.5 / k} />
             </g>
@@ -167,16 +169,16 @@ export default function BigMap({ map, me, yaw, squads, zone, zoneNextAt, red, dr
           {majors.map((l) => (
             <g key={l.id}>
               <circle cx={l.x * V} cy={l.y * V} r={5 / Math.sqrt(k)} fill={l.id === 'tr14' ? '#ffc23d' : '#fff'} stroke="#1b2430" strokeWidth={1.5 / Math.sqrt(k)} />
-              <text x={l.x * V} y={l.y * V - 10 / Math.sqrt(k)} className="bm-name" fontSize={fs(l.kind === 'building' ? 22 : 18)} textAnchor="middle">{(SHORT[l.id] || l.name).toUpperCase()}</text>
+              <text x={l.x * V} y={l.y * V - 10 / Math.sqrt(k)} className="bm-name" fontSize={fs(15)} textAnchor="middle">{(SHORT[l.id] || l.name).toUpperCase()}</text>
             </g>
           ))}
-          {k >= 2.2 && map.locations.filter((l) => !majors.includes(l) && l.kind !== 'start').map((l) => (
+          {k >= 2.6 && map.locations.filter((l) => tier(l) === 3).map((l) => (
             <g key={l.id}>
               <circle cx={l.x * V} cy={l.y * V} r={4 / Math.sqrt(k)} fill="#2ee6ff" />
               <text x={l.x * V} y={l.y * V - 8 / Math.sqrt(k)} className="bm-name small" fontSize={fs(13)} textAnchor="middle">{SHORT[l.id] || l.name}</text>
             </g>
           ))}
-          {blocks.map((b) => <text key={`n${b.id}`} x={((b.x0 + b.x1) / 2) * V} y={b.y1 * V - 8} className="bm-bname" fontSize={fs(16)} textAnchor="middle">{BUILD[b.id].name}</text>)}
+          {blocks.map((b) => <text key={`n${b.id}`} x={((b.x0 + b.x1) / 2) * V} y={((b.y0 + b.y1) / 2) * V + 6} className="bm-bname" fontSize={fs(19)} textAnchor="middle">{BUILD[b.id].name}</text>)}
           {/* airdrops */}
           {drops.map((d) => { const l = byId.get(d.location); return l ? (
             <g key={d.id} transform={`translate(${l.x * V + 18} ${l.y * V - 18}) scale(${1 / Math.sqrt(k)})`}>
@@ -228,8 +230,7 @@ export default function BigMap({ map, me, yaw, squads, zone, zoneNextAt, red, dr
           <div className="bm-hint">Tap the map to drop a marker · pinch to zoom · drag to look around</div>
         )}
         <div className="bm-legend">
-          <span><i style={{ background: '#2ee6ff' }} />You</span><span><i style={{ background: '#ff4d5e' }} />Enemy</span>
-          <span><i style={{ background: '#5dff9e' }} />Ally</span><span><i className="ring" />Next zone</span><span><i style={{ background: '#ffc23d' }} />Airdrop</span>
+          <span><i style={{ background: '#2ee6ff' }} />You</span><span><i style={{ background: '#ff4d5e' }} />Enemy</span><span><i className="ring" />Next zone</span><span><i style={{ background: '#ffc23d' }} />Crate</span>
         </div>
       </div>
     </div>

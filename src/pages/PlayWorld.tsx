@@ -93,6 +93,36 @@ function Joystick({ onMove, disabled }: { onMove: (x: number, y: number) => void
   );
 }
 
+// ── First-game walkthrough (3 tips, shown once per device) ──────────────
+function Coach({ isCaptain }: { isCaptain: boolean }) {
+  const KEY = 'hb_coach_v1';
+  const [step, setStep] = useState(() => { try { return localStorage.getItem(KEY) ? -1 : 0; } catch { return 0; } });
+  if (step < 0) return null;
+  const tips = isCaptain ? [
+    { at: 'bl', title: 'Move', text: 'Put your thumb anywhere bottom-left and drag. Drag the right side of the screen to turn the camera.' },
+    { at: 'tl', title: 'Map', text: 'Tap the minimap for the full map. Tap a place, then Run here — or Drop for your first landing.' },
+    { at: 'br', title: 'Act', text: 'The big button changes: SEARCH in a place, CRACK at a crate, ENGAGE near enemies, SOLVE during a mission.' },
+  ] : [
+    { at: 'tl', title: 'Your squad', text: 'Your captain moves the squad. You can watch, turn the camera and open the map.' },
+    { at: 'br', title: 'Your clue', text: 'When a mission starts, your clue opens by itself. Read it out — the captain types the answer.' },
+  ];
+  const t = tips[step];
+  const done = () => { try { localStorage.setItem(KEY, '1'); } catch { /* private mode */ } setStep(-1); };
+  return (
+    <div className="coach" onClick={() => (step + 1 < tips.length ? setStep(step + 1) : done())}>
+      <div className={`coach-card at-${t.at}`} role="dialog" aria-label={t.title}>
+        <b>{t.title}</b><p>{t.text}</p>
+        <div className="row between"><span className="muted">{step + 1}/{tips.length}</span>
+          <span className="row" style={{ gap: 6 }}>
+            <button className="btn xs ghost" onClick={(e) => { e.stopPropagation(); done(); }}>Skip</button>
+            <button className="btn xs primary">{step + 1 < tips.length ? 'Next' : 'Play'}</button>
+          </span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── Icons (simple line icons, original) ─────────────────────────────────
 type IconName = 'search' | 'crate' | 'target' | 'puzzle' | 'med' | 'bag' | 'plus' | 'minus' | 'map' | 'chat' | 'gear';
 const ICONS: Record<IconName, string> = {
@@ -146,8 +176,9 @@ function Compass({ src, marker }: { src: { current: { yaw?: number } }; marker?:
 }
 
 // ── Minimap ─────────────────────────────────────────────────────────────
-function MiniMap({ map, me, yaw, squads, zone, red, drops, marker, onClick, overview }: {
+function MiniMap({ map, me, yaw, squads, zone, red, drops, marker, onClick, overview, tag, warn }: {
   map: MapData; me: XY | null; yaw: number; squads: any[]; zone: any; red: any; drops: any[]; marker?: XY | null; onClick: () => void; overview: boolean;
+  tag?: React.ReactNode; warn?: boolean;
 }) {
   const cur = zone?.cur; const nxt = zone?.next;
   return (
@@ -156,8 +187,9 @@ function MiniMap({ map, me, yaw, squads, zone, red, drops, marker, onClick, over
         <defs>
           <mask id="mm-safe"><rect x="-1" y="-1" width="3" height="3" fill="white" />{cur && <circle cx={cur[0]} cy={cur[1]} r={cur[2]} fill="black" />}</mask>
         </defs>
-        <rect x="0" y="0" width="1" height="1" rx="0.04" fill="#0f1d2c" stroke="#3ea5ff" strokeOpacity="0.4" strokeWidth="0.01" />
-        {map.locations.filter((l) => l.kind !== 'start').map((l) => (
+        <rect x="0" y="0" width="1" height="1" rx="0.04" fill="#4f7f3c" stroke="#ffffff" strokeOpacity="0.5" strokeWidth="0.01" />
+        {mmBlocks(map).map((b) => <rect key={b.id} x={b.x0} y={b.y0} width={b.x1 - b.x0} height={b.y1 - b.y0} rx="0.01" fill="#d9d4c8" opacity="0.9" />)}
+        {map.locations.filter((l) => l.kind !== 'start' && (l.kind !== 'room' || l.id === 'tr14')).map((l) => (
           <circle key={l.id} cx={l.x} cy={Math.min(0.99, l.y)} r={l.id === 'tr14' ? 0.022 : 0.012} fill={l.id === 'tr14' ? '#ffc23d' : '#3d5878'} />
         ))}
         {cur && cur[2] < 0.86 && <rect x="-1" y="-1" width="3" height="3" fill="#2a6bff" opacity="0.35" mask="url(#mm-safe)" />}
@@ -169,16 +201,28 @@ function MiniMap({ map, me, yaw, squads, zone, red, drops, marker, onClick, over
         {me && <path d={`M ${me[0]} ${me[1]} L ${me[0] + Math.sin(yaw - 0.5) * 0.16} ${me[1] - Math.cos(yaw - 0.5) * 0.16} A 0.16 0.16 0 0 1 ${me[0] + Math.sin(yaw + 0.5) * 0.16} ${me[1] - Math.cos(yaw + 0.5) * 0.16} Z`} fill="#ffffff" opacity="0.22" />}
         {me && <path d={`M ${me[0] + Math.sin(yaw) * 0.045} ${me[1] - Math.cos(yaw) * 0.045} L ${me[0] + Math.sin(yaw + 2.5) * 0.03} ${me[1] - Math.cos(yaw + 2.5) * 0.03} L ${me[0] + Math.sin(yaw - 2.5) * 0.03} ${me[1] - Math.cos(yaw - 2.5) * 0.03} Z`} fill="#3ef0ff" stroke="#fff" strokeWidth="0.006" />}
       </svg>
-      <span className="mm-tag">{overview ? 'SQUAD VIEW' : 'MAP'}</span>
+      <span className={`mm-tag ${warn ? 'warn' : ''}`}>{tag ?? (overview ? 'SQUAD VIEW' : 'MAP')}</span>
     </button>
   );
+}
+
+const mmCache = new WeakMap<MapData, { id: string; x0: number; x1: number; y0: number; y1: number }[]>();
+function mmBlocks(map: MapData) {
+  let b = mmCache.get(map);
+  if (!b) {
+    const g = new Map<string, MapData['locations']>();
+    for (const l of map.locations) if (l.building && !['central', 'sports'].includes(l.building)) g.set(l.building, [...(g.get(l.building) || []), l]);
+    b = [...g].map(([id, ls]) => ({ id, x0: Math.min(...ls.map((l) => l.x)) - 0.04, x1: Math.max(...ls.map((l) => l.x)) + 0.04, y0: Math.min(...ls.map((l) => l.y)) - 0.04, y1: Math.max(...ls.map((l) => l.y)) + 0.04 }));
+    mmCache.set(map, b);
+  }
+  return b;
 }
 
 // ── Kill feed ──────────────────────────────────────────────────────────
 function KillFeed({ feed, map }: { feed: any[]; map: MapData | null }) {
   useNow(1000);
   const now = serverTime();
-  const items = (feed || []).filter((f) => now - new Date(f.at).getTime() < 9000).slice(0, 4);
+  const items = (feed || []).filter((f) => now - new Date(f.at).getTime() < 6000).slice(0, 2);
   return (
     <div className="killfeed" aria-live="polite">
       {items.map((f, i) => {
@@ -369,20 +413,12 @@ export default function WorldTab({ s, token, map, refresh, openMission, openSqua
       {/* top-left: minimap, zone timer, team */}
       <div className="hud-tl">
         {map && <MiniMap map={map} me={myXY} yaw={me.current.yaw || 0} squads={squads.map((x: any) => ({ ...x, me: x.id === s.team.id }))} zone={zone} red={red}
-          drops={s.airdrops || []} marker={marker} overview={false} onClick={() => { sfx.tap(); setMapOpen(true); }} />}
-        <div className={`hud-zone ${zoneWarn ? 'warn' : ''}`}>
-          {zoneWarn ? <>☢ <Countdown to={zone.next_at} /></> : <>◯ {zone?.stage ?? s.arena.zone_stage}/5</>}
-          <span className="sep">·</span>P{phase}
-        </div>
-        <div className="hud-team" aria-label="Your squad">
+          drops={s.airdrops || []} marker={marker} overview={false} tag={zoneWarn ? <>☢ <Countdown to={zone.next_at} /></> : <>Zone {zone?.stage ?? s.arena.zone_stage}/5</>} warn={zoneWarn}
+          onClick={() => { sfx.tap(); setMapOpen(true); }} />}
+        <div className="hud-squad" aria-label="Your squad">
           {ROLE_ORDER.map((r: Role) => {
             const p = s.roster.find((x: any) => x.role === r);
-            return (
-              <div key={r} className={`hud-mate ${p?.online ? 'on' : ''} ${p?.me ? 'me' : ''}`}>
-                <i style={{ background: ROLES[r].color }}>{ROLES[r].icon}</i>
-                <span>{p?.name || '—'}</span>
-              </div>
-            );
+            return <span key={r} className={`sq-dot ${p?.online ? 'on' : ''} ${p?.me ? 'me' : ''}`} style={{ background: ROLES[r].color }} title={`${ROLES[r].name}: ${p?.name || '—'}`}>{ROLES[r].icon}</span>;
           })}
         </div>
         {(s.mission || s.battle) && (
@@ -397,7 +433,7 @@ export default function WorldTab({ s, token, map, refresh, openMission, openSqua
       <div className="hud-top">
         <Compass src={me} marker={markerBearing} />
         <div className="hud-info">
-          <span><b>{alive}</b> squads</span>
+          <span><b>{alive}</b> {alive === 1 ? 'squad' : 'squads'}</span>
           <span><b>{s.team.points}</b> pts</span>
           <span className="gold"><b>{s.team.coins}</b> ¢</span>
         </div>
@@ -479,6 +515,8 @@ export default function WorldTab({ s, token, map, refresh, openMission, openSqua
           <p className="muted" style={{ margin: 0, fontSize: 13 }}>A duel is a puzzle race: the first squad to answer wins and the loser takes damage. Pistol 25 damage (90 s, reusable) · SMG 20 (50 s, one use) · Sniper 40 (120 s, hard, one use).</p>
         </div>
       </Sheet>
+
+      <Coach isCaptain={isCaptain} />
 
       {mapOpen && map && (
         <BigMap map={map} me={myXY} yaw={me.current.yaw || 0} title={`Map · Phase ${phase} ${MATCH_PHASES[phase]?.name || ''}`}

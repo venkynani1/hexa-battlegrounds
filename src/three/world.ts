@@ -5,7 +5,7 @@ import * as THREE from 'three';
 import type { MapData } from '../lib/game';
 import { animatePerson, makePerson, Person, ROLE_HEX } from './people';
 
-export const S = 120;
+export const S = 200; // campus width in world units (characters are ~1.8 tall): an open, uncluttered campus
 const W = (x: number, y: number) => new THREE.Vector3((x - 0.5) * S, 0, (y - 0.5) * S);
 
 export type WorldSquad = {
@@ -167,7 +167,7 @@ export class WorldScene {
     this.camera.position.copy(this.camPos);
     const haze = 0xcde4f5;
     this.scene.background = new THREE.Color(haze);
-    this.scene.fog = new THREE.Fog(haze, 160, 460);
+    this.scene.fog = new THREE.Fog(haze, 240, 760);
 
     this.buildSky();
     this.scene.add(new THREE.HemisphereLight(0xcfe8ff, 0x5d7a3f, 1.25));
@@ -238,7 +238,7 @@ export class WorldScene {
   }
 
   private buildWorld(map: MapData) {
-    const ground = new THREE.Mesh(new THREE.PlaneGeometry(1400, 1400), new THREE.MeshLambertMaterial({ map: grassTex() }));
+    const ground = new THREE.Mesh(new THREE.PlaneGeometry(2400, 2400), new THREE.MeshLambertMaterial({ map: grassTex() }));
     ground.rotation.x = -Math.PI / 2; ground.receiveShadow = true;
     this.scene.add(ground);
     // campus boundary wall with a hedge
@@ -259,6 +259,8 @@ export class WorldScene {
     const walk = new THREE.MeshStandardMaterial({ color: 0xbdb6a6, roughness: 0.9 });
     const lane = new THREE.MeshBasicMaterial({ color: 0xf2efe4 });
     const roadPts: THREE.Vector3[] = [];
+    const dashes: { p: THREE.Vector3; a: number }[] = [];
+    const roadSegs: number[][] = [];
     for (const [a, b] of map.edges) {
       const A = byId.get(a); const B = byId.get(b);
       if (!A || !B || (A.building && A.building === B.building)) continue;
@@ -268,14 +270,16 @@ export class WorldScene {
       const side = new THREE.Mesh(new THREE.BoxGeometry(6, 0.1, len), walk); side.position.set(mid.x, 0.05, mid.z); side.lookAt(pb.x, 0.05, pb.z); side.receiveShadow = true;
       const tar = new THREE.Mesh(new THREE.BoxGeometry(4.2, 0.12, len), road); tar.position.set(mid.x, 0.08, mid.z); tar.rotation.copy(side.rotation); tar.receiveShadow = true;
       this.scene.add(side, tar);
-      for (let d = 2; d < len - 2; d += 4) {
-        const dash = new THREE.Mesh(new THREE.PlaneGeometry(0.16, 1.8), lane);
-        const p = pa.clone().lerp(pb, d / len);
-        dash.position.set(p.x, 0.15, p.z); dash.rotation.x = -Math.PI / 2; dash.rotation.z = -Math.atan2(pb.x - pa.x, pb.z - pa.z);
-        this.scene.add(dash);
-      }
-      for (let d = 6; d < len - 4; d += 14) roadPts.push(pa.clone().lerp(pb, d / len));
+      const ang = Math.atan2(pb.x - pa.x, pb.z - pa.z);
+      for (let d = 2; d < len - 2; d += 4) dashes.push({ p: pa.clone().lerp(pb, d / len), a: ang });
+      roadSegs.push([A.x, A.y, B.x, B.y]);
+      for (let d = 10; d < len - 6; d += 26) roadPts.push(pa.clone().lerp(pb, d / len));
     }
+    const dashMesh = new THREE.InstancedMesh(new THREE.PlaneGeometry(0.16, 1.8).rotateX(-Math.PI / 2), lane, Math.max(1, dashes.length));
+    const dm = new THREE.Matrix4(); const dq = new THREE.Quaternion(); const one = new THREE.Vector3(1, 1, 1);
+    dashes.forEach((d, i) => { dq.setFromAxisAngle(new THREE.Vector3(0, 1, 0), d.a); dm.compose(new THREE.Vector3(d.p.x, 0.15, d.p.z), dq, one); dashMesh.setMatrixAt(i, dm); });
+    dashMesh.count = dashes.length;
+    this.scene.add(dashMesh);
     // street lamps
     const lampPole = new THREE.InstancedMesh(new THREE.CylinderGeometry(0.08, 0.1, 4.2, 6), new THREE.MeshStandardMaterial({ color: 0x4a4f57 }), roadPts.length);
     const lampHead = new THREE.InstancedMesh(new THREE.BoxGeometry(0.7, 0.18, 0.3), new THREE.MeshStandardMaterial({ color: 0xfff6d8, emissive: 0xfff0b0, emissiveIntensity: 0.6 }), roadPts.length);
@@ -425,12 +429,14 @@ export class WorldScene {
     // trees (instanced, two crown sizes) avoiding buildings and roads
     let seed = 7;
     const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
-    const N = 220;
+    const N = 150;
     const trunks = new THREE.InstancedMesh(new THREE.CylinderGeometry(0.18, 0.28, 2, 6), new THREE.MeshStandardMaterial({ color: 0x6b4a2e, roughness: 1 }), N);
     const crowns = new THREE.InstancedMesh(new THREE.IcosahedronGeometry(1.6, 1), new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.9, flatShading: true }), N);
     const col = new THREE.Color();
     let n = 0;
-    const blocked = (x: number, y: number) => this.bldgs.some((b) => x > b.x0 - 0.02 && x < b.x1 + 0.02 && y > b.y0 - 0.02 && y < b.y1 + 0.02) || locs.some((l) => Math.hypot(l.x - x, l.y - y) < 0.05);
+    const segD = (x: number, y: number, q: number[]) => { const dx = q[2] - q[0]; const dy = q[3] - q[1]; const l2 = dx * dx + dy * dy || 1; const u = Math.max(0, Math.min(1, ((x - q[0]) * dx + (y - q[1]) * dy) / l2)); return Math.hypot(x - q[0] - dx * u, y - q[1] - dy * u); };
+    const blocked = (x: number, y: number) => this.bldgs.some((b) => x > b.x0 - 0.03 && x < b.x1 + 0.03 && y > b.y0 - 0.03 && y < b.y1 + 0.03)
+      || locs.some((l) => Math.hypot(l.x - x, l.y - y) < 0.07) || roadSegs.some((q) => segD(x, y, q) < 0.03);
     for (let i = 0; i < 1400 && n < N; i++) {
       const x = 0.03 + rnd() * 0.94; const y = 0.03 + rnd() * 0.94;
       if (blocked(x, y)) continue;
@@ -450,10 +456,10 @@ export class WorldScene {
     for (const l of locs) {
       if (l.kind === 'start') continue;
       const c = W(l.x, l.y);
-      const color = l.id === 'tr14' ? 0xffc23d : 0x2ee6ff;
-      const ring = new THREE.Mesh(new THREE.RingGeometry(0.9, 1, 48), new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.85, depthWrite: false, side: THREE.DoubleSide }));
+      const color = l.id === 'tr14' ? 0xffc23d : 0xffffff;
+      const ring = new THREE.Mesh(new THREE.RingGeometry(0.96, 1, 64), new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.85, depthWrite: false, side: THREE.DoubleSide }));
       ring.rotation.x = -Math.PI / 2; ring.position.set(c.x, 0.22, c.z);
-      const fill = new THREE.Mesh(new THREE.CircleGeometry(1, 40), new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.1, depthWrite: false }));
+      const fill = new THREE.Mesh(new THREE.CircleGeometry(1, 40), new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.06, depthWrite: false }));
       fill.rotation.x = -Math.PI / 2; fill.position.set(c.x, 0.2, c.z);
       fill.userData.id = l.id; fill.userData.ring = ring;
       this.pads.push(fill);
@@ -477,7 +483,7 @@ export class WorldScene {
     this.wallTex.wrapS = this.wallTex.wrapT = THREE.RepeatWrapping; this.wallTex.repeat.set(30, 1);
     this.zoneWall = new THREE.Mesh(new THREE.CylinderGeometry(1, 1, 60, 128, 1, true), new THREE.MeshBasicMaterial({ map: this.wallTex, transparent: true, side: THREE.DoubleSide, depthWrite: false, fog: false }));
     this.zoneWall.position.y = 30; this.zoneWall.visible = false; this.zoneWall.renderOrder = 5;
-    this.zoneOutside = new THREE.Mesh(new THREE.RingGeometry(1, 700, 128, 1), new THREE.MeshBasicMaterial({ color: 0x2f6bff, transparent: true, opacity: 0.22, depthWrite: false, side: THREE.DoubleSide }));
+    this.zoneOutside = new THREE.Mesh(new THREE.RingGeometry(1, 1400, 128, 1), new THREE.MeshBasicMaterial({ color: 0x2f6bff, transparent: true, opacity: 0.22, depthWrite: false, side: THREE.DoubleSide }));
     this.zoneOutside.rotation.x = -Math.PI / 2; this.zoneOutside.position.y = 0.3; this.zoneOutside.visible = false;
     this.nextRing = new THREE.Mesh(new THREE.RingGeometry(0.99, 1, 160, 1), new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.95, depthWrite: false, side: THREE.DoubleSide }));
     this.nextRing.rotation.x = -Math.PI / 2; this.nextRing.position.y = 0.4; this.nextRing.visible = false;
@@ -512,6 +518,7 @@ export class WorldScene {
     });
     const label = labelSprite(d.label || `SQ ${d.number}`, d.me ? '#2ee6ff' : d.ally ? '#5dff9e' : '#ff8a96', 'rgba(10,16,28,0.78)', d.me ? 0.75 : 0.85, true);
     label.position.y = 3.2;
+    label.visible = !d.me; // you know where you are — only other squads get a name plate
     group.add(label);
     const p = W(d.x, d.y);
     group.position.copy(p);
@@ -542,7 +549,7 @@ export class WorldScene {
       if (this.zoneR !== cur[2]) {
         this.zoneR = cur[2];
         this.zoneOutside.geometry.dispose();
-        this.zoneOutside.geometry = new THREE.RingGeometry(cur[2] * S, 700, 128, 1);
+        this.zoneOutside.geometry = new THREE.RingGeometry(cur[2] * S, 1400, 128, 1);
       }
       this.zoneOutside.position.set(c.x, 0.3, c.z);
     } else { this.zoneWall.visible = this.zoneOutside.visible = false; }
@@ -732,11 +739,11 @@ export class WorldScene {
       this.camPos.lerp(f.clone().addScaledVector(fwd, -dist).setY(height), Math.min(1, k * 3));
     } else if (this.mode === 'overview') {
       this.camTarget.lerp(new THREE.Vector3(0, 0, 6), k);
-      this.camPos.lerp(new THREE.Vector3(0, 115 * this.zoom, 85 * this.zoom), k);
+      this.camPos.lerp(new THREE.Vector3(0, 115 * (S / 120) * this.zoom, 85 * (S / 120) * this.zoom), k);
     } else {
       const a = t * 0.05;
       this.camTarget.lerp(new THREE.Vector3(0, 0, 0), k);
-      this.camPos.lerp(new THREE.Vector3(Math.sin(a) * 110, 85, Math.cos(a) * 110), k);
+      this.camPos.lerp(new THREE.Vector3(Math.sin(a) * 110 * (S / 120), 85 * (S / 120), Math.cos(a) * 110 * (S / 120)), k);
     }
     this.camera.position.copy(this.camPos);
     this.camera.lookAt(this.camTarget);
@@ -746,7 +753,7 @@ export class WorldScene {
     this.sun.position.set(st.x - 50, 90, st.z + 40);
     this.sun.target.position.copy(st);
     const sc = this.sun.shadow.camera as THREE.OrthographicCamera;
-    const span = this.mode === 'follow' ? 40 * this.zoom : 75;
+    const span = this.mode === 'follow' ? 40 * this.zoom : 120;
     if (sc.right !== span) { sc.left = -span; sc.right = span; sc.top = span; sc.bottom = -span; sc.updateProjectionMatrix(); }
 
     // buildings fade when you are inside them or they block the view of your squad
@@ -763,13 +770,22 @@ export class WorldScene {
       this.clearTrees(this.camera.position, mp);
     } else { for (const b of this.bldgs) this.setFade(b, 1, dt); this.clearTrees(null, null); }
 
+    // declutter: in squad view only the 3 nearest places get a name, rings show within ~40 units
+    const ref = this.mode === 'follow' && meObj ? meObj.group.position : null;
+    const ranked = ref ? this.labels.map((lb) => ({ lb, d: Math.hypot(lb.pos.x - ref.x, lb.pos.z - ref.z) })).sort((a, b) => a.d - b.d) : [];
+    const named = new Set(ranked.filter((r) => r.d > 6 && r.d < 45).slice(0, 3).map((r) => r.lb.id));
     for (const lb of this.labels) {
-      const d = lb.pos.distanceTo(this.camTarget);
       const m = lb.sprite.material as THREE.SpriteMaterial;
-      // in the squad view: hide the label of the place you're standing in and fade far ones
-      const standing = this.mode === 'follow' && meObj && lb.pos.distanceTo(meObj.group.position.clone().setY(lb.pos.y)) < 5;
-      m.opacity = standing ? 0 : this.mode === 'follow' ? Math.max(0, Math.min(1, (32 * this.zoom - d) / 8)) : 0.9;
-      lb.sprite.visible = m.opacity > 0.02;
+      const want = !ref ? 0.9 : named.has(lb.id) ? 1 : 0;
+      m.opacity += (want - m.opacity) * Math.min(1, dt * 6);
+      lb.sprite.visible = m.opacity > 0.03;
+    }
+    for (const pad of this.pads) {
+      const ring = pad.userData.ring as THREE.Mesh;
+      const dd = ref ? Math.hypot(pad.position.x - ref.x, pad.position.z - ref.z) : 0;
+      const op = !ref ? 0.6 : Math.max(0, Math.min(0.7, (40 - dd) / 15));
+      (ring.material as THREE.MeshBasicMaterial).opacity = op;
+      ring.visible = pad.visible = op > 0.02 || !ref;
     }
     this.renderer.render(this.scene, this.camera);
   };
