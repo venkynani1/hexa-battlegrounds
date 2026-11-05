@@ -15,7 +15,7 @@ create extension if not exists pgcrypto with schema extensions;
 
 do $hexa$
 declare
-  v_url text := 'https://raw.githubusercontent.com/venkynani1/hexa-battlegrounds/main/supabase/full/hexa-battlegrounds-v4.sql';
+  v_url text := 'https://raw.githubusercontent.com/venkynani1/hexa-battlegrounds/73284f9ca57eb55eb9faaab1a07ee6d8a3eaf50c/supabase/full/hexa-battlegrounds-v4.sql';
   v_sha text := 'f32bb6700affed6715a7036c4fc645d532af38e02b43be112146d8cb6f69a1b2';
   v_status int;
   v_sql text;
