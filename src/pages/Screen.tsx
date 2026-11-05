@@ -42,7 +42,7 @@ export default function Screen() {
         </button>
       )}
       {alert && <div className={`broadcast ${alert.tone === 'good' ? 'info' : ''}`} style={{ fontSize: 26, padding: 18 }}>{alert.text}</div>}
-      <StoryFlash story={s.story} />
+      <StoryFlash lock={s.arena?.overlay?.lock || []} />
       {phase === 'lobby' && <LobbyScreen s={s} />}
       {(phase === 'boarding' || phase === 'shuttle') && <ShuttleScreen s={s} />}
       {phase === 'roles' && <RolesScreen s={s} />}
@@ -212,7 +212,9 @@ function ProjectorWorld({ s, map, zoneWarn }: { s: any; map: MapData; zoneWarn: 
   const zone = s.arena.overlay?.zone; const red = s.arena.overlay?.red || null;
   const squads = s.squads.filter((q: any) => q.ready);
   const state = {
-    squads: squads.filter((q: any) => q.pos).map((q: any) => ({ key: String(q.number), number: q.number, x: q.pos[0], y: q.pos[1], ally: false, inBattle: q.in_battle, down: q.state === 'recovery', label: `SQ ${q.number}` })),
+    squads: squads.filter((q: any) => q.pos).map((q: any) => ({ key: String(q.number), number: q.number, x: q.pos[0], y: q.pos[1], ally: false, inBattle: q.in_battle, down: q.state === 'recovery', label: `SQ ${q.number}`,
+      vx: q.vel?.[0] || 0, vy: q.vel?.[1] || 0, at: new Date(s.server_now).getTime(), level: q.level || 0, bldg: q.bldg })),
+    pickups: s.pickups || [], lock: s.arena.overlay?.lock || [],
     zone, red, airdrops: (s.airdrops || []).map((a: any, i: number) => ({ key: `${a.location}-${i}`, location: a.location, tier: a.tier })),
     battles: (s.battles || []).filter((b: any) => b.x != null).map((b: any) => ({ key: `${b.attacker}-${b.defender}`, x: b.x, y: b.y })),
     locRadius: s.arena.overlay?.world?.loc_radius,
@@ -244,7 +246,7 @@ function PlayScreen({ s, map }: { s: any; map: MapData }) {
         <PhaseBanner overlay={s.arena.overlay} />
         <div className="panel" style={{ padding: '10px 14px' }}>
           <span className="up" style={{ fontSize: 13 }}>☢ {ZONE_TEXT[s.arena.zone_stage]}</span>
-          <div style={{ marginTop: 8 }}><ThreatMeter value={s.arena.threat} /></div>
+          <div style={{ marginTop: 8 }}><ThreatMeter lock={s.arena.overlay?.lock || []} /></div>
         </div>
         <div className="panel" style={{ minHeight: 0, flex: '1 1 50%', overflow: 'hidden' }}>
           <div className="panel-title">Leaderboard</div>
@@ -275,7 +277,7 @@ function PlayScreen({ s, map }: { s: any; map: MapData }) {
 function FinaleScreen({ s, map }: { s: any; map: MapData }) {
   useNow(250);
   const stage = s.arena.finale_stage || 'A';
-  if (stage === 'D' && s.recap) return <Squad00Reveal s={s} />;
+  if (stage === 'D' && s.recap) return <FinalLockdown s={s} />;
   const st = FINALE_STAGES[stage];
   return (
     <div className="screen-full" style={{ justifyContent: 'flex-start', paddingTop: '4vh' }}>
@@ -301,41 +303,33 @@ function FinaleScreen({ s, map }: { s: any; map: MapData }) {
           <CampusMap map={map} zoneStage={5} interactive={false} height="100%" squads={s.squads.filter((q: any) => q.ready)} bigLabels />
         </div>
       )}
-      <div style={{ position: 'fixed', right: 16, bottom: 16, width: 380 }} className="panel"><ThreatMeter value={s.arena.threat} /></div>
+      <div style={{ position: 'fixed', right: 16, bottom: 16, width: 380 }} className="panel"><ThreatMeter lock={s.arena.overlay?.lock || []} /></div>
     </div>
   );
 }
 
-function Squad00Reveal({ s }: { s: any }) {
+function FinalLockdown({ s }: { s: any }) {
   const r = s.recap;
-  const threat = r.threat || 0;
   const [step, setStep] = useState(0);
   useEffect(() => {
-    sfx.transmission();
-    const ids = [1, 2, 3, 4].map((n) => setTimeout(() => { setStep(n); sfx.transmission(); }, n * 2600));
+    sfx.siren();
+    const ids = [1, 2, 3].map((n) => setTimeout(() => { setStep(n); sfx.slam(); }, n * 2400));
     return () => ids.forEach(clearTimeout);
   }, []);
-  const verdict = threat <= 2
-    ? 'You starved it. Most squads refused its bargains and kept their word. The campus network is yours.'
-    : threat <= 5
-      ? 'It fed on every shortcut you took — and on every promise you kept, it weakened. Tonight it is wounded, not gone.'
-      : 'Every bargain and every betrayal made it stronger. Squad 00 was built from your own choices — and it almost won.';
   return (
-    <div className="screen-full scanlines" style={{ background: 'radial-gradient(circle, rgba(60,0,10,0.6), #000)' }}>
-      <div className="transmission up glitch" style={{ fontSize: 26 }}>▓▓ Decrypting Squad 00 ▓▓</div>
-      {step >= 1 && <div className="mega glitch" style={{ color: 'var(--red)' }}>Squad 00 was never a team</div>}
-      {step >= 2 && <div className="transmission" style={{ fontSize: 'clamp(18px,2.2vw,32px)', maxWidth: '70vw' }}>It was the campus security AI, built to test one thing: would squads trust each other, or sell each other out?</div>}
+    <div className="screen-full" style={{ background: 'radial-gradient(circle, rgba(70,0,12,0.65), #000)' }}>
+      <div className="up glitch" style={{ fontSize: 26, color: 'var(--red)' }}>🚨 Campus lockdown 🚨</div>
+      {step >= 1 && <div className="mega" style={{ color: 'var(--red)' }}>Every door on campus just shut</div>}
+      {step >= 2 && <div style={{ fontSize: 'clamp(18px,2.2vw,32px)', maxWidth: '70vw' }}>Only Hexavarsity is still open. Training Room 14, on its top floor, is the last room standing.</div>}
       {step >= 3 && (
         <div className="row wrap" style={{ gap: 14, justifyContent: 'center', fontSize: 22 }}>
-          <span className="chip bad" style={{ fontSize: 20, padding: '10px 16px' }}>{r.bargains_accepted} bargains accepted</span>
-          <span className="chip good" style={{ fontSize: 20, padding: '10px 16px' }}>{r.bargains_refused} bargains refused</span>
-          <span className="chip bad" style={{ fontSize: 20, padding: '10px 16px' }}>{r.betrayals} betrayals</span>
-          <span className="chip good" style={{ fontSize: 20, padding: '10px 16px' }}>{r.codewords_shared} codewords shared</span>
-          <span className="chip" style={{ fontSize: 20, padding: '10px 16px' }}>{r.battles} battles</span>
+          <span className="chip bad" style={{ fontSize: 20, padding: '10px 16px' }}>{r.sealed} areas sealed</span>
+          <span className="chip bad" style={{ fontSize: 20, padding: '10px 16px' }}>{r.caught} times caught inside</span>
+          <span className="chip gold" style={{ fontSize: 20, padding: '10px 16px' }}>{r.vaults} vaults cracked</span>
+          <span className="chip good" style={{ fontSize: 20, padding: '10px 16px' }}>{r.loot} supplies picked up</span>
+          <span className="chip" style={{ fontSize: 20, padding: '10px 16px' }}>{r.battles} duels</span>
         </div>
       )}
-      {step >= 4 && <div className="mega" style={{ fontSize: 'clamp(24px,3vw,52px)', maxWidth: '80vw', color: threat <= 2 ? 'var(--green)' : threat <= 5 ? 'var(--gold)' : 'var(--red)' }}>{verdict}</div>}
-      <div style={{ position: 'fixed', bottom: 20, width: 420 }}><ThreatMeter value={threat} /></div>
     </div>
   );
 }
@@ -399,27 +393,29 @@ function Confetti() {
   return <div className="confetti" aria-hidden>{pieces.map((p, i) => <i key={i} style={{ left: `${p.left}%`, background: p.color, animationDelay: `${p.delay}s`, animationDuration: `${p.dur}s` }} />)}</div>;
 }
 
-function StoryFlash({ story }: { story: any[] }) {
+// Big alarm on the projector whenever a building or floor starts its lockdown countdown.
+function StoryFlash({ lock }: { lock: any[] }) {
   const [show, setShow] = useState<any>(null);
-  const last = useRef<string | null>(null);
+  const seen = useRef<Set<string> | null>(null);
   useEffect(() => {
-    const st = story?.[0];
-    if (!st) return;
-    if (last.current === null) { last.current = st.at; return; }
-    if (st.at !== last.current && st.kind === 'transmission') {
-      last.current = st.at;
-      setShow(st); sfx.transmission();
-      const t = setTimeout(() => setShow(null), 12000);
+    if (seen.current === null) { seen.current = new Set((lock || []).map((l) => l.id)); return; }
+    const fresh = (lock || []).find((l) => !l.sealed && !seen.current!.has(l.id));
+    for (const l of lock || []) seen.current.add(l.id);
+    if (fresh) {
+      setShow(fresh); sfx.siren();
+      const t = setTimeout(() => setShow(null), 7000);
       return () => clearTimeout(t);
     }
-  }, [story?.[0]?.at]);
+  }, [(lock || []).map((l) => l.id).join()]);
+  useNow(250);
   if (!show) return null;
   return (
-    <div className="modal-bg scanlines" style={{ zIndex: 88, background: 'rgba(0,0,0,0.9)' }} onClick={() => setShow(null)}>
-      <div className="col center" style={{ maxWidth: '75vw', gap: 20 }}>
-        <div className="transmission up glitch" style={{ fontSize: 26 }}>▓ Incoming transmission · Squad 00 ▓</div>
-        <div className="mega transmission" style={{ fontSize: 'clamp(30px,4vw,70px)' }}>{show.title}</div>
-        <div className="transmission" style={{ fontSize: 'clamp(18px,2.2vw,34px)', whiteSpace: 'pre-wrap' }}>{show.body}</div>
+    <div className="modal-bg" style={{ zIndex: 88, background: 'rgba(40,0,6,0.86)' }} onClick={() => setShow(null)}>
+      <div className="col center" style={{ maxWidth: '75vw', gap: 18 }}>
+        <div className="up glitch" style={{ fontSize: 28, color: 'var(--red)' }}>🚨 Lockdown alarm 🚨</div>
+        <div className="mega" style={{ fontSize: 'clamp(34px,4.6vw,80px)' }}>{show.n}{show.l !== null ? ` · Floor ${show.l === 0 ? 'G' : show.l}` : ''}</div>
+        <div className="huge-timer" style={{ color: 'var(--red)' }}>{fmtClock(secondsLeft(show.at))}</div>
+        <div style={{ fontSize: 'clamp(18px,2.2vw,32px)' }}>Get out before the doors shut — a vault just unlocked inside.</div>
       </div>
     </div>
   );

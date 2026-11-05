@@ -5,20 +5,26 @@ import { serverTime, useNow } from '../lib/time';
 const S = 1000;
 const BUILDING_NAMES: Record<string, string> = {
   hexavarsity: 'Hexavarsity', eb2: 'EB2', phase2: 'Phase 2', rtb: 'Ratan Tata Bldg', eb1: 'EB1', eb3: 'EB3', central: 'Central',
+  foodcourt: 'Food Court', datacenter: 'Data Center', gym: 'Fitness', security: 'Security',
 };
 
 // Short labels used when zoomed out; full names appear when zoomed in or selected.
 export const SHORT: Record<string, string> = {
   sipcot: 'SIPCOT', gate_1: 'Gate 1', gate_2: 'Gate 2', gate_3: 'Gate 3', gate_4: 'Gate 4',
-  hx_lobby: 'Hexavarsity', hx_help: 'Help Desk', hx_costa: 'Costa', hx_tr_wing2: 'TR 1–13', hx_pantry2: 'Pantry',
-  hx_tr_wing3: 'TR 15–19', hx_odc: 'ODC', tr14: 'TR14',
-  eb2_lobby: 'EB2', eb2_stg: 'STG', eb2_floors: 'EB2 Floors', eb2_terrace: 'EB2 Terrace', eb2_parking: 'EB2 Parking',
-  p2_lobby: 'Phase 2', p2_parking: 'P2 Parking', p2_floors: 'P2 F1–2', p2_upper: 'P2 F3–5',
-  rt_lobby: 'RTB', rt_cec: 'CEC Boardroom', rt_floors: 'RTB Floors', rt_glass: 'Glass Zone', rt_parking: 'RTB Parking',
-  eb1_lobby: 'EB1', eb1_floors: 'EB1 Floors', eb1_terrace: 'EB1 Terrace', eb1_parking: 'EB1 Parking',
-  eb3_lobby: 'EB3', eb3_hr: 'HR Zone', eb3_floors: 'EB3 Floors', eb3_terrace: 'EB3 Terrace', eb3_parking: 'EB3 Parking',
-  central_steps: 'Steps', hexadine: 'Hexadine', hexaraunt: 'Hexaraunt', hexacafe: 'Hexacafe', fountain: 'Fountain',
-  shuttle_court: 'Shuttle Ct', pickleball: 'Pickleball', cricket: 'Cricket',
+  hx_lobby: 'Hexavarsity', hx_help: 'Help Center', hx_costa: 'Costa', hx_tr1: 'TR 1–4', hx_tr5: 'TR 5–8', hx_pantry1: 'F1 Pantry',
+  hx_tr_wing2: 'TR 9–13', hx_library: 'Library', hx_pantry2: 'F2 Pantry', hx_tr_wing3: 'TR 15–19', hx_odc: 'ODC', tr14: 'TR14',
+  p2_lobby: 'Phase 2', p2_cafe: 'P2 Café', p2_f1: 'Dev Bay', p2_tr1: 'P2 TR A', p2_floors: 'QA Lab', p2_tr2: 'P2 TR B',
+  p2_f3: 'Design Studio', p2_server: 'Server Room', p2_upper: 'Leadership', p2_sky: 'Sky Lounge',
+  rt_lobby: 'RTB', rt_cec: 'CEC Boardroom', rt_floors: 'Delivery', rt_tr: 'RTB TR', rt_f2: 'Finance', rt_war: 'War Room',
+  rt_f3: 'Cloud Ops', rt_glass: 'Glass Zone', rt_exec: 'Executive',
+  eb1_lobby: 'EB1', eb1_cafe: 'EB1 Café', eb1_floors: 'EB1 F1', eb1_tr: 'EB1 TR', eb1_lab: 'Innovation Lab', eb1_terrace: 'EB1 Terrace',
+  eb2_lobby: 'EB2', eb2_stg: 'STG Zone', eb2_tr: 'EB2 TR', eb2_floors: 'Team Bays', eb2_terrace: 'EB2 Terrace',
+  eb3_lobby: 'EB3', eb3_hr: 'HR Zone', eb3_floors: 'EB3 F1', eb3_tr: 'EB3 TR', eb3_quiet: 'Quiet Room', eb3_terrace: 'EB3 Terrace',
+  hexadine: 'Hexadine', hexaraunt: 'Hexaraunt', hexacafe: 'Hexacafe', dc_hall: 'Data Center', dc_noc: 'NOC',
+  gym_floor: 'Gym', gym_yoga: 'Yoga', sec_hq: 'Security',
+  central_steps: 'Steps', fountain: 'Fountain', amphitheatre: 'Amphitheatre', shuttle_court: 'Shuttle Ct', pickleball: 'Pickleball', cricket: 'Cricket',
+  helipad: 'Helipad', solar: 'Solar Farm', water_tower: 'Water Tower', park_sw: 'SW Parking', park_se: 'SE Parking', park_dc: 'DC Parking',
+  bus_bay: 'Bus Bay', lotus_pond: 'Lotus Pond',
 };
 export const fullName = (n: string) => n.replace(' — Final Battleground', '');
 
@@ -129,7 +135,7 @@ export default function CampusMap({
   const dragged = useRef(false);
   const pinch = useRef<{ d: number; k: number } | null>(null);
 
-  const locs = useMemo(() => map.locations.filter((l) => showStart || l.kind !== 'start'), [map, showStart]);
+  const locs = useMemo(() => map.locations.filter((l) => (showStart || l.kind !== 'start') && l.enabled && !(l.level || 0) && l.kind !== 'stairs'), [map, showStart]);
   const byId = useMemo(() => Object.fromEntries(map.locations.map((l) => [l.id, l])), [map]);
   const vb = showStart ? [-50, -50, S + 100, S + 170] : [-50, -50, S + 100, S + 100];
   const vbRef = useRef(vb);

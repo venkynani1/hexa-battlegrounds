@@ -69,17 +69,27 @@ test('one Start runs the whole match and declares the winner', async () => {
   assert.equal(a.auto_step, 'play');
   assert.ok(a.phase_next_at, 'phases are on a timetable');
   assert.equal(a.overlay.auto.label, 'Phase 1');
-  const stories = async () => (await one(`select count(*) filter (where kind = 'transmission')::int t, count(*) filter (where kind = 'bargain')::int b from story_events where arena_id = $1`, [id]));
-  assert.deepEqual(await stories(), { t: 1, b: 0 });
+  assert.ok((await one(`select count(*)::int n from pickups where arena_id = $1`, [id])).n >= 30, 'loot lies around the map');
+  assert.equal((await one(`select count(*)::int n from airdrops where arena_id = $1 and tier = 'vault'`, [id])).n, 2, 'two vaults upstairs');
+  assert.equal((await one(`select count(*)::int n from lockdowns where arena_id = $1`, [id])).n, 0, 'no lockdown in phase 0');
 
-  // phases advance on their own; Squad 00 speaks once per phase and bargains in phases 2 and 3
+  // phases advance on their own; from phase 1 the campus starts to collapse on a timetable
   for (let ph = 1; ph <= 4; ph++) {
     await db.query(`update arenas set phase_next_at = now() - interval '1 second' where id = $1`, [id]);
     await tick(id);
+    await db.query(`update arenas set last_lock_at = now() - interval '10 minutes', last_tick_at = null where id = $1`, [id]);
     await tick(id);
     assert.equal((await A(id)).match_phase, ph);
+    await db.query(`update lockdowns set seal_at = now() - interval '1 second' where arena_id = $1 and not sealed`, [id]);
+    await db.query(`update arenas set last_tick_at = null where id = $1`, [id]);
+    await tick(id);
   }
-  assert.deepEqual(await stories(), { t: 5, b: 2 });
+  const locks = (await db.query(`select building, level, sealed from lockdowns where arena_id = $1 order by created_at`, [id])).rows;
+  assert.equal(locks.length, 4, 'one alarm per phase in this test');
+  assert.ok(locks.every((l) => l.sealed));
+  assert.deepEqual(locks[0], { building: 'eb1', level: 3, sealed: true }, 'farthest building loses its top floor first');
+  assert.equal((await A(id)).overlay.lock.length, 4);
+  assert.equal((await one(`select count(*)::int n from story_events where arena_id = $1`, [id])).n, 0, 'no Squad 00 any more');
   assert.equal((await A(id)).overlay.auto.label, 'Finale');
 
   // the finale opens on the timetable
@@ -106,7 +116,9 @@ test('one Start runs the whole match and declares the winner', async () => {
   }
   assert.deepEqual(kinds, ['finale_entry', 'finale_exchange', 'finale_battle', 'final_code']);
   a = await A(id);
-  assert.ok(await one(`select 1 from story_events where arena_id = $1 and kind = 'reveal'`, [id]), 'Squad 00 was revealed');
+  assert.ok(await one(`select 1 from story_events where arena_id = $1 and kind = 'reveal'`, [id]), 'final lockdown happened');
+  const open = (await db.query(`select id from buildings b where not exists (select 1 from lockdowns l where l.arena_id = $1 and l.building = b.id and l.level is null and l.sealed)`, [id])).rows.map((r) => r.id);
+  assert.deepEqual(open, ['hexavarsity'], 'only Hexavarsity is still open');
   assert.equal(a.phase, 'results');
   assert.equal(a.results_locked, true);
   assert.equal(a.winner_revealed, true);

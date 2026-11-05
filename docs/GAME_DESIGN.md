@@ -5,7 +5,7 @@
 2. **Nobody is eliminated.** 0 HP means Recovery (a short squad puzzle) and a respawn at 50 HP. The worst case is bounded by a timer.
 3. **Nobody waits.** Arriving anywhere instantly starts a location mission; after a mission the Captain can search again or move. Battles pause mission clocks instead of wasting them.
 4. **The campus closes in.** Five zone stages funnel every squad to Training Room 14 for a finale that all squads play at the same time.
-5. **Choices are remembered.** Bargains, betrayals and shared codewords feed the public Squad 00 threat meter and the final reveal.
+5. **The campus fights back.** Floors and buildings seal one by one (Collapsing Campus): get out before the doors shut, or grab the vault inside first.
 
 ## Roles
 | Role | Receives | Can act |
@@ -84,9 +84,20 @@ Tiers: common (40 coins + med kit), rare (60 + shield), legendary (100 + sniper 
 ## Cross-team intelligence (anti-deadlock)
 Relay missions need a **codeword held by another squad's captain**, plus the squad's own three-part code. Primary path: captain chat (the holder sees "Squad 7 needs FALCON — Send"). Sharing pays the helper 25 points and 10 trust. Fallback: after 90 s the requesting squad's Intel Officer receives the codeword automatically and the mission pays half. No squad can ever be blocked by another squad's silence; the outcome is logged.
 
-## Alliances and Squad 00
-Alliances need both captains, cost 10 coins each, last 10 minutes, give +10 trust and permanent mutual map visibility. Attacking an ally is allowed but is a **betrayal**: alliance broken, −20 trust, threat +1, announced on the projector.
-**Squad 00** is the engine's fictional antagonist. The host sends scripted transmissions and timed **bargains** (coins now, minus trust, plus threat). Squad 00 never touches Battle Points. In finale stage D the projector replays recorded choices (bargains accepted/refused, betrayals, codewords shared) and delivers one of three endings based on the final threat level.
+## Alliances
+Alliances need both captains, cost 10 coins each, last 10 minutes, give +10 trust and permanent mutual map visibility. Attacking an ally is allowed but is a **betrayal**: alliance broken, −20 trust, announced on the projector.
+
+## Campus v4 (migration 0500): a vast campus with floors
+- **Scale.** A 1.6 km campus (3× the old one): a street grid with sidewalks and lamps, two big parking yards full of cars (one with solar carports), the central fountain plaza with benches and a working fountain, a cricket ground, courts, an amphitheatre, a helipad, a solar farm, a water tower, a lotus pond, a bus bay and palms along the plaza. 82 places in 10 buildings plus open ground.
+- **Buildings and floors.** Hexavarsity (4 floors), Phase 2 Tower (5), Ratan Tata Building (5), EB1/EB2/EB3 (4 each), Fitness Center (2), and single-storey Food Court, Data Center and Security HQ. Training rooms are spread over different floors; **Training Room 14 is on Hexavarsity's top floor**. Every room has walls and a sliding door that opens as your squad drives up.
+- **Stairs.** Each multi-storey building has a stairwell (green ⇅ ring). The captain drives onto it and climbs with ▲ ▼; the floor bar on the right shows where you are. Tap-to-drive stays on your floor (`TAKE_THE_STAIRS` otherwise). Upstairs, the floor's walls keep the squad inside the building.
+- **Squads are buggies.** One compact buggy per squad, painted in the squad's colour with its number on the roof — 15 squads stay readable on one screen.
+- **Smooth movement.** The captain's phone sends position + velocity straight to its teammates over a Realtime broadcast channel; teammates dead-reckon between messages, so the squad glides with no visible lag. Rivals move with velocity from a light positions feed every ~2 s. The server still caps speed and decides positions.
+- **Loot on the ground.** `pickup_medkit` (16) med kits, `pickup_shield` (8) shield packs (+20 shield) and `pickup_coins` (12) coin stacks (+15) lie around each map, inside buildings too; drive over them to pick them up. Loot tops up every `pickup_respawn` (75) s. A squad carries at most 5 med kits.
+- **Failing hurts.** A wrong answer costs `dmg_wrong` (5) HP; an unsolved or expired challenge `dmg_fail` (20); a crate or vault that is not cracked `dmg_airdrop_fail` (10).
+
+## Collapsing Campus (replaces Squad 00)
+From Phase 1, an alarm sounds every `lock_interval` seconds (150; Quick 55, Standard 100, Full 210): the next building — farthest from Training Room 14 first, tall buildings losing their top floor(s) before the whole building — flashes red, sirens sound on phones inside, and a countdown of `lock_warning` seconds (45) starts. **A vault opens inside the doomed area** (double airdrop points, 120 coins, sniper, shield, 2 med kits) — the best loot on campus, if you dare. When the countdown ends the doors shut: squads still inside lose `lock_damage` (30) HP and are thrown out through the front door; the area's loot and crates are gone, its rooms close, and a sealed building becomes a solid steel block. Two more vaults sit on upper floors from the start. **Hexavarsity never seals.** In finale stage D every other building seals at once — the **Final Lockdown** — and the projector shows the recap (areas sealed, squads caught, vaults cracked, loot collected, duels).
 
 ## Match phases and zone
 The match runs through six named phases. The current phase, its rules and the time to the next one are shown on every phone and on the projector; the server enforces the rules.
@@ -114,7 +125,7 @@ Phases advance automatically on the `phase_schedule` (minutes after play starts)
 | Full event | 3, 20, 40, 58 | 90 s | 30 s | 100 % | 60–90 min |
 
 ## Automatic match (migration 0400)
-One *Start match* (Quick ≈ 15 min, Standard ≈ 35 min, Full ≈ 75 min) runs the whole match like a battle-royale server: boarding countdown, bus, role claim, Phases 0–4 on a timetable, the zone, airdrops and red zones, a Squad 00 transmission at the start of every phase with bargains in Phases 2 and 3, then the finale rounds (each ends early once every squad has finished), results, winner and grand champion. Phones and the projector show what comes next and when. The host keeps Pause, every manual button, and *Manual control*.
+One *Start match* (Quick ≈ 15 min, Standard ≈ 35 min, Full ≈ 75 min) runs the whole match like a battle-royale server: boarding countdown, bus, role claim, Phases 0–4 on a timetable, the zone, airdrops and red zones, lockdown alarms from Phase 1, then the finale rounds (each ends early once every squad has finished), results, winner and grand champion. Since v4 the autopilot also runs the Collapsing Campus alarms and loot top-ups, and stage D is the Final Lockdown. Phones and the projector show what comes next and when. The host keeps Pause, every manual button, and *Manual control*.
 
 ## Finale (all squads simultaneously)
 | Stage | Round | Max points |
@@ -122,7 +133,7 @@ One *Start match* (Quick ≈ 15 min, Standard ≈ 35 min, Full ≈ 75 min) runs 
 | A Entry Lock | hard Signal Intercept | 200 |
 | B Intelligence Exchange | relay round; squads paired cyclically, Intel backup after 90 s | 200 |
 | C Simultaneous Battle | 1–3 rounds (orders, sequences, binary) | 300 each |
-| D Squad 00 Revealed | cinematic recap from recorded data | — |
+| D Final Lockdown | every building except Hexavarsity seals; recap of the collapse | — |
 | E The Final Code | 8-letter grid code | 300 |
 | F Champion | lock → reveal | — |
 
@@ -144,7 +155,7 @@ Round score = max × (0.5 + 0.5 × time remaining ÷ round length), so early sol
 | 0:55 | Zone 3 | Central campus only |
 | 1:05 | Zone 4 | Hexavarsity only; transmission "LAST CALL" |
 | 1:15 | Finale | Begin finale → A (3 min) → B (4 min) → C ×2 (2.5 min each) |
-| 1:35 | Stage D | Reveal Squad 00 (~1 min) |
+| 1:35 | Stage D | Final lockdown (~1 min) |
 | 1:38 | Stage E | Final code (4 min) |
 | 1:45 | Stage F | Lock results → reveal winner per map → grand champion |
 | 1:50 | Close | Export event summary |

@@ -66,13 +66,18 @@ export function HpBar({ hp, shield = 0, max = 100 }: { hp: number; shield?: numb
   );
 }
 
-export function ThreatMeter({ value }: { value: number }) {
+/** Collapsing Campus status: how much of the campus is sealed and which alarm is next. */
+export function ThreatMeter({ lock = [], total = 14 }: { value?: number; lock?: any[]; total?: number }) {
+  const sealed = lock.filter((l) => l.sealed).length;
+  const next = lock.filter((l) => !l.sealed).sort((a, b) => new Date(a.at).getTime() - new Date(b.at).getTime())[0];
+  const n = Math.min(10, Math.round((sealed / Math.max(1, total)) * 10));
   return (
     <div className="col" style={{ gap: 4 }}>
-      <div className="row between"><span className="up" style={{ fontSize: 11, color: 'var(--red)' }}>Squad 00 threat</span><span className="mono">{Math.min(value, 10)}/10</span></div>
-      <div className="threat" aria-label={`Threat level ${value} of 10`}>
-        {Array.from({ length: 10 }, (_, i) => <i key={i} className={i < value ? 'on' : ''} />)}
+      <div className="row between"><span className="up" style={{ fontSize: 11, color: 'var(--red)' }}>Campus collapse</span><span className="mono">{sealed} sealed</span></div>
+      <div className="threat" aria-label={`${sealed} areas sealed`}>
+        {Array.from({ length: 10 }, (_, i) => <i key={i} className={i < n ? 'on' : ''} />)}
       </div>
+      {next && <div className="up" style={{ fontSize: 12, color: 'var(--red)' }}>🚨 {next.n}{next.l !== null ? ` F${next.l === 0 ? 'G' : next.l}` : ''} seals in <Countdown to={next.at} /></div>}
     </div>
   );
 }
@@ -120,7 +125,7 @@ export function HostOverlays({ overlay, paused }: { overlay: any; paused?: boole
       {overlay?.blackout && (
         <div className="blackout scanlines">
           <div className="glitch" style={{ fontSize: 'clamp(22px,5vw,64px)' }}>▓▓ SIGNAL LOST ▓▓</div>
-          <div className="muted" style={{ letterSpacing: '0.2em' }}>SQUAD 00 HAS TAKEN THE NETWORK</div>
+          <div className="muted" style={{ letterSpacing: '0.2em' }}>CAMPUS NETWORK DOWN — STAND BY</div>
         </div>
       )}
       {paused && <div className="broadcast info" style={{ top: 'auto', bottom: 0 }}>⏸ GAME PAUSED BY HOST — timers are frozen</div>}
@@ -174,8 +179,8 @@ export function FeedList({ feed, map, limit = 10, big = false }: { feed: any[]; 
     <div className="feed" aria-live="polite">
       {(feed || []).map((f, i) => ({ f, t: feedText(f.type, f.payload, map), i }))
         .filter((x) => x.t).slice(0, limit)
-        .map(({ f, t }) => (
-          <div key={f.id ?? `${f.at}-${f.type}`} className={`feed-item ${t!.tone}`} style={big ? { fontSize: 17 } : undefined}>{t!.text}</div>
+        .map(({ f, t, i }) => (
+          <div key={f.id ?? `${f.at}-${f.type}-${i}`} className={`feed-item ${t!.tone}`} style={big ? { fontSize: 17 } : undefined}>{t!.text}</div>
         ))}
     </div>
   );

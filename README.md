@@ -1,6 +1,6 @@
 # Hexaware Battlegrounds × Operation Siruseri
 
-**Drop. Decode. Dominate.** A host-controlled, real-time, mobile-first multiplayer survival game for an in-room corporate event. Squads of four (Captain, Scout, Decoder, Intel Officer) ride a 3D shuttle to Gate 1, parachute onto a **3D Hexaware Siruseri campus**, run it with a Free Fire-style joystick, split clues across four phones, fight puzzle duels, chase airdrops, dodge red zones and a shrinking safe circle, negotiate with other captains and converge on **Hexavarsity Training Room 14** for a simultaneous finale.
+**Drop. Decode. Dominate.** A host-controlled, real-time, mobile-first multiplayer survival game for an in-room corporate event. Squads of four (Captain, Scout, Decoder, Intel Officer) ride a 3D shuttle to Gate 1, parachute onto a **vast 3D Hexaware Siruseri campus**, drive their squad buggy with a Free Fire-style joystick, climb multi-storey buildings floor by floor, split clues across four phones (400+ challenges: bottle shooting, card games, safe cracking, Morse, puzzles…), fight puzzle duels, grab med kits and vaults, escape **building lockdowns** as the campus collapses, dodge red zones and a shrinking safe circle, and converge on **Hexavarsity Training Room 14** (top floor) for a simultaneous finale.
 
 - **Up to 60 players per map** (15 squads; a map can start with any number of complete squads from 1 to 15). Bigger events run **parallel maps** (Map 2, Map 3…) on the same campus, controlled from one host console, with a fair combined grand champion.
 - **Zero cost hosting:** Vercel Hobby (frontend) + Supabase Free (Postgres, Realtime), added from inside Vercel.
@@ -23,7 +23,7 @@
 <img src="docs/screenshots/projector-champion.jpg" width="390" alt="Champion reveal">
 </p>
 
-More in [`docs/screenshots/`](docs/screenshots) (host console, mission editor, finale, Squad 00 reveal).
+More in [`docs/screenshots/`](docs/screenshots) (host console, mission editor, finale, champion reveal).
 
 ---
 
@@ -42,15 +42,13 @@ Create a repository and push this folder.
 
 ### 4. Create the game database
 1. Open the Supabase dashboard (Vercel → Storage → your database → **Open in Supabase**).
-2. **SQL Editor → New query** → paste [`supabase/setup/part-01.sql`](supabase/setup) → **Run**, then repeat for `part-02.sql` … `part-28.sql` **in order** (a new query each time is fine). Each part is a single line under 18,000 characters, because the editor accepts at most 100,000 characters per query and some copy paths cut text at 20,000. Together they create every table, the game engine, the map and the 191-challenge library. Re-running them is safe.
-   - **Already ran `supabase/upgrade-2` (open world)?** Run only [`supabase/upgrade-3/upgrade3-01.sql`](supabase/upgrade-3) … `upgrade3-22.sql`, in order. They add free hints, answer reveals with a points penalty, the easier challenge pack and the **automatic match** (one *Start match* runs the whole game).
-   - **Already ran `supabase/upgrade` (match phases)?** Run only [`supabase/upgrade-2/upgrade2-01.sql`](supabase/upgrade-2) … `upgrade2-22.sql`, in order. They add the open world (positions, joystick movement, circular zone, red zones), challenge pack 2 and remove trial mode, without touching squads or scores. Each part is under ~10,000 characters.
-   - **Only ran the original setup (part-01 … part-19)?** Run everything in [`supabase/upgrade/`](supabase/upgrade) (`upgrade-01` … `upgrade-28`) in order — it contains both upgrades.
-   - Easiest of all for any upgrade: `DATABASE_URL="<POSTGRES_URL_NON_POOLING>" npm run db:setup` runs every migration (safe to re-run).
-   - **No SQL Editor? Use one command from your laptop:** copy `POSTGRES_URL_NON_POOLING` from Vercel → Settings → Environment Variables, then in this folder run `npm install` and `DATABASE_URL="<that value>" npm run db:setup` (Windows PowerShell: `$env:DATABASE_URL="<value>"; npm run db:setup`).
-   - Vercel's own query box runs one statement at a time and will fail with "cannot insert multiple commands into a prepared statement" — use Supabase's SQL Editor or `npm run db:setup` instead.
-   - With the Supabase CLI instead: `supabase link` then `supabase db push` (uses `supabase/migrations/`).
-3. **Realtime:** Project Settings → Realtime → make sure **public channels are allowed** (do not enable "private channels only"). The game only sends tiny "something changed" pings on public channels — never game data — and falls back to polling if Realtime is unavailable.
+2. **SQL Editor → New query** → paste the whole of [`supabase/RUN-ME-IN-SUPABASE.sql`](supabase/RUN-ME-IN-SUPABASE.sql) → **Run**. That one file is all you ever need:
+   - It works on a **new** project and on **every earlier version** (original setup, upgrade 1, 2 or 3, even a half-finished upgrade) — the new version overrides the old one. Events, squads, PINs and scores are kept.
+   - It downloads the complete script [`supabase/full/hexa-battlegrounds-v4.sql`](supabase/full) (too big to paste) from this GitHub repository at a fixed commit, checks its SHA-256 fingerprint, then runs it in **one transaction** — all or nothing.
+   - Expected result: *Success. No rows returned* and the notice *Hexa Battlegrounds database is up to date (v4)*. Running it again is harmless.
+   - If your project blocks outbound HTTP: run `supabase/full/hexa-battlegrounds-v4.sql` with `psql`, or from your laptop `DATABASE_URL="<POSTGRES_URL_NON_POOLING>" npm run db:setup` (Windows PowerShell: `$env:DATABASE_URL="<value>"; npm run db:setup`). Last resort: paste `supabase/setup/part-01.sql` … `part-55.sql` in order.
+   - Vercel's own query box runs one statement at a time and will fail with "cannot insert multiple commands into a prepared statement" — use Supabase's SQL Editor.
+3. **Realtime:** Project Settings → Realtime → make sure **public channels are allowed** (do not enable "private channels only"). The game sends tiny "something changed" pings, and each captain's phone sends its squad's position and velocity to its own teammates (no answers, no PINs). Without Realtime the game still works and falls back to polling.
 
 ### 5. Deploy
 Vercel → **Deployments → Redeploy**. Open `https://<your-app>.vercel.app/host` → **Create event** (event code, host password, number of maps).
@@ -80,7 +78,7 @@ Against a real Supabase project: copy `.env.example` → `.env.local`, fill in t
 | `npm test` | 38 tests on the real SQL in embedded Postgres: 21 engine tests (joining, PIN lockout, race-safe roles, captain-only rules, answer secrecy, idempotent scoring, battles, recovery, airdrops, relays, chat, alliances, pause/resume, circular zone damage, finale, permissions), 10 P0 tests (phases and duel lock, phase-driven zone, auto pacing, timer scaling, PINs and reset, CSV validation, cross-map isolation, identical finale across maps) and 6 open-world tests (start with fewer squads, server speed cap, location areas, distance-based travel time, duel range, red zones) |
 | `npm run build` | Type-check and build for production |
 | `npm run content` | Regenerate the map/mission seed (`0005`–`0024` and `0210`+ content migrations) from `content/*.mjs` |
-| `npm run db:bundle` | Rebuild `supabase/setup/`, `supabase/upgrade/` and `supabase/upgrade-2/` from the migrations |
+| `npm run db:bundle` | Rebuild `supabase/RUN-ME-IN-SUPABASE.sql`, `supabase/full/` and `supabase/setup/` from the migrations (set `HEXA_REF=<commit>` to pin the download) |
 | `npm run loadtest` | Simulate squads × 4 phones (`SUPABASE_URL`, `SUPABASE_KEY`, `SQUADS`, `MINUTES`) |
 | `npm run local` | Offline game server for rehearsals |
 
@@ -88,10 +86,9 @@ Against a real Supabase project: copy `.env.example` → `.env.local`, fill in t
 
 ```
 supabase/migrations/   0001 schema · 0002 core engine & tick · 0003 player/captain API · 0004 host & projector API · 0005–0024 content · 0100 match phases & squad prep · 0200 open world, circular zone, red zones · 0210+ challenge pack 2
-supabase/setup/        all migrations packed into paste-able parts (fresh install, run in order)
-supabase/upgrade/      incremental migrations 0100+ (databases that ran only the original setup)
-supabase/upgrade-2/    incremental migrations 0200+ (databases that already ran supabase/upgrade)
-supabase/upgrade-3/    incremental migrations 0300+ incl. autopilot 0400 (databases that already ran supabase/upgrade-2)
+supabase/RUN-ME-IN-SUPABASE.sql   the one file to run in the Supabase SQL Editor (install or upgrade)
+supabase/full/                    the complete database script it downloads (also runnable with psql)
+supabase/setup/                   the same script in paste-able parts (manual fallback)
 content/               editable campus map, items and the challenge generators (missions.mjs, missions2.mjs)
 src/pages/             Join, Play (world HUD + four role views), Host console, Screen (projector)
 src/three/             3D campus world and 3D shuttle bus (three.js, lazy-loaded)

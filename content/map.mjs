@@ -1,90 +1,162 @@
-// Editable campus map. Stylised and conceptual: positions follow the organiser's
-// described relationships (Gate 1 south, Gate 3 north, Gate 4 west, Gate 2 east)
-// and are NOT geographically accurate. Confirm against an approved campus plan.
+// Editable campus map. Stylised and conceptual: Gate 1 south, Gate 3 north, Gate 4 west,
+// Gate 2 east. NOT geographically accurate — confirm against an approved campus plan.
 //
-// x, y are normalised 0..1 (north is up). collapse = zone stage at which the
-// location becomes dangerous (99 = never; TR14 is the final safe zone).
+// x, y are normalised 0..1 (north is up). Buildings have floors: a room's `level` is its storey
+// (0 = ground). Squads climb the stairwell to reach upper floors. collapse = zone stage at which
+// the location becomes dangerous (99 = never; Training Room 14 is the final safe zone).
+import { BUILDINGS, building } from './campus.mjs';
 
-export const LOCATIONS = [
-  // id, name, building, floor, x, y, kind, collapse, risk, reward, tags, drop, loot
-  ['sipcot', 'SIPCOT Entrance', null, null, 0.5, 1.07, 'start', 0, 0, 'Shuttle boarding', ['start'], false, []],
-  ['gate_1', 'Gate 1', null, null, 0.5, 0.93, 'gate', 3, 1, 'Access codes', ['gate', 'access'], false, ['medkit', 'pistol']],
-  ['gate_2', 'Gate 2 Checkpoint', null, null, 0.93, 0.5, 'gate', 1, 2, 'Access codes', ['gate', 'access'], true, ['scanner', 'smg']],
-  ['gate_3', 'Gate 3 (Sealed Mystery Zone)', null, null, 0.5, 0.07, 'gate', 1, 3, 'Rare intel', ['gate', 'access', 'transmission'], true, ['sniper', 'jammer']],
-  ['gate_4', 'Gate 4 (Dark Signal Zone)', null, null, 0.07, 0.5, 'gate', 1, 3, 'Rare intel', ['gate', 'access', 'transmission'], true, ['beacon', 'sniper']],
+export { BUILDINGS };
 
-  ['hx_lobby', 'Hexavarsity Lobby', 'hexavarsity', '0', 0.5, 0.74, 'building', 5, 1, 'Learning loot', ['hexavarsity', 'learning'], true, ['medkit', 'shield']],
-  ['hx_help', 'Help Center (B1)', 'hexavarsity', '-1', 0.44, 0.79, 'room', 5, 1, 'Support kits', ['hexavarsity', 'helpdesk'], false, ['medkit', 'scanner']],
-  ['hx_costa', 'Costa Coffee (G)', 'hexavarsity', '0', 0.56, 0.79, 'room', 5, 1, 'Coins', ['costa', 'coffee'], true, ['medkit', 'beacon']],
-  ['hx_tr_wing2', 'Training Rooms 1–13 (F2)', 'hexavarsity', '2', 0.44, 0.69, 'room', 5, 2, 'Weapons', ['hexavarsity', 'learning'], false, ['smg', 'shield']],
-  ['hx_pantry2', 'F2 Pantry', 'hexavarsity', '2', 0.4, 0.73, 'room', 5, 1, 'Healing', ['food', 'healing'], false, ['medkit']],
-  ['hx_tr_wing3', 'Training Rooms 15–19 (F3)', 'hexavarsity', '3', 0.56, 0.69, 'room', 5, 2, 'Weapons', ['hexavarsity', 'learning'], false, ['sniper', 'shield']],
-  ['hx_odc', 'ODC (F3)', 'hexavarsity', '3', 0.6, 0.73, 'room', 5, 2, 'Intel', ['office', 'stg'], false, ['scanner', 'jammer']],
-  ['tr14', 'Training Room 14 — Final Battleground', 'hexavarsity', '3', 0.5, 0.65, 'room', 99, 3, 'The finale', ['finale', 'hexavarsity'], false, ['shield']],
-
-  ['eb2_lobby', 'EB2 Entrance', 'eb2', '0', 0.27, 0.74, 'building', 3, 1, 'Mixed', ['office'], true, ['pistol', 'medkit']],
-  ['eb2_stg', 'EB2 STG Zone (F1)', 'eb2', '1', 0.22, 0.7, 'room', 3, 2, 'Weapons', ['stg', 'testing'], false, ['smg', 'scanner']],
-  ['eb2_floors', 'EB2 Team Floors', 'eb2', '2–5', 0.22, 0.78, 'room', 3, 1, 'Coins', ['office'], false, ['medkit']],
-  ['eb2_terrace', 'EB2 Terrace Garden', 'eb2', 'T', 0.17, 0.74, 'room', 2, 2, 'Rare loot', ['terrace', 'observation'], false, ['sniper', 'beacon']],
-  ['eb2_parking', 'EB2 Parking', 'eb2', 'B', 0.3, 0.8, 'room', 2, 1, 'Supplies', ['parking', 'access'], false, ['extract', 'medkit']],
-
-  ['p2_lobby', 'Phase 2 Entrance', 'phase2', '0', 0.76, 0.84, 'building', 2, 1, 'Mixed', ['phase2'], true, ['pistol']],
-  ['p2_parking', 'Phase 2 Basement Parking', 'phase2', 'B', 0.82, 0.88, 'room', 2, 1, 'Supplies', ['parking', 'access'], false, ['extract', 'medkit']],
-  ['p2_floors', 'Phase 2 Floors 1–2', 'phase2', '1–2', 0.82, 0.8, 'room', 2, 2, 'Transmissions', ['phase2', 'transmission'], false, ['scanner', 'smg']],
-  ['p2_upper', 'Phase 2 Floors 3–5', 'phase2', '3–5', 0.87, 0.76, 'room', 2, 3, 'High-value loot', ['phase2', 'transmission'], false, ['sniper', 'shield', 'beacon']],
-
-  ['rt_lobby', 'Ratan Tata Building', 'rtb', '0', 0.5, 0.22, 'building', 3, 1, 'Mixed', ['office'], true, ['pistol', 'medkit']],
-  ['rt_cec', 'CEC Boardroom (G)', 'rtb', '0', 0.44, 0.18, 'room', 3, 2, 'Intel', ['boardroom'], false, ['scanner', 'jammer']],
-  ['rt_floors', 'RTB Team Floors', 'rtb', '1–4', 0.56, 0.18, 'room', 3, 1, 'Coins', ['office'], false, ['medkit']],
-  ['rt_glass', 'Glass Reflection Zone', 'rtb', '4', 0.6, 0.14, 'room', 3, 2, 'Rare loot', ['glass', 'observation'], false, ['sniper', 'shield']],
-  ['rt_parking', 'RTB Parking', 'rtb', 'B', 0.4, 0.14, 'room', 2, 1, 'Supplies', ['parking', 'access'], false, ['extract']],
-
-  ['eb1_lobby', 'EB1 Entrance', 'eb1', '0', 0.75, 0.26, 'building', 2, 1, 'Mixed', ['office'], true, ['pistol', 'medkit']],
-  ['eb1_floors', 'EB1 Team Floors', 'eb1', '1–5', 0.8, 0.21, 'room', 2, 1, 'Coins', ['office'], false, ['medkit', 'scanner']],
-  ['eb1_terrace', 'EB1 Terrace Garden', 'eb1', 'T', 0.85, 0.25, 'room', 2, 2, 'Rare loot', ['terrace', 'observation'], false, ['sniper', 'beacon']],
-  ['eb1_parking', 'EB1 Parking', 'eb1', 'B', 0.78, 0.31, 'room', 2, 1, 'Supplies', ['parking', 'access'], false, ['extract']],
-
-  ['eb3_lobby', 'EB3 Entrance', 'eb3', '0', 0.22, 0.45, 'building', 3, 1, 'Mixed', ['office'], true, ['pistol', 'medkit']],
-  ['eb3_hr', 'EB3 HR Zone (G)', 'eb3', '0', 0.17, 0.41, 'room', 3, 2, 'Trust', ['hr'], false, ['shield', 'scanner']],
-  ['eb3_floors', 'EB3 Team Floors', 'eb3', '1–5', 0.17, 0.49, 'room', 3, 1, 'Coins', ['office'], false, ['medkit']],
-  ['eb3_terrace', 'EB3 Terrace Garden', 'eb3', 'T', 0.13, 0.45, 'room', 2, 2, 'Rare loot', ['terrace', 'observation'], false, ['sniper', 'beacon']],
-  ['eb3_parking', 'EB3 Parking', 'eb3', 'B', 0.26, 0.5, 'room', 2, 1, 'Supplies', ['parking', 'access'], false, ['extract']],
-
-  ['central_steps', 'Central Steps', 'central', '0', 0.47, 0.58, 'hub', 5, 1, 'Approach route', ['public', 'social'], true, ['medkit']],
-  ['hexadine', 'Hexadine', 'central', '0', 0.45, 0.47, 'amenity', 4, 1, 'Market', ['market', 'food'], true, ['medkit', 'shield']],
-  ['hexaraunt', 'Hexaraunt (B)', 'central', '-1', 0.4, 0.51, 'amenity', 4, 1, 'Healing', ['food', 'healing'], false, ['medkit', 'medkit']],
-  ['hexacafe', 'Hexacafe (B)', 'central', '-1', 0.53, 0.51, 'amenity', 4, 1, 'Intel market', ['social', 'coffee'], false, ['scanner', 'jammer']],
-  ['fountain', 'Central Fountain', 'central', '0', 0.53, 0.41, 'amenity', 4, 3, 'Airdrops', ['airdrop', 'public'], true, ['beacon', 'sniper']],
-
-  ['shuttle_court', 'Shuttle Court', 'sports', '0', 0.33, 0.33, 'sports', 1, 2, 'Sports loot', ['sports'], true, ['smg']],
-  ['pickleball', 'Pickleball Court', 'sports', '0', 0.68, 0.64, 'sports', 1, 2, 'Sports loot', ['sports'], true, ['smg', 'medkit']],
-  ['cricket', 'Cricket Ground', 'sports', '0', 0.12, 0.66, 'sports', 1, 2, 'Sports loot', ['sports'], true, ['sniper', 'pistol']],
+// Rooms: id, name, building, level, slot (0..2 north row, 3..5 south row; 2-column buildings use 0,1 / 2,3),
+//        kind, risk, reward, tags, drop, loot
+const ROOMS = [
+  // Hexavarsity — 4 floors; Training Room 14 on the top floor is the finale arena
+  ['hx_lobby', 'Hexavarsity Lobby', 'hexavarsity', 0, 4, 'building', 1, 'Learning loot', ['hexavarsity', 'learning'], true, ['medkit', 'shield']],
+  ['hx_costa', 'Costa Coffee', 'hexavarsity', 0, 0, 'room', 1, 'Coins', ['costa', 'coffee', 'social'], true, ['medkit', 'beacon']],
+  ['hx_help', 'Help Center', 'hexavarsity', 0, 1, 'room', 1, 'Support kits', ['hexavarsity', 'helpdesk'], false, ['medkit', 'scanner']],
+  ['hx_tr1', 'Training Rooms 1–4', 'hexavarsity', 1, 0, 'room', 2, 'Weapons', ['hexavarsity', 'learning'], false, ['smg', 'medkit']],
+  ['hx_tr5', 'Training Rooms 5–8', 'hexavarsity', 1, 2, 'room', 2, 'Weapons', ['hexavarsity', 'learning'], false, ['smg', 'shield']],
+  ['hx_pantry1', 'F1 Pantry', 'hexavarsity', 1, 4, 'room', 1, 'Healing', ['food', 'healing'], false, ['medkit']],
+  ['hx_tr_wing2', 'Training Rooms 9–13', 'hexavarsity', 2, 0, 'room', 2, 'Weapons', ['hexavarsity', 'learning'], false, ['smg', 'shield']],
+  ['hx_library', 'Learning Library', 'hexavarsity', 2, 2, 'room', 2, 'Intel', ['learning', 'observation'], false, ['scanner']],
+  ['hx_pantry2', 'F2 Pantry', 'hexavarsity', 2, 4, 'room', 1, 'Healing', ['food', 'healing'], false, ['medkit']],
+  ['tr14', 'Training Room 14 — Final Battleground', 'hexavarsity', 3, 1, 'room', 3, 'The finale', ['finale', 'hexavarsity'], false, ['shield']],
+  ['hx_tr_wing3', 'Training Rooms 15–19', 'hexavarsity', 3, 3, 'room', 2, 'Weapons', ['hexavarsity', 'learning'], false, ['sniper', 'shield']],
+  ['hx_odc', 'ODC', 'hexavarsity', 3, 5, 'room', 2, 'Intel', ['office', 'stg'], false, ['scanner', 'jammer']],
+  // Phase 2 Tower — 5 floors
+  ['p2_lobby', 'Phase 2 Lobby', 'phase2', 0, 4, 'building', 1, 'Mixed', ['phase2'], true, ['pistol']],
+  ['p2_cafe', 'Phase 2 Café', 'phase2', 0, 0, 'room', 1, 'Coins', ['coffee', 'social'], false, ['medkit']],
+  ['p2_f1', 'P2 Floor 1 · Dev Bay', 'phase2', 1, 0, 'room', 2, 'Weapons', ['phase2', 'office'], false, ['smg']],
+  ['p2_tr1', 'P2 Training Room A', 'phase2', 1, 4, 'room', 2, 'Weapons', ['phase2', 'learning'], false, ['smg', 'medkit']],
+  ['p2_floors', 'P2 Floor 2 · QA Lab', 'phase2', 2, 1, 'room', 2, 'Transmissions', ['phase2', 'testing', 'stg'], false, ['scanner', 'smg']],
+  ['p2_tr2', 'P2 Training Room B', 'phase2', 2, 3, 'room', 2, 'Weapons', ['phase2', 'learning'], false, ['shield']],
+  ['p2_f3', 'P2 Floor 3 · Design Studio', 'phase2', 3, 0, 'room', 2, 'Intel', ['phase2', 'glass'], false, ['scanner']],
+  ['p2_server', 'P2 Server Room', 'phase2', 3, 5, 'room', 3, 'High-value loot', ['phase2', 'testing'], false, ['jammer', 'shield']],
+  ['p2_upper', 'P2 Floor 4 · Leadership Suite', 'phase2', 4, 1, 'room', 3, 'High-value loot', ['phase2', 'boardroom'], false, ['sniper', 'shield', 'beacon']],
+  ['p2_sky', 'Sky Lounge', 'phase2', 4, 4, 'room', 3, 'Rare loot', ['terrace', 'observation'], false, ['sniper', 'beacon']],
+  // Ratan Tata Building — 5 floors
+  ['rt_lobby', 'Ratan Tata Building Lobby', 'rtb', 0, 4, 'building', 1, 'Mixed', ['office'], true, ['pistol', 'medkit']],
+  ['rt_cec', 'CEC Boardroom', 'rtb', 0, 0, 'room', 2, 'Intel', ['boardroom'], false, ['scanner', 'jammer']],
+  ['rt_floors', 'RTB Floor 1 · Delivery', 'rtb', 1, 0, 'room', 1, 'Coins', ['office'], false, ['medkit']],
+  ['rt_tr', 'RTB Training Room', 'rtb', 1, 5, 'room', 2, 'Weapons', ['learning'], false, ['smg']],
+  ['rt_f2', 'RTB Floor 2 · Finance', 'rtb', 2, 1, 'room', 1, 'Coins', ['office', 'hr'], false, ['medkit']],
+  ['rt_war', 'War Room', 'rtb', 2, 4, 'room', 3, 'Intel', ['boardroom', 'stg'], false, ['scanner', 'sniper']],
+  ['rt_f3', 'RTB Floor 3 · Cloud Ops', 'rtb', 3, 2, 'room', 2, 'Weapons', ['office', 'testing'], false, ['smg', 'shield']],
+  ['rt_glass', 'Glass Reflection Zone', 'rtb', 4, 0, 'room', 2, 'Rare loot', ['glass', 'observation'], false, ['sniper', 'shield']],
+  ['rt_exec', 'Executive Floor', 'rtb', 4, 4, 'room', 3, 'High-value loot', ['boardroom'], false, ['beacon', 'shield']],
+  // EB1 / EB2 / EB3 — 4 floors each
+  ['eb1_lobby', 'EB1 Lobby', 'eb1', 0, 3, 'building', 1, 'Mixed', ['office'], true, ['pistol', 'medkit']],
+  ['eb1_cafe', 'EB1 Café', 'eb1', 0, 0, 'room', 1, 'Coins', ['coffee', 'social'], false, ['medkit']],
+  ['eb1_floors', 'EB1 Floor 1 · Delivery', 'eb1', 1, 0, 'room', 1, 'Coins', ['office'], false, ['medkit', 'scanner']],
+  ['eb1_tr', 'EB1 Training Room', 'eb1', 1, 3, 'room', 2, 'Weapons', ['learning'], false, ['smg']],
+  ['eb1_lab', 'EB1 Innovation Lab', 'eb1', 2, 1, 'room', 2, 'Intel', ['testing', 'stg'], false, ['scanner']],
+  ['eb1_terrace', 'EB1 Terrace Garden', 'eb1', 3, 2, 'room', 2, 'Rare loot', ['terrace', 'observation'], false, ['sniper', 'beacon']],
+  ['eb2_lobby', 'EB2 Lobby', 'eb2', 0, 3, 'building', 1, 'Mixed', ['office'], true, ['pistol', 'medkit']],
+  ['eb2_stg', 'EB2 STG Zone', 'eb2', 1, 0, 'room', 2, 'Weapons', ['stg', 'testing'], false, ['smg', 'scanner']],
+  ['eb2_tr', 'EB2 Training Room', 'eb2', 1, 3, 'room', 2, 'Weapons', ['learning'], false, ['shield']],
+  ['eb2_floors', 'EB2 Floor 2 · Team Bays', 'eb2', 2, 1, 'room', 1, 'Coins', ['office'], false, ['medkit']],
+  ['eb2_terrace', 'EB2 Terrace Garden', 'eb2', 3, 2, 'room', 2, 'Rare loot', ['terrace', 'observation'], false, ['sniper', 'beacon']],
+  ['eb3_lobby', 'EB3 Lobby', 'eb3', 0, 3, 'building', 1, 'Mixed', ['office'], true, ['pistol', 'medkit']],
+  ['eb3_hr', 'EB3 HR Zone', 'eb3', 0, 0, 'room', 2, 'Trust', ['hr'], false, ['shield', 'scanner']],
+  ['eb3_floors', 'EB3 Floor 1 · Team Bays', 'eb3', 1, 1, 'room', 1, 'Coins', ['office'], false, ['medkit']],
+  ['eb3_tr', 'EB3 Training Room', 'eb3', 1, 2, 'room', 2, 'Weapons', ['learning'], false, ['smg']],
+  ['eb3_quiet', 'EB3 Quiet Room', 'eb3', 2, 0, 'room', 2, 'Intel', ['observation'], false, ['jammer']],
+  ['eb3_terrace', 'EB3 Terrace Garden', 'eb3', 3, 3, 'room', 2, 'Rare loot', ['terrace', 'observation'], false, ['sniper', 'beacon']],
+  // single-storey buildings
+  ['hexadine', 'Hexadine Market', 'foodcourt', 0, 0, 'amenity', 1, 'Market', ['market', 'food'], true, ['medkit', 'shield']],
+  ['hexaraunt', 'Hexaraunt', 'foodcourt', 0, 1, 'amenity', 1, 'Healing', ['food', 'healing'], false, ['medkit', 'medkit']],
+  ['hexacafe', 'Hexacafe', 'foodcourt', 0, 3, 'amenity', 1, 'Intel market', ['social', 'coffee'], false, ['scanner', 'jammer']],
+  ['dc_hall', 'Data Center Hall', 'datacenter', 0, 0, 'room', 3, 'High-value loot', ['testing', 'stg'], true, ['jammer', 'shield']],
+  ['dc_noc', 'Network Operations Center', 'datacenter', 0, 1, 'room', 2, 'Intel', ['helpdesk', 'testing'], false, ['scanner']],
+  ['gym_floor', 'Fitness Center', 'gym', 0, 0, 'room', 1, 'Healing', ['sports', 'healing'], false, ['medkit']],
+  ['gym_yoga', 'Yoga Studio', 'gym', 1, 1, 'room', 2, 'Rare loot', ['sports', 'observation'], false, ['shield']],
+  ['sec_hq', 'Security Control Room', 'security', 0, 0, 'room', 2, 'Intel', ['access', 'helpdesk'], false, ['scanner', 'pistol']],
 ];
 
-// [a, b, travel seconds]
-export const EDGES = [
-  ['gate_1', 'hx_lobby', 15], ['gate_1', 'p2_lobby', 20], ['gate_1', 'eb2_lobby', 25],
-  ['hx_lobby', 'hx_costa', 8], ['hx_lobby', 'hx_help', 8], ['hx_lobby', 'hx_tr_wing2', 12],
-  ['hx_tr_wing2', 'hx_pantry2', 6], ['hx_tr_wing2', 'hx_tr_wing3', 10], ['hx_tr_wing3', 'tr14', 6],
-  ['hx_tr_wing3', 'hx_odc', 6], ['tr14', 'hx_odc', 6],
-  ['hx_lobby', 'central_steps', 15], ['hx_lobby', 'pickleball', 15], ['hx_lobby', 'eb2_lobby', 20],
-  ['eb2_lobby', 'eb2_stg', 8], ['eb2_lobby', 'eb2_floors', 10], ['eb2_floors', 'eb2_terrace', 10],
-  ['eb2_lobby', 'eb2_parking', 10], ['eb2_lobby', 'cricket', 25], ['eb2_lobby', 'eb3_lobby', 25],
-  ['p2_lobby', 'p2_parking', 8], ['p2_lobby', 'p2_floors', 10], ['p2_floors', 'p2_upper', 10],
-  ['p2_lobby', 'pickleball', 15], ['p2_lobby', 'gate_2', 25],
-  ['central_steps', 'hexadine', 8], ['central_steps', 'hexacafe', 8], ['hexadine', 'hexaraunt', 6],
-  ['hexacafe', 'hexaraunt', 6], ['hexadine', 'fountain', 10], ['hexacafe', 'fountain', 10],
-  ['central_steps', 'eb3_lobby', 18], ['central_steps', 'pickleball', 15],
-  ['fountain', 'rt_lobby', 15], ['fountain', 'eb1_lobby', 20], ['fountain', 'shuttle_court', 18],
-  ['rt_lobby', 'rt_cec', 8], ['rt_lobby', 'rt_floors', 10], ['rt_floors', 'rt_glass', 10],
-  ['rt_lobby', 'rt_parking', 10], ['rt_lobby', 'eb1_lobby', 15], ['rt_lobby', 'gate_3', 20],
-  ['rt_lobby', 'shuttle_court', 15],
-  ['eb1_lobby', 'eb1_floors', 10], ['eb1_floors', 'eb1_terrace', 10], ['eb1_lobby', 'eb1_parking', 10],
-  ['eb1_lobby', 'gate_2', 25],
-  ['eb3_lobby', 'eb3_hr', 8], ['eb3_lobby', 'eb3_floors', 10], ['eb3_floors', 'eb3_terrace', 10],
-  ['eb3_lobby', 'eb3_parking', 10], ['eb3_lobby', 'gate_4', 20], ['eb3_lobby', 'shuttle_court', 15],
-  ['gate_4', 'cricket', 15],
+// Open-ground places: id, name, x, y, kind, risk, reward, tags, drop, loot
+const OUTDOOR = [
+  ['sipcot', 'SIPCOT Entrance', 0.47, 1.07, 'start', 0, 'Shuttle boarding', ['start'], false, []],
+  ['gate_1', 'Gate 1', 0.47, 0.95, 'gate', 1, 'Access codes', ['gate', 'access'], false, ['medkit', 'pistol']],
+  ['gate_2', 'Gate 2 Checkpoint', 0.955, 0.56, 'gate', 2, 'Access codes', ['gate', 'access'], true, ['scanner', 'smg']],
+  ['gate_3', 'Gate 3 (Sealed Mystery Zone)', 0.47, 0.035, 'gate', 3, 'Rare intel', ['gate', 'access', 'transmission'], true, ['sniper', 'jammer']],
+  ['gate_4', 'Gate 4 (Dark Signal Zone)', 0.035, 0.32, 'gate', 3, 'Rare intel', ['gate', 'access', 'transmission'], true, ['beacon', 'sniper']],
+  ['fountain', 'Central Fountain', 0.47, 0.44, 'amenity', 3, 'Airdrops', ['airdrop', 'public'], true, ['beacon', 'sniper']],
+  ['central_steps', 'Central Steps', 0.47, 0.53, 'hub', 1, 'Approach route', ['public', 'social'], true, ['medkit']],
+  ['amphitheatre', 'Open-Air Amphitheatre', 0.565, 0.365, 'hub', 2, 'Crowd intel', ['public', 'social'], true, ['jammer']],
+  ['cricket', 'Cricket Ground', 0.19, 0.19, 'sports', 2, 'Sports loot', ['sports'], true, ['sniper', 'pistol']],
+  ['shuttle_court', 'Shuttle Court', 0.72, 0.475, 'sports', 2, 'Sports loot', ['sports'], true, ['smg']],
+  ['pickleball', 'Pickleball Court', 0.585, 0.495, 'sports', 2, 'Sports loot', ['sports'], true, ['smg', 'medkit']],
+  ['helipad', 'Helipad', 0.86, 0.13, 'amenity', 3, 'Airdrops', ['airdrop', 'public'], true, ['sniper', 'beacon']],
+  ['solar', 'Solar Farm', 0.86, 0.245, 'amenity', 2, 'Supplies', ['public'], true, ['shield']],
+  ['water_tower', 'Water Tower', 0.27, 0.27, 'amenity', 2, 'Lookout', ['observation'], true, ['sniper']],
+  ['park_sw', 'South-West Parking Yard', 0.27, 0.89, 'parking', 1, 'Supplies', ['parking', 'access'], true, ['extract', 'medkit']],
+  ['park_se', 'South-East Parking Yard', 0.73, 0.89, 'parking', 1, 'Supplies', ['parking', 'access'], true, ['extract', 'medkit']],
+  ['park_dc', 'Data Center Parking', 0.7325, 0.40, 'parking', 1, 'Supplies', ['parking'], false, ['extract']],
+  ['bus_bay', 'Shuttle Bus Bay', 0.40, 0.97, 'hub', 1, 'Supplies', ['parking', 'access', 'public'], false, ['medkit']],
+  ['lotus_pond', 'Lotus Pond', 0.06, 0.9, 'amenity', 2, 'Healing', ['healing', 'public'], true, ['medkit']],
 ];
+
+const dist = (a, b) => Math.hypot(a[0] - b[0], a[1] - b[1]);
+const r3 = (v) => Math.round(v * 1000) / 1000;
+const TR14 = (() => { const r = ROOMS.find((x) => x[0] === 'tr14'); const b = building(r[2]); return b.slots[r[4]]; })();
+// legacy zone-stage collapse: far from Training Room 14 collapses first
+const collapseAt = (x, y) => { const d = dist([x, y], TR14); return d > 0.5 ? 1 : d > 0.36 ? 2 : d > 0.24 ? 3 : d > 0.14 ? 4 : 5; };
+
+// id, name, building, floor, x, y, kind, collapse, risk, reward, tags, drop, loot, level
+export const LOCATIONS = [];
+for (const [id, name, x, y, kind, risk, reward, tags, drop, loot] of OUTDOOR) {
+  LOCATIONS.push([id, name, null, null, x, y, kind, kind === 'start' ? 0 : collapseAt(x, y), risk, reward, tags, drop, loot, 0]);
+}
+for (const [id, name, bid, level, slot, kind, risk, reward, tags, drop, loot] of ROOMS) {
+  const b = building(bid);
+  const slots = b.slots;
+  if (slot >= slots.length) throw new Error(`${id}: slot ${slot} does not exist in ${bid}`);
+  const [x, y] = slots[slot];
+  const floor = level === 0 ? 'G' : String(level);
+  LOCATIONS.push([id, name, bid, floor, r3(x), r3(y), kind, id === 'tr14' ? 99 : collapseAt(x, y), risk, reward, [...tags, bid], drop && level === 0, loot, level]);
+}
+// stairwells (ground floor) for every multi-storey building: squads run here, then climb
+for (const [bid, name, , , , , floors] of BUILDINGS) {
+  if (floors < 2) continue;
+  const b = building(bid);
+  LOCATIONS.push([`${bid}_stairs`, `${name} Stairwell`, bid, 'G', r3(b.stairs[0]), r3(b.stairs[1]), 'stairs', collapseAt(...b.stairs), 1, 'Stairs to every floor', ['stairs', bid], false, [], 0]);
+}
+// sanity: no two places on the same floor of the same building overlap (radius 0.018)
+for (const a of LOCATIONS) for (const b of LOCATIONS) {
+  if (a === b || a[13] !== b[13] || (a[2] || '') !== (b[2] || '') || a[6] === 'start') continue;
+  if (dist([a[4], a[5]], [b[4], b[5]]) < 0.036) throw new Error(`${a[0]} overlaps ${b[0]}`);
+}
+
+// Old ids that no longer exist: kept in the database (disabled) so history stays valid.
+export const RETIRED = ['eb2_parking', 'p2_parking', 'rt_parking', 'eb1_parking', 'eb3_parking'];
+
+// Edges (travel graph for "nearest safe place"): each place links to the 3 nearest places it can
+// reach on its own floor, upper floors link through their building's stairwell / lobby.
+export const EDGES = (() => {
+  const out = new Map();
+  const add = (a, b) => {
+    const k = a < b ? `${a}|${b}` : `${b}|${a}`;
+    if (out.has(k)) return;
+    const A = LOCATIONS.find((l) => l[0] === a); const B = LOCATIONS.find((l) => l[0] === b);
+    out.set(k, [a < b ? a : b, a < b ? b : a, Math.max(4, Math.round(dist([A[4], A[5]], [B[4], B[5]]) / 0.016))]);
+  };
+  const ground = LOCATIONS.filter((l) => l[13] === 0 && l[6] !== 'start');
+  for (const l of ground) {
+    ground.filter((o) => o !== l).sort((p, q) => dist([l[4], l[5]], [p[4], p[5]]) - dist([l[4], l[5]], [q[4], q[5]]))
+      .slice(0, 3).forEach((o) => add(l[0], o[0]));
+  }
+  for (const l of LOCATIONS.filter((x) => x[13] > 0)) {
+    const sameFloor = LOCATIONS.filter((o) => o !== l && o[2] === l[2] && o[13] === l[13]);
+    sameFloor.forEach((o) => add(l[0], o[0]));
+    const below = LOCATIONS.filter((o) => o[2] === l[2] && o[13] === l[13] - 1);
+    if (below.length) add(l[0], below[0][0]);
+    const st = LOCATIONS.find((o) => o[0] === `${l[2]}_stairs`);
+    if (st && l[13] === 1) add(l[0], st[0]);
+  }
+  add('sipcot', 'gate_1');
+  return [...out.values()];
+})();
 
 export const ITEMS = [
   // id, name, kind, description, params, price

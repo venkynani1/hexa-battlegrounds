@@ -88,11 +88,12 @@ test('walking into a location area puts the squad there; search needs an area', 
 });
 
 test('tap-to-travel: time grows with distance; position is interpolated en route', async () => {
-  const tr = await one(`select x, y from locations where id = 'tr14'`);
+  const tr = await one(`select x, y from locations where id = 'fountain'`);
+  await fails(call('captain_move', sq[1].captain, 'tr14'), 'TAKE_THE_STAIRS'); // upper floors are reached by the stairs
   await db.query(`update teams set pos_x = $2, pos_y = $3, location_id = null, state = 'idle' where id = $1`, [sq[1].id, tr.x - 0.1, tr.y]);
-  const near = await call('captain_move', sq[1].captain, 'tr14');
-  await db.query(`update teams set state = 'idle', travel_to = null, pos_x = 0.05, pos_y = 0.05 where id = $1`, [sq[1].id]);
-  const far = await call('captain_move', sq[1].captain, 'tr14');
+  const near = await call('captain_move', sq[1].captain, 'fountain');
+  await db.query(`update teams set state = 'idle', travel_to = null, pos_x = 0.05, pos_y = 0.95 where id = $1`, [sq[1].id]);
+  const far = await call('captain_move', sq[1].captain, 'fountain');
   assert.ok(Number(far.seconds) > Number(near.seconds) * 3, `${far.seconds} vs ${near.seconds}`);
   await db.query(`update teams set travel_started_at = now() - (travel_arrive_at - travel_started_at) / 2 where id = $1`, [sq[1].id]);
   const mid = (await call('player_state', sq[1].scout)).team.pos;
@@ -100,7 +101,7 @@ test('tap-to-travel: time grows with distance; position is interpolated en route
   await db.query(`update teams set travel_arrive_at = now() - interval '1 second' where id = $1`, [sq[1].id]);
   await tick(arena);
   const t = await one(`select location_id, pos_x, pos_y, state from teams where id = $1`, [sq[1].id]);
-  assert.equal(t.location_id, 'tr14');
+  assert.equal(t.location_id, 'fountain');
   assert.equal(t.state, 'idle');
   assert.ok(Math.abs(t.pos_x - tr.x) < 1e-6);
 });

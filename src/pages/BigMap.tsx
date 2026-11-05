@@ -3,23 +3,22 @@
 // marker (shows distance and run time), tap near a place to run there.
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { MapData } from '../lib/game';
-import { TIER_COLOR } from '../lib/game';
+import { floorLabel, TIER_COLOR } from '../lib/game';
+import { ROADS, LOTS, FEATURES } from '../../content/campus.mjs';
 import { Countdown } from '../components/ui';
 import { msUntil } from '../lib/time';
 import { SHORT } from '../components/CampusMap';
 
 export type XY = [number, number];
-export const METERS = 600; // campus width shown as metres (distances read like a real map)
+export const METERS = 1600; // campus width shown as metres (distances read like a real map)
 
-const BUILD: Record<string, { fill: string; name: string }> = {
-  hexavarsity: { fill: '#e9edf1', name: 'HEXAVARSITY' }, eb1: { fill: '#d9cbb0', name: 'EB1' }, eb2: { fill: '#dcd3c4', name: 'EB2' },
-  eb3: { fill: '#d4c7b4', name: 'EB3' }, rtb: { fill: '#c07a62', name: 'RATAN TATA' }, phase2: { fill: '#c4ccd6', name: 'PHASE 2' },
-};
+const FILL: Record<string, string> = { learning: '#e9edf1', tower: '#b9c6d4', brick: '#c07a62', office: '#dcd0b8', pavilion: '#efe4cc', datacenter: '#a7afb8' };
 const V = 1000; // svg units per campus width
 
-export default function BigMap({ map, me, yaw, squads, zone, zoneNextAt, red, drops, marker, setMarker, onRun, canRun, speed, onClose, title }: {
+export default function BigMap({ map, me, yaw, squads, zone, zoneNextAt, red, drops, marker, setMarker, onRun, canRun, speed, onClose, title, lock = [], level = 0, bldg = null, pickups = [] }: {
   map: MapData; me: XY | null; yaw: number; squads: { id: string; number: number; pos?: number[] | null; me?: boolean; allied?: boolean }[];
   zone: any; zoneNextAt?: string | null; red: any; drops: { id: string; location: string; tier: string }[];
+  lock?: any[]; level?: number; bldg?: string | null; pickups?: { id: string; k: string; x: number; y: number; l: number }[];
   marker: XY | null; setMarker: (m: XY | null) => void; onRun: (locId: string) => void; canRun: boolean; speed: number; onClose: () => void; title: string;
 }) {
   const svg = useRef<SVGSVGElement>(null);
@@ -39,14 +38,7 @@ export default function BigMap({ map, me, yaw, squads, zone, zoneNextAt, red, dr
   // opens on the whole campus; pinch in for detail
 
   const byId = useMemo(() => new Map(map.locations.map((l) => [l.id, l])), [map]);
-  const blocks = useMemo(() => {
-    const g = new Map<string, typeof map.locations>();
-    for (const l of map.locations) if (l.building && BUILD[l.building]) g.set(l.building, [...(g.get(l.building) || []), l]);
-    return [...g].map(([b, ls]) => {
-      const xs = ls.map((l) => l.x); const ys = ls.map((l) => l.y);
-      return { id: b, x0: Math.min(...xs) - 0.04, x1: Math.max(...xs) + 0.04, y0: Math.min(...ys) - 0.04, y1: Math.max(...ys) + 0.04 };
-    });
-  }, [map]);
+  const blocks = map.buildings || [];
 
   function toMap(cx: number, cy: number): XY {
     const r = svg.current!.getBoundingClientRect();
@@ -102,18 +94,21 @@ export default function BigMap({ map, me, yaw, squads, zone, zoneNextAt, red, dr
     });
   }
 
-  // marker → nearest place (if any) for "run here"
-  const near = marker ? map.locations.filter((l) => l.kind !== 'start' && l.enabled)
+  // marker → building (rooms by floor) or the nearest place on your floor, for "drive here"
+  const mB = marker ? blocks.find((b) => marker[0] > b.x0 && marker[0] < b.x1 && marker[1] > b.y0 && marker[1] < b.y1) : null;
+  const onFloor = (l: (typeof map.locations)[0]) => (l.level || 0) === level && (level === 0 || l.building === bldg);
+  const near = marker ? map.locations.filter((l) => l.kind !== 'start' && l.enabled && onFloor(l))
     .map((l) => ({ l, d: Math.hypot(l.x - marker[0], l.y - marker[1]) })).sort((a, b) => a.d - b.d)[0] : null;
-  const place = near && near.d < 0.05 ? near.l : null;
+  const place = near && near.d < 0.03 ? near.l : null;
+  const lockOf = (id: string) => lock.filter((l) => l.b === id);
   const dist = marker && me ? Math.hypot(marker[0] - me[0], marker[1] - me[1]) : 0;
   const k = view.k;
   const fs = (n: number) => n / Math.sqrt(k); // labels shrink less than the map grows
   const cur = zone?.cur as number[] | undefined; const nxt = zone?.next as number[] | undefined;
   // names appear in tiers as you zoom in, so the map never turns into a wall of text
-  const tier = (l: (typeof map.locations)[0]) => l.id === 'tr14' || l.kind === 'gate' || l.kind === 'sports' || l.id === 'fountain' ? 1
-    : !l.building || !BUILD[l.building] ? 2 : l.kind === 'building' ? 0 : 3;
-  const majors = map.locations.filter((l) => l.kind !== 'start' && (tier(l) === 1 || (tier(l) === 2 && k >= 1.7)));
+  const tier = (l: (typeof map.locations)[0]) => (l.level || 0) > 0 ? 9 : l.kind === 'stairs' ? 4 : l.id === 'tr14' || l.kind === 'gate' || l.kind === 'sports' || l.kind === 'parking' || l.id === 'fountain' || l.id === 'helipad' ? 1
+    : !l.building ? 2 : l.kind === 'building' ? 0 : 3;
+  const majors = map.locations.filter((l) => l.kind !== 'start' && l.enabled && (tier(l) === 1 || (tier(l) === 2 && k >= 1.5)));
 
   return (
     <div className="bigmap" role="dialog" aria-label="Campus map">
@@ -132,27 +127,34 @@ export default function BigMap({ map, me, yaw, squads, zone, zoneNextAt, red, dr
         <g transform={`translate(${view.x} ${view.y}) scale(${k})`}>
           <rect x={-2000} y={-2000} width={V + 4000} height={V + 4000} fill="#5f9446" />
           <rect x={10} y={10} width={V - 20} height={V - 20} rx={30} fill="url(#bm-grass)" stroke="#d8d2c4" strokeWidth={8} />
-          {/* roads */}
-          {map.edges.map(([a, b]) => {
-            const A = byId.get(a); const B = byId.get(b);
-            if (!A || !B || (A.building && A.building === B.building)) return null;
-            return <g key={`${a}-${b}`}>
-              <line x1={A.x * V} y1={A.y * V} x2={B.x * V} y2={B.y * V} stroke="#d9d3c4" strokeWidth={15} strokeLinecap="round" />
-              <line x1={A.x * V} y1={A.y * V} x2={B.x * V} y2={B.y * V} stroke="#6b7079" strokeWidth={10} strokeLinecap="round" />
-            </g>;
+          {/* parking yards, plaza, grounds */}
+          {LOTS.map((l: any) => <rect key={l.id} x={l.x0 * V} y={l.y0 * V} width={(l.x1 - l.x0) * V} height={(l.y1 - l.y0) * V} fill="#646a72" stroke="#e8e4da" strokeWidth={2} />)}
+          {(FEATURES as any[]).map((f, i) => f.kind === 'plaza' ? <circle key={i} cx={f.x * V} cy={f.y * V} r={f.r * V} fill="#d6cdbb" />
+            : f.kind === 'fountain' ? <circle key={i} cx={f.x * V} cy={f.y * V} r={f.r * V} fill="#4fb3e8" stroke="#e6e1d6" strokeWidth={4} />
+            : f.kind === 'cricket' ? <ellipse key={i} cx={f.x * V} cy={f.y * V} rx={f.rx * V} ry={f.ry * V} fill="#4fae55" stroke="#fff" strokeWidth={3} />
+            : f.kind === 'court' ? <rect key={i} x={(f.x - f.w / 2) * V} y={(f.y - f.d / 2) * V} width={f.w * V} height={f.d * V} fill="#3f9b49" stroke="#fff" strokeWidth={2} />
+            : f.kind === 'pond' ? <ellipse key={i} cx={f.x * V} cy={f.y * V} rx={f.rx * V} ry={f.ry * V} fill="#4fb3e8" />
+            : f.kind === 'helipad' ? <g key={i}><circle cx={f.x * V} cy={f.y * V} r={f.r * V} fill="#3d4249" stroke="#f2c53d" strokeWidth={3} /><text x={f.x * V} y={f.y * V + 9} fontSize={26} fill="#fff" textAnchor="middle" fontWeight={900}>H</text></g>
+            : f.kind === 'solar' ? <rect key={i} x={f.x0 * V} y={f.y0 * V} width={(f.x1 - f.x0) * V} height={(f.y1 - f.y0) * V} fill="#27406e" />
+            : f.kind === 'amphi' ? <circle key={i} cx={f.x * V} cy={f.y * V} r={f.r * V} fill="#cfc8b8" />
+            : null)}
+          {/* streets */}
+          {ROADS.map((r: any, i: number) => <g key={i}>
+            <polyline points={r.pts.map((p: number[]) => `${p[0] * V},${p[1] * V}`).join(' ')} fill="none" stroke="#d9d3c4" strokeWidth={r.w * V + 6} strokeLinejoin="round" />
+            <polyline points={r.pts.map((p: number[]) => `${p[0] * V},${p[1] * V}`).join(' ')} fill="none" stroke="#6b7079" strokeWidth={r.w * V} strokeLinejoin="round" />
+          </g>)}
+          {/* buildings: sealed ones are dark, buildings under alarm flash red */}
+          {blocks.map((b) => {
+            const L = lockOf(b.id); const sealed = L.some((l) => l.l === null && l.sealed); const alarm = L.some((l) => !l.sealed);
+            return (
+              <g key={b.id} className={alarm ? 'bm-alarm' : ''}>
+                <rect x={b.x0 * V + 6} y={b.y0 * V + 8} width={(b.x1 - b.x0) * V} height={(b.y1 - b.y0) * V} rx={6} fill="rgba(0,0,0,0.25)" />
+                <rect x={b.x0 * V} y={b.y0 * V} width={(b.x1 - b.x0) * V} height={(b.y1 - b.y0) * V} rx={8} fill={sealed ? '#3a3e45' : FILL[b.style] || '#dcd0b8'}
+                  stroke={alarm ? '#ff2238' : 'rgba(40,46,54,0.55)'} strokeWidth={alarm ? 6 : 2} />
+                {b.floors > 1 && <circle cx={b.stairs[0] * V} cy={b.stairs[1] * V} r={6 / Math.sqrt(k)} fill="#5dff9e" stroke="#1b2430" strokeWidth={1.5 / Math.sqrt(k)} />}
+              </g>
+            );
           })}
-          {/* buildings */}
-          {blocks.map((b) => (
-            <g key={b.id}>
-              <rect x={b.x0 * V + 6} y={b.y0 * V + 8} width={(b.x1 - b.x0) * V} height={(b.y1 - b.y0) * V} rx={6} fill="rgba(0,0,0,0.25)" />
-              <rect x={b.x0 * V} y={b.y0 * V} width={(b.x1 - b.x0) * V} height={(b.y1 - b.y0) * V} rx={8} fill={BUILD[b.id].fill} stroke="rgba(40,46,54,0.55)" strokeWidth={2} />
-            </g>
-          ))}
-          {/* sports & plaza */}
-          {map.locations.filter((l) => l.kind === 'sports').map((l) => (
-            <g key={l.id}><rect x={l.x * V - 58} y={l.y * V - 38} width={116} height={76} fill="#47a852" stroke="#fff" strokeWidth={3} /><line x1={l.x * V} y1={l.y * V - 38} x2={l.x * V} y2={l.y * V + 38} stroke="#fff" strokeWidth={2} /></g>
-          ))}
-          {byId.get('fountain') && <circle cx={byId.get('fountain')!.x * V} cy={byId.get('fountain')!.y * V} r={16} fill="#4fb3e8" stroke="#e6e1d6" strokeWidth={5} />}
           {/* grid */}
           {Array.from({ length: 9 }, (_, i) => (
             <g key={i} opacity={0.18}>
@@ -172,13 +174,23 @@ export default function BigMap({ map, me, yaw, squads, zone, zoneNextAt, red, dr
               <text x={l.x * V} y={l.y * V - 10 / Math.sqrt(k)} className="bm-name" fontSize={fs(15)} textAnchor="middle">{(SHORT[l.id] || l.name).toUpperCase()}</text>
             </g>
           ))}
-          {k >= 2.6 && map.locations.filter((l) => tier(l) === 3).map((l) => (
+          {k >= 2.6 && map.locations.filter((l) => tier(l) === 3 || tier(l) === 0).map((l) => (
             <g key={l.id}>
               <circle cx={l.x * V} cy={l.y * V} r={4 / Math.sqrt(k)} fill="#2ee6ff" />
               <text x={l.x * V} y={l.y * V - 8 / Math.sqrt(k)} className="bm-name small" fontSize={fs(13)} textAnchor="middle">{SHORT[l.id] || l.name}</text>
             </g>
           ))}
-          {blocks.map((b) => <text key={`n${b.id}`} x={((b.x0 + b.x1) / 2) * V} y={((b.y0 + b.y1) / 2) * V + 6} className="bm-bname" fontSize={fs(19)} textAnchor="middle">{BUILD[b.id].name}</text>)}
+          {blocks.map((b) => {
+            const L = lockOf(b.id); const sealed = L.some((l) => l.l === null && l.sealed);
+            return <g key={`n${b.id}`}>
+              <text x={((b.x0 + b.x1) / 2) * V} y={((b.y0 + b.y1) / 2) * V + 2} className="bm-bname" fontSize={fs(17)} textAnchor="middle">{sealed ? '🔒 ' : ''}{b.name.toUpperCase()}</text>
+              {b.floors > 1 && <text x={((b.x0 + b.x1) / 2) * V} y={((b.y0 + b.y1) / 2) * V + 2 + fs(16)} className="bm-name small" fontSize={fs(12)} textAnchor="middle">{b.floors} floors</text>}
+            </g>;
+          })}
+          {/* loot on your floor */}
+          {k >= 1.6 && pickups.filter((p) => (p.l || 0) === level).map((p) => (
+            <circle key={p.id} cx={p.x * V} cy={p.y * V} r={3.2 / Math.sqrt(k)} fill={p.k === 'medkit' ? '#ff6b6b' : p.k === 'shield' ? '#3ea5ff' : '#ffc23d'} stroke="#fff" strokeWidth={1 / Math.sqrt(k)} />
+          ))}
           {/* airdrops */}
           {drops.map((d) => { const l = byId.get(d.location); return l ? (
             <g key={d.id} transform={`translate(${l.x * V + 18} ${l.y * V - 18}) scale(${1 / Math.sqrt(k)})`}>
@@ -217,20 +229,40 @@ export default function BigMap({ map, me, yaw, squads, zone, zoneNextAt, red, dr
       </svg>
 
       <div className="bm-bottom">
-        {marker ? (
+        {marker && mB ? (
+          <div className="bm-card col" style={{ alignItems: 'stretch', gap: 6 }}>
+            <div className="row between">
+              <b>{mB.name}{lockOf(mB.id).some((l) => l.l === null && l.sealed) ? ' · 🔒 SEALED' : ''}</b>
+              <button className="btn ghost xs" onClick={() => setMarker(null)} aria-label="Remove marker">✕</button>
+            </div>
+            <div className="bm-floors">
+              {Array.from({ length: mB.floors }, (_, i) => mB.floors - 1 - i).map((f) => {
+                const rooms = map.locations.filter((l) => l.building === mB.id && (l.level || 0) === f && l.kind !== 'stairs' && l.enabled);
+                const fl = lockOf(mB.id).find((l) => l.l === f || l.l === null);
+                return <div key={f} className={`bm-floor ${fl ? (fl.sealed ? 'sealed' : 'alarm') : ''} ${f === level && bldg === mB.id ? 'here' : ''}`}>
+                  <span className="fl-n">{f === 0 ? 'G' : f}</span>
+                  <span className="grow">{rooms.map((r) => (SHORT[r.id] || r.name).replace(' — Final Battleground', '')).join(' · ') || '—'}</span>
+                  {canRun && rooms.filter((r) => onFloor(r)).slice(0, 1).map((r) => <button key={r.id} className="btn xs primary" onClick={() => onRun(r.id)}>Drive</button>)}
+                </div>;
+              })}
+            </div>
+            {mB.floors > 1 && level === 0 && canRun && <button className="btn primary" onClick={() => onRun(`${mB.id}_stairs`)}>Drive to the stairwell ⇅</button>}
+            <div className="muted" style={{ fontSize: 12 }}>{Math.round(dist * METERS)} m · upper floors: drive onto the green stairs ring and climb with ▲▼</div>
+          </div>
+        ) : marker ? (
           <div className="bm-card">
             <div className="grow">
               <b>{place ? place.name : 'Marker'}</b>
-              <div className="muted">{Math.round(dist * METERS)} m · about {Math.max(1, Math.round(dist / speed))} s on foot{place ? ` · ${place.reward}` : ''}</div>
+              <div className="muted">{Math.round(dist * METERS)} m · about {Math.max(1, Math.round(dist / speed))} s by buggy{place ? ` · ${place.reward}` : ''}{place && (place.level || 0) > 0 ? ` · ${floorLabel(place.level)}` : ''}</div>
             </div>
-            {place && canRun && <button className="btn primary" onClick={() => onRun(place.id)}>Run here</button>}
+            {place && canRun && <button className="btn primary" onClick={() => onRun(place.id)}>Drive here</button>}
             <button className="btn ghost" onClick={() => setMarker(null)} aria-label="Remove marker">✕</button>
           </div>
         ) : (
-          <div className="bm-hint">Tap the map to drop a marker · pinch to zoom · drag to look around</div>
+          <div className="bm-hint">Tap the map to drop a marker · tap a building to see its floors · pinch to zoom</div>
         )}
         <div className="bm-legend">
-          <span><i style={{ background: '#2ee6ff' }} />You</span><span><i style={{ background: '#ff4d5e' }} />Enemy</span><span><i className="ring" />Next zone</span><span><i style={{ background: '#ffc23d' }} />Crate</span>
+          <span><i style={{ background: '#2ee6ff' }} />You</span><span><i style={{ background: '#ff4d5e' }} />Enemy</span><span><i className="ring" />Next zone</span><span><i style={{ background: '#ffc23d' }} />Crate</span><span><i style={{ background: '#5dff9e' }} />Stairs</span><span><i style={{ background: '#ff2238' }} />Lockdown</span>
         </div>
       </div>
     </div>

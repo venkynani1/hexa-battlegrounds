@@ -39,7 +39,7 @@ Request path: phone → `supabase.rpc('captain_submit', {p_token,…})` → func
 ## 3. Parallel maps ("arenas")
 
 - An **event** has 1–6 **arenas** (Map 1, Map 2…). Squads are assigned at creation (15 per map by default, `arena_size`).
-- Each arena has its own phase, shuttle, zone timeline, encounters, airdrops, chat, Squad 00 threat, finale rounds, results and projector token.
+- Each arena has its own phase, shuttle, zone timeline, encounters, airdrops, chat, lockdowns, ground loot, finale rounds, results and projector token.
 - One host console controls each map or **all maps at once** (commands sent with `p_arena = null` are applied to every arena, each audited).
 - **Fairness across maps:** mission variation uses the event-wide `mission_seed`; finale rounds pick the same template on every map (seed + round index). The grand champion uses the same deterministic ordering over all maps.
 
@@ -186,3 +186,12 @@ Local load test (15 squads, 60 phones): p50 7 ms, p95 ≈ 130 ms, 0 server error
 - A round closes early when no instance of it is still active. `auto_next_at` holds the 10 s break, the 30 s reveal and the 15/20 s result beats; pause/resume and `_shift_arena` shift it.
 - `_auto_status` → `{on, label, at, length}` is published as `overlay.auto` (only when it changes) for phones and the projector, and returned per arena by `host_overview` as `auto`.
 - Errors inside a step roll back only that step, are logged once per 30 s as `autopilot / step` failures, and retry on the next tick.
+
+
+## 16. Campus v4 (migration 0500)
+- **Schema:** `locations.level` (storey), `buildings` (footprint, floors, stairwell and front door), `teams.level/bldg/vel_x/vel_y`, `pickups` (ground loot per arena), `lockdowns` (alarm → sealed, per building or per floor), airdrop tier `vault`. A trigger keeps a squad's storey in step with the place it is in.
+- **Movement:** `captain_steer(token, x, y, vx, vy)` stores the joystick velocity, clamps upstairs movement to the building, treats sealed buildings as walls and picks up loot within reach. `captain_stairs(token, ±1)` climbs at a stairwell. `_loc_at3` finds a place on the squad's own floor and never inside a sealed area. `arena_positions(token)` is a cheap positions + velocity feed for smooth rival movement.
+- **Realtime:** besides the server's "something changed" pings, the captain's phone broadcasts `{x, y, vx, vy, level, st}` on channel `mv-<team>` (only when direction/speed changes, plus a 1.2 s heartbeat while moving); teammates dead-reckon with a server-synced clock. Presentation only — the server stays authoritative. `scripts/local-server.mjs` emulates broadcast channels for offline rehearsals.
+- **Collapsing Campus:** `_lock_targets` orders buildings by distance from TR14 (top floors first); `_lock_next` starts a countdown and spawns a vault (`_spawn_vault`); `_lock_seal` damages and ejects squads inside, removes the area's loot and crates and publishes `overlay.lock`; `_final_lockdown` seals all but Hexavarsity (finale stage D, used by the autopilot). `_tick` seals due lockdowns, sounds the next alarm on `lock_interval`, and tops up loot (`_spawn_pickups`).
+- **Client 3D:** `src/three/world.ts` builds the campus from `content/campus.mjs` (streets, lots, features) and `map_data().buildings`; static props are merged per material (`Batch`) and cars/trees are instanced, so the larger world keeps a low draw-call count. Interiors (slabs, rooms, sliding doors, stairs) are built on first entry. `src/three/vehicle.ts` is the squad buggy.
+- **Single-file database upgrade:** `npm run db:bundle` writes `supabase/full/hexa-battlegrounds-v4.sql` (every migration, idempotent) and `supabase/RUN-ME-IN-SUPABASE.sql`, which downloads that file from GitHub at a pinned commit (`HEXA_REF`), verifies its SHA-256 and executes it in one transaction.

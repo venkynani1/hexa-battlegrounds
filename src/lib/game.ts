@@ -18,7 +18,7 @@ export const KIND_LABEL: Record<string, string> = {
 };
 
 export const TIER_COLOR: Record<string, string> = {
-  common: '#9fb3c8', rare: '#3ea5ff', legendary: '#ffc23d', mystery: '#b07cff', cursed: '#ff4d5e', intel: '#5dff9e',
+  common: '#9fb3c8', rare: '#3ea5ff', legendary: '#ffc23d', mystery: '#b07cff', cursed: '#ff4d5e', intel: '#5dff9e', vault: '#ff9d2e',
 };
 
 export const ZONE_TEXT = [
@@ -43,14 +43,16 @@ export const FINALE_STAGES: Record<string, { name: string; text: string }> = {
   A: { name: 'Entry Lock', text: 'Every squad decodes its way into the final circle.' },
   B: { name: 'Intelligence Exchange', text: 'Captains trade codewords across squads.' },
   C: { name: 'Simultaneous Battle', text: 'All squads, one deadline, every second counts.' },
-  D: { name: 'Squad 00 Revealed', text: 'The truth behind the transmissions.' },
+  D: { name: 'Final Lockdown', text: 'Every building seals except Hexavarsity. Room 14 is the last open room.' },
   E: { name: 'The Final Code', text: 'One last vault. The biggest prize of the night.' },
-  F: { name: 'Champion', text: 'Winner winner chicken dinner.' },
+  F: { name: 'Champion', text: 'The last squad standing in Training Room 14.' },
 };
 
+export type Building = { id: string; name: string; x0: number; y0: number; x1: number; y1: number; floors: number; stairs: [number, number]; door: [number, number]; style: string };
 export type MapData = {
-  locations: { id: string; name: string; building: string | null; floor: string | null; x: number; y: number; kind: string;
+  locations: { id: string; name: string; building: string | null; floor: string | null; level?: number; x: number; y: number; kind: string;
     collapse: number; risk: number; reward: string; tags: string[]; drop: boolean; enabled: boolean }[];
+  buildings?: Building[];
   edges: [string, string, number][];
   items: { id: string; name: string; kind: string; description: string; price: number; params: any }[];
 };
@@ -81,6 +83,13 @@ export function neighbors(map: MapData | null, id?: string | null): Map<string, 
   return out;
 }
 
+export const floorLabel = (level?: number | null) => (!level ? 'Ground floor' : `Floor ${level}`);
+export const floorName = (building: string, level?: number | null) => (level === null || level === undefined ? building : `${building} ${floorLabel(level)}`);
+// one distinct colour per squad number (15 squads per map)
+export const SQUAD_HEX = ['#ff4d4d', '#ffb02e', '#ffe14d', '#7ddf4a', '#2fd67b', '#2ad1c9', '#33a8ff', '#4f6dff', '#9a5cff', '#d54dff',
+  '#ff5fb2', '#c98a5a', '#f2f2f2', '#8fa3b8', '#ff7a3d'];
+export const squadHex = (n: number) => SQUAD_HEX[(Math.max(1, n) - 1) % SQUAD_HEX.length];
+
 export function feedText(type: string, p: any, map: MapData | null): { text: string; tone: string } | null {
   const L = (id: string) => locName(map, id);
   switch (type) {
@@ -103,7 +112,7 @@ export function feedText(type: string, p: any, map: MapData | null): { text: str
     case 'recovery.completed': return { text: `Squad ${p.team} is back in action`, tone: 'good' };
     case 'airdrop.spawned': return { text: `✈ ${String(p.tier).toUpperCase()} airdrop at ${L(p.location)}`, tone: 'warn' };
     case 'airdrop.contested': return { text: `Squad ${p.team} is cracking the airdrop at ${L(p.location)}`, tone: 'warn' };
-    case 'airdrop.claimed': return { text: `Squad ${p.team} claimed the ${p.tier} airdrop!`, tone: 'good' };
+    case 'airdrop.claimed': return { text: p.tier === 'vault' ? `Squad ${p.team} cracked the VAULT!` : `Squad ${p.team} claimed the ${p.tier} airdrop!`, tone: 'good' };
     case 'zone.warning': return { text: `⚠ Safe zone shrinking (stage ${p.stage})`, tone: 'bad' };
     case 'zone.collapsed': return { text: `☢ Safe zone shrank — stage ${p.stage}`, tone: 'bad' };
     case 'zone.relocated': return { text: `Squad ${p.team} evacuated to ${L(p.to)}`, tone: 'info' };
@@ -114,9 +123,11 @@ export function feedText(type: string, p: any, map: MapData | null): { text: str
     case 'intel.shared': return { text: `Squad ${p.from} shared intel with Squad ${p.to}`, tone: 'good' };
     case 'alliance.created': return { text: `🤝 Squads ${p.a} & ${p.b} formed an alliance`, tone: 'good' };
     case 'alliance.betrayed': return { text: `🗡 Squad ${p.by} BETRAYED Squad ${p.victim}`, tone: 'bad' };
-    case 'squad00.transmission': return { text: `▓ Squad 00 transmission: ${p.title || ''}`, tone: 'warn' };
-    case 'squad00.bargain': return { text: '▓ Squad 00 is offering a deal to captains…', tone: 'warn' };
-    case 'squad00.revealed': return { text: '▓ Squad 00 has been revealed', tone: 'warn' };
+    case 'lockdown.warning': return { text: `🚨 LOCKDOWN: ${floorName(p.name, p.level)} seals in ${p.seconds}s — get out!`, tone: 'bad' };
+    case 'lockdown.sealed': return { text: p.caught?.length ? `🔒 ${floorName(p.name, p.level)} sealed — Squad ${p.caught.join(', ')} caught inside` : `🔒 ${floorName(p.name, p.level)} sealed`, tone: 'bad' };
+    case 'lockdown.final': return { text: '🔒 FINAL LOCKDOWN — only Hexavarsity is still open', tone: 'warn' };
+    case 'lockdown.lifted': return { text: 'Lockdowns lifted by the host', tone: 'info' };
+    case 'vault.opened': return { text: `🟧 Vault unlocked in ${L(p.location)}`, tone: 'warn' };
     case 'story.broadcast': return { text: `📣 ${p.text}`, tone: 'warn' };
     case 'game.paused': return { text: 'Game paused by host', tone: 'info' };
     case 'game.resumed': return { text: 'Game resumed', tone: 'info' };

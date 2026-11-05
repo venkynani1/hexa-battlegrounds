@@ -197,7 +197,7 @@ function AutoPanel({ d, list, all, cmd }: { d: any; list: any[]; all: boolean; c
   const target = all ? null : list[0]?.id ?? null;
   const start = () => {
     const where = all && list.length > 1 ? `all ${list.length} maps` : list[0]?.name;
-    if (!confirm(`Start an automatic ${len} match on ${where}?\n\nBoarding, the bus, roles, phases, zone, airdrops, red zones, Squad 00, finale rounds and the results all run by themselves. You can still pause or override anything.`)) return;
+    if (!confirm(`Start an automatic ${len} match on ${where}?\n\nBoarding, the bus, roles, phases, zone, airdrops, red zones, loot, building lockdowns, finale rounds and the results all run by themselves. You can still pause or override anything.`)) return;
     cmd(target, 'start_match', { length: len });
   };
   return (
@@ -590,23 +590,15 @@ function Missions({ token }: { token: string }) {
 }
 
 // ── Production / suspense ───────────────────────────────────────────────
-const TRANSMISSIONS = [
-  ['SIGNAL ACQUIRED', 'This is Squad 00. Your campus is my arena now.\nEvery squad here is replaceable. Prove me wrong.'],
-  ['GATE 4 IS LISTENING', 'The dark signal zone at Gate 4 is humming.\nSomething in the network is waking up.'],
-  ['I SEE YOU', 'I know where every squad is standing.\nSome of you will sell your friends for coins. I am counting.'],
-  ['THE ZONE IS MINE', 'The safe zone shrinks because I allow it.\nRun towards Hexavarsity while you still can.'],
-  ['LAST CALL', 'Training Room 14. All of you. One room. One code.\nLet us see who you really are.'],
-];
-const BARGAINS = [
-  { title: 'Fast cash', body: 'I can make your wallet heavier. Just let me into your squad network.\nNobody has to know.', coins: 60, trust: -5, threat: 1 },
-  { title: 'The shortcut', body: 'A big payout. A small betrayal of your principles.\nTake it, and I grow stronger.', coins: 100, trust: -10, threat: 2 },
+const LOCK_BUILDINGS: [string, string, number][] = [
+  ['eb1', 'EB1', 4], ['rtb', 'Ratan Tata Building', 5], ['datacenter', 'Data Center', 1], ['eb3', 'EB3', 4], ['eb2', 'EB2', 4],
+  ['phase2', 'Phase 2 Tower', 5], ['gym', 'Fitness Center', 2], ['foodcourt', 'Food Court', 1], ['security', 'Security HQ', 1],
 ];
 function Production({ arena, cmd }: { arena: string | null; cmd: Cmd }) {
   const [text, setText] = useState('');
   const [tone, setTone] = useState('warn');
   const [cd, setCd] = useState({ seconds: 10, label: 'Next stage begins in' });
-  const [story, setStory] = useState({ title: '', body: '' });
-  const [bargain, setBargain] = useState({ ...BARGAINS[0], minutes: 3 });
+  const [lb, setLb] = useState({ building: 'eb1', level: '' as string | number });
   const target = arena ? 'this map' : 'ALL maps';
   return (
     <div className="grid2">
@@ -628,26 +620,27 @@ function Production({ arena, cmd }: { arena: string | null; cmd: Cmd }) {
         <button className="btn warn" onClick={() => cmd(arena, 'countdown', cd)}>Start countdown</button>
         <p className="muted" style={{ fontSize: 12, margin: 0 }}>Countdowns are cosmetic. Game timers are always server-side.</p>
       </div>
-      <div className="panel col scanlines">
-        <div className="panel-title">Squad 00 transmissions</div>
-        {TRANSMISSIONS.map(([t, b]) => (
-          <div key={t} className="list-item"><div className="grow"><b className="transmission">{t}</b><div className="muted" style={{ fontSize: 12, whiteSpace: 'pre-wrap' }}>{b}</div></div>
-            <button className="btn xs" onClick={() => cmd(arena, 'story', { title: t, body: b })}>Send</button></div>
-        ))}
-        <input className="input" placeholder="Custom title" value={story.title} onChange={(e) => setStory({ ...story, title: e.target.value })} />
-        <textarea className="input" placeholder="Custom message" value={story.body} onChange={(e) => setStory({ ...story, body: e.target.value })} />
-        <button className="btn" disabled={!story.title} onClick={() => cmd(arena, 'story', story)}>Send custom transmission</button>
-      </div>
       <div className="panel col danger">
-        <div className="panel-title">Squad 00 bargain (captains decide)</div>
-        <div className="row wrap">{BARGAINS.map((b) => <button key={b.title} className="btn xs ghost" onClick={() => setBargain({ ...b, minutes: 3 })}>{b.title}</button>)}</div>
-        <input className="input" value={bargain.title} onChange={(e) => setBargain({ ...bargain, title: e.target.value })} />
-        <textarea className="input" value={bargain.body} onChange={(e) => setBargain({ ...bargain, body: e.target.value })} />
-        <div className="grid3" style={{ gridTemplateColumns: 'repeat(4,1fr)', gap: 6 }}>
-          {(['coins', 'trust', 'threat', 'minutes'] as const).map((k) => <div key={k} className="field"><label>{k}</label><input className="input" type="number" value={(bargain as any)[k]} onChange={(e) => setBargain({ ...bargain, [k]: Number(e.target.value) })} /></div>)}
+        <div className="panel-title">Collapsing Campus · lockdowns on {target}</div>
+        <p className="muted" style={{ fontSize: 12, margin: 0 }}>From phase 1 an alarm sounds on a timetable (setting <b>lock_interval</b>), farthest buildings first, top floors before whole buildings. Each alarm gives squads <b>lock_warning</b> seconds to get out and opens a vault inside. Squads caught inside lose <b>lock_damage</b> HP and are thrown out. Hexavarsity never seals.</p>
+        <button className="btn danger" onClick={() => cmd(arena, 'lock_next')}>🚨 Sound the next alarm now</button>
+        <div className="row wrap">
+          <select className="input" style={{ width: 200 }} value={lb.building} onChange={(e) => setLb({ building: e.target.value, level: '' })}>
+            {LOCK_BUILDINGS.map(([id, name]) => <option key={id} value={id}>{name}</option>)}
+          </select>
+          <select className="input" style={{ width: 190 }} value={lb.level} onChange={(e) => setLb({ ...lb, level: e.target.value === '' ? '' : Number(e.target.value) })}>
+            <option value="">Whole building</option>
+            {Array.from({ length: LOCK_BUILDINGS.find((b) => b[0] === lb.building)?.[2] || 1 }, (_, f) => <option key={f} value={f}>Floor {f === 0 ? 'G' : f}</option>)}
+          </select>
         </div>
-        <button className="btn danger" onClick={() => cmd(arena, 'bargain', bargain)}>Offer bargain</button>
-        <p className="muted" style={{ fontSize: 12, margin: 0 }}>Published rule: accepting gives coins only (never points), costs trust and raises the public threat meter. Every choice is replayed in the Squad 00 reveal.</p>
+        <div className="row wrap">
+          <button className="btn sm warn grow" onClick={() => cmd(arena, 'lock_building', { building: lb.building, level: lb.level === '' ? null : lb.level })}>Alarm (with countdown)</button>
+          <button className="btn sm danger grow" onClick={() => { if (confirm('Seal it immediately? Squads inside take damage now.')) cmd(arena, 'lock_building', { building: lb.building, level: lb.level === '' ? null : lb.level, now: true }); }}>Seal now</button>
+        </div>
+        <div className="row wrap">
+          <button className="btn sm ghost" onClick={() => { if (confirm('Lift every lockdown on ' + target + '?')) cmd(arena, 'unlock_all'); }}>Lift all lockdowns</button>
+          <button className="btn sm ghost" onClick={() => cmd(arena, 'spawn_loot')}>Top up med kits &amp; loot</button>
+        </div>
       </div>
     </div>
   );
@@ -673,7 +666,7 @@ function Finale({ d, arenas, arena, cmd }: { d: any; arenas: any[]; arena: strin
               <b style={{ width: 24 }}>{k}</b><div className="grow"><b>{v.name}</b> <span className="muted">— {v.text}</span></div>
               <button className="btn xs" onClick={() => { cmd(target, 'finale_stage', { stage: k }); if (STAGE_KIND[k]) setKind(STAGE_KIND[k]); }}>Set stage</button>
               {STAGE_KIND[k] && <button className="btn xs primary" onClick={() => cmd(target, 'launch_sync', { kind: STAGE_KIND[k], seconds: secs || null })}>Launch round</button>}
-              {k === 'D' && <button className="btn xs danger" onClick={() => cmd(target, 'reveal_squad00')}>Reveal Squad 00</button>}
+              {k === 'D' && <button className="btn xs danger" onClick={() => cmd(target, 'final_lockdown')}>Final lockdown</button>}
             </div>
           ))}
         </div>

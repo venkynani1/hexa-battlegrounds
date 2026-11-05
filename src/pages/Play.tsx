@@ -8,6 +8,9 @@ import { buzz, sfx, unlockAudio } from '../lib/sound';
 import { SHORT } from '../components/CampusMap';
 import WorldTab from './PlayWorld';
 import FruitSlash from '../components/FruitSlash';
+import BottleShoot from '../components/BottleShoot';
+import MemoryCards from '../components/MemoryCards';
+import PlayingCards from '../components/PlayingCards';
 import { BusInterior, ShuttleJourney } from '../components/Shuttle';
 import { PhaseBanner } from '../components/Phase';
 import { Countdown, FeedList, HostOverlays, HpBar, Loading, SettingsSheet, Sheet, TimerBar, toast, ZoneChip } from '../components/ui';
@@ -158,8 +161,15 @@ function useGameEffects(s: any, map: MapData | null) {
     if (sInv > pInv) sfx.loot();
     if (s.arena.zone_next_at && s.arena.zone_next_at !== p.arena.zone_next_at) { sfx.zone(); buzz([300, 100, 300]); toast('☢ Safe zone shrinking — get inside the white circle', 'bad'); }
     if (s.arena.overlay?.red?.at && s.arena.overlay.red.at !== p.arena.overlay?.red?.at) { sfx.enemy(); buzz([200, 80, 200, 80, 200]); toast('💥 Red zone incoming — clear the red circle!', 'bad'); }
-    if ((s.airdrops?.length || 0) > (p.airdrops?.length || 0)) { sfx.airdrop(); toast(`✈ Airdrop at ${locName(map, s.airdrops[0]?.location)}`, 'warn'); }
-    if (s.story?.[0]?.at && s.story[0].at !== p.story?.[0]?.at) { sfx.transmission(); toast(`▓ Squad 00: ${s.story[0].title}`, 'warn'); }
+    const newDrop = (s.airdrops || []).find((a: any) => !(p.airdrops || []).some((b: any) => b.id === a.id));
+    if (newDrop) { sfx.airdrop(); toast(newDrop.tier === 'vault' ? `🟧 Vault unlocked in ${locName(map, newDrop.location)}` : `✈ Airdrop at ${locName(map, newDrop.location)}`, 'warn'); }
+    const pl = (p.arena.overlay?.lock || []) as any[]; const sl = (s.arena.overlay?.lock || []) as any[];
+    for (const l of sl) {
+      const before = pl.find((x) => x.id === l.id);
+      if (!before && !l.sealed) { sfx.siren(); buzz([200, 100, 200]); toast(`🚨 LOCKDOWN: ${l.n}${l.l !== null ? ` floor ${l.l === 0 ? 'G' : l.l}` : ''} seals soon`, 'bad'); }
+      else if (before && !before.sealed && l.sealed) { sfx.slam(); toast(`🔒 ${l.n}${l.l !== null ? ` floor ${l.l === 0 ? 'G' : l.l}` : ''} sealed`, 'bad'); }
+    }
+    if ((s.story?.length || 0) > (p.story?.length || 0) && s.story[0]?.title === 'Final lockdown') { sfx.slam(); toast('🔒 FINAL LOCKDOWN — only Hexavarsity is open', 'warn'); }
     if (s.team.state === 'traveling' && p.team.state !== 'traveling') sfx.tap();
     if (p.team.state === 'traveling' && s.team.state === 'idle') sfx.gate();
     const newMsg = (s.comms?.messages?.length || 0) > (p.comms?.messages?.length || 0) && !s.comms.messages.at(-1)?.mine;
@@ -515,8 +525,11 @@ function ActivityCard({ a, s, token, refresh, battle = false }: { a: any; s: any
             {revealLeft !== null && <span className="chip bad">Vanishes in {revealLeft}s</span>}
           </div>
           {clue.game?.type === 'fruit' && !clue.expired && <FruitSlash fruits={clue.game.fruits} bomb={clue.game.bomb} />}
+          {clue.game?.type === 'bottle' && !clue.expired && <BottleShoot bottles={clue.game.bottles} ammo={clue.game.ammo} />}
+          {clue.game?.type === 'cards' && !clue.expired && <MemoryCards deck={clue.game.deck} />}
+          {clue.cards && <PlayingCards cards={clue.cards} />}
           {clue.grid?.rows && <SudokuGrid rows={clue.grid.rows} />}
-          {!(clue.grid?.rows) && <div className={`clue ${clue.mono ? 'mono' : ''} ${clue.expired ? 'expired' : ''} ${(clue.reveal_seconds && !clue.expired) || clue.big ? 'big' : ''}`}>{clue.body}</div>}
+          {!(clue.grid?.rows) && !clue.cards && <div className={`clue ${clue.mono ? 'mono' : ''} ${clue.expired ? 'expired' : ''} ${(clue.reveal_seconds && !clue.expired) || clue.big ? 'big' : ''}`}>{clue.body}</div>}
           {a.relay_backup && <div className="panel good"><div className="panel-title">Backup codeword</div><div className="clue big mono">{a.relay_backup}</div></div>}
           <p className="muted" style={{ margin: 0, fontSize: 13 }}>Tell your captain what you see. Only the captain can submit.</p>
         </div>
@@ -599,25 +612,6 @@ function SquadTab({ s, token, map, refresh }: { s: any; token: string; map: MapD
         </div>
       </div>
 
-      {s.bargains?.length > 0 && s.bargains.map((b: any) => (
-        <div key={b.id} className="panel danger scanlines">
-          <div className="kind-tag transmission">▓ Squad 00 offers a deal</div>
-          <h3 style={{ marginTop: 6 }}>{b.title}</h3>
-          <p className="transmission" style={{ whiteSpace: 'pre-wrap' }}>{b.body}</p>
-          <div className="row wrap" style={{ gap: 6 }}>
-            <span className="chip gold">+{b.offer?.coins ?? 0} coins</span>
-            <span className="chip bad">{b.offer?.trust ?? 0} trust</span>
-            <span className="chip bad">+{b.offer?.threat ?? 1} threat</span>
-          </div>
-          {isCaptain ? (
-            <div className="row" style={{ marginTop: 10 }}>
-              <button className="btn danger grow" disabled={busy} onClick={() => act('captain_bargain', { p_story: b.id, p_accept: true }, 'Deal accepted…')}>Accept</button>
-              <button className="btn ghost grow" disabled={busy} onClick={() => act('captain_bargain', { p_story: b.id, p_accept: false }, 'Deal refused')}>Refuse</button>
-            </div>
-          ) : <p className="muted" style={{ fontSize: 13 }}>Your captain decides. Every choice is recorded for the finale.</p>}
-        </div>
-      ))}
-
       <div className="panel">
         <div className="panel-title">Inventory</div>
         {Object.keys(s.inventory || {}).length === 0 && <p className="muted" style={{ margin: 0 }}>Empty. Complete missions to collect loot.</p>}
@@ -665,16 +659,22 @@ function SquadTab({ s, token, map, refresh }: { s: any; token: string; map: MapD
               </div>
             ))}
           </div>
-          <p className="muted" style={{ fontSize: 12, marginBottom: 0 }}>Alliance: both pay 10 coins, both gain 10 trust and always see each other on the map. Attacking an ally is a betrayal: −20 trust and the Squad 00 threat rises.</p>
+          <p className="muted" style={{ fontSize: 12, marginBottom: 0 }}>Alliance: both pay 10 coins, both gain 10 trust and always see each other on the map. Attacking an ally is a betrayal: −20 trust.</p>
         </div>
       )}
 
-      {s.story?.length > 0 && (
-        <div className="panel scanlines">
-          <div className="panel-title">Squad 00 transmissions</div>
-          {s.story.map((st: any, i: number) => (
-            <div key={i} style={{ marginBottom: 8 }}><b className="transmission">{st.title}</b><div className="transmission" style={{ whiteSpace: 'pre-wrap', fontSize: 14 }}>{st.body}</div></div>
-          ))}
+      {(s.arena.overlay?.lock || []).length > 0 && (
+        <div className="panel danger">
+          <div className="panel-title">Campus lockdowns</div>
+          <div className="list">
+            {[...(s.arena.overlay.lock as any[])].reverse().map((l) => (
+              <div key={l.id} className="list-item">
+                <span className="grow">{l.sealed ? '🔒' : '🚨'} {l.n}{l.l !== null ? ` · floor ${l.l === 0 ? 'G' : l.l}` : ' · whole building'}</span>
+                {l.sealed ? <span className="chip">{l.caught ? `${l.caught} caught` : 'sealed'}</span> : <span className="chip bad">seals in <Countdown to={l.at} /></span>}
+              </div>
+            ))}
+          </div>
+          <p className="muted" style={{ fontSize: 12, marginBottom: 0 }}>When an alarm sounds, get out before the doors shut: squads caught inside lose 30 HP and are thrown out. Each alarm unlocks a vault inside — risky, but the best loot on campus.</p>
         </div>
       )}
 

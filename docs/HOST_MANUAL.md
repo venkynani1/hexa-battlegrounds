@@ -27,7 +27,7 @@
 - [ ] `npm run loadtest` against the real project with `SQUADS=15 MINUTES=3` → p95 under 500 ms, no unexpected rejections.
 - [ ] On venue Wi-Fi: join with at least 4 real phones (1 Android, 1 iPhone) as one squad; play a full loop: roles → drop → mission → battle → airdrop → finale round.
 - [ ] Projector: fullscreen, sound on, readable from the back row, correct map.
-- [ ] Test **Pause/Resume**, **Broadcast**, **Countdown**, **Blackout**, a **Squad 00 transmission**, **Zone warning**.
+- [ ] Test **Pause/Resume**, **Broadcast**, **Countdown**, **Blackout**, a **lockdown alarm** (Suspense → Collapsing Campus), **Zone warning**.
 - [ ] Test a disconnect: close a phone browser, reopen `/play` — it must resume the same role.
 - [ ] Walk the 3D world with the captain's joystick, call a **red zone**, shrink the zone and check that phones outside lose HP.
 - [ ] Reset the rehearsal map: Game control → **Reset map** (type `RESET`) — squads and players stay, gameplay is wiped. Or create a fresh event code for the real game.
@@ -42,7 +42,7 @@ Game control → **Automatic match**: pick a length and press **▶ START MATCH*
 | Standard | phases at 2, 6, 11, 16 min · finale at 21 min | 2 battle rounds | ≈ 35 min |
 | Full | phases at 3, 15, 30, 45 min · finale at 55 min | 3 battle rounds | ≈ 75 min |
 
-After that nothing needs a button: boarding countdown → bus → role claim → Phases 0–4 (zone shrinks, airdrops, red zones from Phase 2, a Squad 00 transmission each phase and bargains in Phases 2 and 3) → finale in Training Room 14 (entry round A, exchange round B, battle round(s) C, Squad 00 reveal D, final code E). Each finale round ends early once every squad has finished it, with a 10 s break before the next → results lock → winner reveal → grand champion when every map has its winner.
+After that nothing needs a button: boarding countdown → bus → role claim → Phases 0–4 (zone shrinks, airdrops, red zones from Phase 2, loot on the ground, and from Phase 1 a lockdown alarm every few minutes that seals floors and buildings one by one) → finale in Training Room 14 (entry round A, exchange round B, battle round(s) C, Final Lockdown D, final code E). Each finale round ends early once every squad has finished it, with a 10 s break before the next → results lock → winner reveal → grand champion when every map has its winner.
 
 - The panel shows what happens next and when (also shown on the projector and phones).
 - **Pause** freezes everything, including the autopilot's countdown. **Resume** carries on.
@@ -51,6 +51,16 @@ After that nothing needs a button: boarding countdown → bus → role claim →
 - The autopilot runs inside the game's own clock, which every phone, the projector and this console keep ticking. Keep at least the projector or this page open during the match.
 - Reset map turns the autopilot off.
 
+## Collapsing Campus (lockdowns)
+Suspense → **Collapsing Campus**:
+- **Sound the next alarm now** — the next building/floor on the collapse order gets a countdown (`lock_warning`, default 45 s) and a vault opens inside.
+- Pick a building (and optionally one floor) → **Alarm (with countdown)** or **Seal now** (squads inside take `lock_damage` immediately).
+- **Lift all lockdowns** reopens everything on the map. **Top up med kits & loot** refills the ground loot.
+- Automatic alarms start in Phase 1 every `lock_interval` seconds (0 = host only). Hexavarsity never seals; finale stage D seals everything else.
+
+## Floors, stairs and loot (what players see)
+Squads are buggies. Rooms are on different floors; the captain drives onto a green ⇅ STAIRS ring and uses ▲ ▼ to climb. Med kits, shield packs and coin stacks lie around (also upstairs); driving over them picks them up. Wrong answers cost 5 HP, unsolved challenges 20 HP.
+
 ## Running the game — phases
 Each map card shows the current **match phase** with *◀ / Next phase ▶* and *Hide rankings*. With automatic pacing the phases advance on the timeline shown in Match pacing; the zone contracts by itself toward each phase's target (*Cancel* holds it). Duels are locked until Phase 2. *Hide rankings* seals the leaderboard on the projector and on phones without changing any score.
 
@@ -58,8 +68,8 @@ Each map card shows the current **match phase** with *◀ / Next phase ▶* and 
 Follow the run-sheet in [GAME_DESIGN.md](GAME_DESIGN.md#120-minute-run-sheet-per-map-parallel-maps-run-the-same-sheet). Typical sequence per map (or *All maps*):
 1. **Open boarding** (assigns buses). You can start with any number of complete squads from 1 to 15; incomplete squads stay in the lobby. An empty map is refused.
 2. **DRIVE** → 10 s shuttle → Gate 1 role claim (15 s) → map revealed.
-3. During play: airdrops and **red zones** (Map & zone), transmissions and bargains (Suspense), zone warnings (Map & zone or automatic). The safe zone is a shrinking circle; squads outside lose HP over time and are never teleported. Red zones give phones a 20 s warning, then hit squads still inside for 30 HP.
-4. **Begin finale** → set stage and **Launch round** for A, B, C (repeat C as you like), **Reveal Squad 00** for D, launch E.
+3. During play: airdrops and **red zones** (Map & zone), **lockdown alarms** and loot top-ups (Suspense → Collapsing Campus), zone warnings (Map & zone or automatic). The safe zone is a shrinking circle; squads outside lose HP over time and are never teleported. Red zones give phones a 20 s warning, then hit squads still inside for 30 HP.
+4. **Begin finale** → set stage and **Launch round** for A, B, C (repeat C as you like), **Final lockdown** for D, launch E.
 5. **Lock results** → **Reveal winner** on each map → **Reveal grand champion**.
 6. Logs → **Export event summary** (results, ledger, audit, aggregate analytics).
 
