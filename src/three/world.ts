@@ -126,6 +126,14 @@ class Batch {
       if (!geo) continue;
       const mesh = new THREE.Mesh(geo, mat);
       mesh.castShadow = shadows; mesh.receiveShadow = true;
+      // Flat ground layers (footpaths, car parks, roads, lane paint) lie a few cm apart and overlap
+      // at junctions. Drawing them strictly in layer order, pulled towards the camera and without
+      // writing depth, stops them flickering (z-fighting) when the camera is far away.
+      const layer = (mat.userData as any).groundLayer as number | undefined;
+      if (layer) {
+        mat.depthWrite = false; mat.polygonOffset = true; mat.polygonOffsetFactor = -1; mat.polygonOffsetUnits = -4 * layer;
+        mesh.renderOrder = layer; mesh.castShadow = false;
+      }
       parent.add(mesh);
       list.forEach((g) => g.dispose());
     }
@@ -307,6 +315,8 @@ export class WorldScene {
       clay: new THREE.MeshStandardMaterial({ color: 0xc9a46b, roughness: 1 }),
       red: new THREE.MeshStandardMaterial({ color: 0xd8423a, roughness: 0.6 }),
     };
+    // ground layers, bottom to top (see Batch.flush)
+    ([[M.walk, 1], [M.turf, 1], [M.lot, 2], [M.paving, 2], [M.clay, 2], [M.road, 3], [M.lane, 4]] as [THREE.Material, number][]).forEach(([m, n]) => { m.userData.groundLayer = n; });
     const P = {
       box: new THREE.BoxGeometry(1, 1, 1),
       cyl: new THREE.CylinderGeometry(0.5, 0.5, 1, 12),
@@ -350,15 +360,15 @@ export class WorldScene {
         const mid = a.clone().add(b).multiplyScalar(0.5); const ang = Math.atan2(b.x - a.x, b.z - a.z);
         const w = r.w * S;
         batch.add(P.plane, M.walk, [mid.x, 0.06, mid.z], ang, [w + 7, 1, len + w + 7]);
-        batch.add(P.box, M.curb, [mid.x, 0.12, mid.z], ang, [w + 0.6, 0.18, len + w]);
-        batch.add(P.plane, M.road, [mid.x, 0.22, mid.z], ang, [w, 1, len + w]);
+        batch.add(P.box, M.curb, [mid.x, 0.1, mid.z], ang, [w + 0.6, 0.16, len + w]);
+        batch.add(P.plane, M.road, [mid.x, 0.26, mid.z], ang, [w, 1, len + w]);
         for (let d = 3; d < len - 3; d += 6) dashes.push({ p: a.clone().lerp(b, d / len), a: ang });
         const side = new THREE.Vector3(Math.cos(ang), 0, -Math.sin(ang)).multiplyScalar(w / 2 + 2.6);
         for (let d = 8; d < len - 4; d += 34) { const p = a.clone().lerp(b, d / len); lampPts.push(p.clone().add(side)); lampPts.push(p.clone().sub(side)); }
         roadSegs.push([ax, ay, bx, by, r.w]);
       }
     }
-    for (const d of dashes) batch.add(P.plane, M.lane, [d.p.x, 0.25, d.p.z], d.a, [0.22, 1, 2.6]);
+    for (const d of dashes) batch.add(P.plane, M.lane, [d.p.x, 0.3, d.p.z], d.a, [0.22, 1, 2.6]);
     for (const p of lampPts) {
       batch.add(P.cyl6, M.metal, [p.x, 3, p.z], 0, [0.22, 6, 0.22]);
       batch.add(P.box, M.lampHead, [p.x, 6.05, p.z], 0, [1, 0.22, 0.45]);
@@ -1106,6 +1116,8 @@ export class WorldScene {
     }
     this.camera.position.copy(this.camPos);
     this.camera.lookAt(this.camTarget);
+    const near = this.mode === 'follow' ? 0.3 : 3;
+    if (this.camera.near !== near) { this.camera.near = near; this.camera.updateProjectionMatrix(); }
 
     const stt = this.mode === 'follow' ? this.camTarget : new THREE.Vector3();
     this.sun.position.set(stt.x - 80, stt.y + 140, stt.z + 60);
