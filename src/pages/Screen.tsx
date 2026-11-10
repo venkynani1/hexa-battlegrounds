@@ -2,13 +2,16 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { friendly, rpc } from '../lib/api';
 import { useLive } from '../lib/live';
-import { msUntil, progress, secondsLeft, useNow, fmtClock } from '../lib/time';
+import { msUntil, progress, secondsLeft, serverTime, useNow, fmtClock } from '../lib/time';
+import { zoneNow } from '../lib/zone';
+import { useShots } from '../lib/motion';
+import type { WorldScene } from '../three/world';
 import { feedText, FINALE_STAGES, KIND_LABEL, MapData, useMapData, ZONE_TEXT } from '../lib/game';
 import { sfx, unlockAudio, audioReady } from '../lib/sound';
 import CampusMap from '../components/CampusMap';
 import { lazy, Suspense, useState as useStateR } from 'react';
 const World3D = lazy(() => import('../three/World3D'));
-import { RoadScene, busCode, shuttleStage } from '../components/Shuttle';
+import { FlightScreen, GateScreen } from '../components/Flight';
 import { PhaseBanner } from '../components/Phase';
 import { Countdown, FeedList, HostOverlays, Loading, QR, ThreatMeter } from '../components/ui';
 
@@ -44,8 +47,9 @@ export default function Screen() {
       {alert && <div className={`broadcast ${alert.tone === 'good' ? 'info' : ''}`} style={{ fontSize: 26, padding: 18 }}>{alert.text}</div>}
       <StoryFlash lock={s.arena?.overlay?.lock || []} />
       {phase === 'lobby' && <LobbyScreen s={s} />}
-      {(phase === 'boarding' || phase === 'shuttle') && <ShuttleScreen s={s} />}
-      {phase === 'roles' && <RolesScreen s={s} />}
+      {phase === 'boarding' && <GateScreen s={s} />}
+      {(phase === 'shuttle' || (phase === 'roles' && s.arena.overlay?.flight)) && <FlightScreen s={s} />}
+      {phase === 'roles' && !s.arena.overlay?.flight && <RolesScreen s={s} />}
       {phase === 'play' && <PlayScreen s={s} map={map} />}
       {phase === 'finale' && <FinaleScreen s={s} map={map} />}
       {(phase === 'results' || phase === 'ended') && <ResultsScreen s={s} />}
@@ -142,55 +146,6 @@ function LobbyScreen({ s }: { s: any }) {
   );
 }
 
-function ShuttleScreen({ s }: { s: any }) {
-  useNow(500);
-  const buses = useMemo(() => {
-    const m: Record<number, any[]> = {};
-    s.squads.filter((q: any) => q.bus).forEach((q: any) => (m[q.bus] ||= []).push(q));
-    return Object.entries(m).map(([b, sq]) => ({ bus: Number(b), squads: sq })).sort((a, b) => a.bus - b.bus);
-  }, [s.squads]);
-  const ready = s.squads.filter((q: any) => q.ready).length;
-  if (s.arena.phase === 'shuttle') {
-    const st = shuttleStage(s.arena.shuttle_departed_at, s.arena.shuttle_arrive_at);
-    return (
-      <div className="screen-full" style={{ justifyContent: 'flex-start', paddingTop: '3vh', gap: '2vh' }}>
-        <div className="row between" style={{ width: '94vw' }}>
-          <span className="up" style={{ fontSize: 26, color: 'var(--orange)' }}>SIPCOT → Operation Siruseri · {s.arena.name}</span>
-          <span className="mega" style={{ fontSize: 'clamp(30px,4vw,64px)' }}>{st.doors ? 'Doors closing' : st.arriving ? 'Arriving at Gate 1' : 'En route'}</span>
-        </div>
-        <div style={{ width: '94vw' }}>
-          <RoadScene big start={s.arena.shuttle_departed_at} end={s.arena.shuttle_arrive_at}
-            buses={buses.filter((b) => b.squads.some((q: any) => q.ready)).map((b) => ({ bus: b.bus, label: b.squads.filter((q: any) => q.ready).map((q: any) => q.name).join(' · ') }))} />
-        </div>
-        <div className="row wrap" style={{ gap: 12, justifyContent: 'center' }}>
-          {buses.map((b) => <span key={b.bus} className="chip gold" style={{ fontSize: 18, padding: '8px 14px' }}>{busCode(b.bus)}: {b.squads.filter((q: any) => q.ready).map((q: any) => `#${q.number}`).join(' ')}</span>)}
-        </div>
-      </div>
-    );
-  }
-  return (
-    <div className="screen-full" style={{ justifyContent: 'flex-start', paddingTop: '4vh' }}>
-      <div className="up muted" style={{ fontSize: 24 }}>SIPCOT shuttle terminal · {s.arena.name}</div>
-      <div className="mega">Boarding</div>
-      <div className="up" style={{ fontSize: 22, color: 'var(--green)' }}>{ready} / {s.squads.length} squads ready · doors open</div>
-      <div className="squad-grid" style={{ width: '92vw', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', marginTop: 12 }}>
-        {buses.map((b) => (
-          <div key={b.bus} className="bus-card">
-            <div className="row between"><b className="up" style={{ fontSize: 26, color: 'var(--gold)' }}>🚌 {busCode(b.bus)}</b>
-              <span className="chip">{b.squads.filter((q: any) => q.ready).length}/{b.squads.length} squads</span></div>
-            {b.squads.map((q: any) => (
-              <div key={q.number} style={{ marginTop: 10, textAlign: 'left' }}>
-                <div className="row between"><span style={{ fontSize: 17 }}><b>#{q.number}</b> {q.name}</span><span className={`chip ${q.ready ? 'good' : ''}`}>{q.players}/4</span></div>
-                <div className="seats">{[0, 1, 2, 3].map((i) => <i key={i} className={i < q.players ? 'on' : ''} />)}</div>
-              </div>
-            ))}
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
-
 function RolesScreen({ s }: { s: any }) {
   useNow(200);
   return (
@@ -209,11 +164,20 @@ function RolesScreen({ s }: { s: any }) {
 // Projector battlefield: 3D campus (orbiting camera) with a 2D tactical fallback/toggle.
 function ProjectorWorld({ s, map, zoneWarn }: { s: any; map: MapData; zoneWarn: boolean }) {
   const [view, setView] = useStateR<'3d' | '2d'>(() => (typeof document !== 'undefined' && !!document.createElement('canvas').getContext('webgl') ? '3d' : '2d'));
-  const zone = s.arena.overlay?.zone; const red = s.arena.overlay?.red || null;
+  const zoneRaw = s.arena.overlay?.zone; const red = s.arena.overlay?.red || null;
+  useNow(500);
+  const zn = zoneNow(zoneRaw, serverTime());
+  const zone = zoneRaw ? { ...zoneRaw, cur: zn.cur, next: zn.next } : zoneRaw;
   const squads = s.squads.filter((q: any) => q.ready);
+  // gunfire on the big screen: the same broadcast the phones send
+  const scene = useRef<WorldScene | null>(null);
+  useShots(s.arena.id, (sh) => scene.current?.shot(sh.a, sh.b, sh.hit));
   const state = {
     squads: squads.filter((q: any) => q.pos).map((q: any) => ({ key: String(q.number), number: q.number, x: q.pos[0], y: q.pos[1], ally: false, inBattle: q.in_battle, down: q.state === 'recovery', label: `SQ ${q.number}`,
-      vx: q.vel?.[0] || 0, vy: q.vel?.[1] || 0, at: new Date(s.server_now).getTime(), level: q.level || 0, bldg: q.bldg })),
+      vx: q.vel?.[0] || 0, vy: q.vel?.[1] || 0, at: new Date(s.server_now).getTime(), level: q.level || 0, bldg: q.bldg,
+      foot: (q.vehicle && q.vehicle !== 'in') || q.parachute, buggy: q.buggy || null, chute: !!q.parachute, hidden: !!q.in_plane,
+      landAt: q.parachute && q.land_at ? new Date(q.land_at).getTime() : undefined })),
+    plane: s.arena.phase === 'play' ? s.arena.overlay?.plane || null : null,
     pickups: s.pickups || [], lock: s.arena.overlay?.lock || [],
     zone, red, airdrops: (s.airdrops || []).map((a: any, i: number) => ({ key: `${a.location}-${i}`, location: a.location, tier: a.tier })),
     battles: (s.battles || []).filter((b: any) => b.x != null).map((b: any) => ({ key: `${b.attacker}-${b.defender}`, x: b.x, y: b.y })),
@@ -222,7 +186,7 @@ function ProjectorWorld({ s, map, zoneWarn }: { s: any; map: MapData; zoneWarn: 
   return (
     <div style={{ position: 'relative', height: '100%', minHeight: 0, borderRadius: 12, overflow: 'hidden' }}>
       {view === '3d'
-        ? <Suspense fallback={<div className="world-loading">Loading 3D campus…</div>}><World3D map={map} state={state} mode="orbit" /></Suspense>
+        ? <Suspense fallback={<div className="world-loading">Loading 3D campus…</div>}><World3D map={map} state={state} mode="orbit" sceneRef={scene} /></Suspense>
         : <CampusMap map={map} zoneStage={s.arena.zone_stage} zoneWarning={zoneWarn} interactive={false} height="100%" bigLabels zone={zone} red={red}
             squads={squads} airdrops={s.airdrops} battles={s.battles} />}
       <button className="btn xs ghost" style={{ position: 'absolute', right: 10, bottom: 10 }} onClick={() => setView((v) => (v === '3d' ? '2d' : '3d'))}>{view === '3d' ? '2D tactical' : '3D view'}</button>

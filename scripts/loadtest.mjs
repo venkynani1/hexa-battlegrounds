@@ -41,6 +41,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const pct = (a, p) => { const s = [...a].sort((x, y) => x - y); return Math.round(s[Math.min(s.length - 1, Math.floor((p / 100) * s.length))] || 0); };
 
 const host = (await rpc('host_create_event', { p_code: EVENT, p_name: 'Load test', p_secret: SECRET, p_arenas: MAPS }, false)).token;
+await rpc('host_settings', { p_token: host, p_settings: { shuttle_seconds: 8, roles_seconds: 3, plane_seconds: 40 } }, false);
 const pins = await rpc('host_generate_teams', { p_token: host, p_count: SQUADS }, false);
 console.log(`Event ${EVENT}: ${pins.length} squads on ${MAPS} map(s). Joining ${pins.length * 4} phones…`);
 const squads = [];
@@ -56,7 +57,7 @@ const arenas = ov.arenas.map((a) => a.id);
 for (const a of arenas) await rpc('host_command', { p_token: host, p_arena: a, p_cmd: 'zone_cancel', p_args: {} }, false).catch(() => {});
 for (const a of arenas) await rpc('host_command', { p_token: host, p_arena: a, p_cmd: 'open_boarding', p_args: {} }, false);
 for (const a of arenas) await rpc('host_command', { p_token: host, p_arena: a, p_cmd: 'drive', p_args: {} }, false);
-const shuttle = (ov.event.settings.shuttle_seconds || 10) * 1000;
+const shuttle = 8000;
 console.log(`Bus ride (${shuttle / 1000}s)…`);
 await sleep(shuttle + 1500);
 // everyone races for captain at once (race-safety check), then the rest of the roles are filled
@@ -64,10 +65,12 @@ await Promise.allSettled(squads.flatMap((s) => s.tokens.map((t) => rpc('claim_ro
 for (const a of arenas) await rpc('host_command', { p_token: host, p_arena: a, p_cmd: 'finalize_roles', p_args: {} }, false);
 await sleep(1200);
 for (const a of arenas) await rpc('host_command', { p_token: host, p_arena: a, p_cmd: 'finalize_roles', p_args: {} }, false).catch(() => {});
+await sleep(1000);
+for (const a of arenas) await rpc('host_command', { p_token: host, p_arena: a, p_cmd: 'set_phase', p_args: { phase: 1 } }, false).catch(() => {}); // gunfights on
 const map = await rpc('map_data', {}, false);
 const ground = map.locations.filter((l) => l.enabled !== false && (l.level || 0) === 0 && !['start', 'stairs'].includes(l.kind));
 const end = Date.now() + MINUTES * 60000;
-let solved = 0; let steers = 0;
+let solved = 0; let steers = 0; let shots = 0; let knocks = 0;
 console.log(`Playing for ${MINUTES} min with ${squads.length * 4} phones (${REALTIME ? 'Realtime on' : 'Realtime off: fast polling'})…`);
 
 // answers come from the host view, fetched once every few seconds for everybody (the host console does the same)
@@ -89,6 +92,21 @@ async function phone(token) {
     (async () => { while (Date.now() < end) { await sleep(1800 + Math.random() * 500); await rpc('arena_positions', { p_token: token }).catch(() => {}); } })(),
   ];
   await sleep(STATE_MS + 500);
+  // every phone shoots at the nearest rival in range (like holding FIRE), from phase 1
+  if (process.env.FIRE !== '0') loops.push((async () => {
+    while (Date.now() < end) {
+      await sleep(700 + Math.random() * 200);
+      if (!st || st.arena.phase !== 'play' || (st.arena.overlay?.match?.phase ?? 0) < 1 || !st.team.dropped) continue;
+      try {
+        const ps = await rpc('arena_positions', { p_token: token });
+        const me = ps.squads.find((q) => q.id === st.team.id);
+        if (!me?.pos) continue;
+        const rv = ps.squads.filter((q) => q.id !== me.id && q.pos && !q.plane && !q.chute && q.state !== 'recovery' && q.level === me.level)
+          .map((q) => ({ q, d: Math.hypot(q.pos[0] - me.pos[0], q.pos[1] - me.pos[1]) })).filter((x) => x.d < 0.05).sort((a, b) => a.d - b.d)[0];
+        if (rv) { const r = await rpc('squad_fire', { p_token: token, p_target: rv.q.id }); shots++; if (r.knocked) knocks++; }
+      } catch { /* refusals (cover, cooldown, protected) are part of the game */ }
+    }
+  })());
   if (captain) loops.push((async () => {
     while (Date.now() < end) {
       if (!st || st.arena.phase !== 'play') { await sleep(1000); continue; }
@@ -139,7 +157,7 @@ await Promise.all(squads.flatMap((s) => s.tokens.map((t) => phone(t))));
 clearInterval(prog);
 const secs = (Date.now() - t0) / 1000;
 const all = Object.values(lat).flat();
-console.log(`\nPhones: ${squads.length * 4} · calls: ${calls} (${(calls / secs).toFixed(0)} per second) · steering calls: ${steers} · missions solved: ${solved}`);
+console.log(`\nPhones: ${squads.length * 4} · calls: ${calls} (${(calls / secs).toFixed(0)} per second) · steering calls: ${steers} · shots: ${shots} · knock-outs: ${knocks} · missions solved: ${solved}`);
 console.log(`All calls, ms: p50 ${pct(all, 50)} · p95 ${pct(all, 95)} · p99 ${pct(all, 99)} · max ${Math.round(Math.max(...all))}`);
 for (const [fn, a] of Object.entries(lat).sort((x, y) => y[1].length - x[1].length)) console.log(`  ${fn.padEnd(22)} ${String(a.length).padStart(6)} calls · p50 ${String(pct(a, 50)).padStart(4)} · p95 ${String(pct(a, 95)).padStart(5)} · max ${Math.round(Math.max(...a))}`);
 console.log(`Server errors / dropped requests (should be 0): ${failed}`);

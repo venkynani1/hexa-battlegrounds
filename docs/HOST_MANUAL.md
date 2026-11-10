@@ -42,7 +42,7 @@ Game control → **Automatic match**: pick a length and press **▶ START MATCH*
 | Standard | phases at 2, 6, 11, 16 min · finale at 21 min | 2 battle rounds | ≈ 35 min |
 | Full | phases at 3, 15, 30, 45 min · finale at 55 min | 3 battle rounds | ≈ 75 min |
 
-After that nothing needs a button: boarding countdown → bus → role claim → Phases 0–4 (zone shrinks, airdrops, red zones from Phase 2, loot on the ground, and from Phase 1 a lockdown alarm every few minutes that seals floors and buildings one by one) → finale in Training Room 14 (entry round A, exchange round B, battle round(s) C, Final Lockdown D, final code E). Each finale round ends early once every squad has finished it, with a 10 s break before the next → results lock → winner reveal → grand champion when every map has its winner.
+After that nothing needs a button: boarding at the gate → take-off and flight (roles handed out automatically) → the plane crosses the campus and squads jump → Phases 0–4 (zone shrinks, airdrops, red zones from Phase 2, loot on the ground, and from Phase 1 a lockdown alarm every few minutes that seals floors and buildings one by one) → finale in Training Room 14 (entry round A, exchange round B, battle round(s) C, Final Lockdown D, final code E). Each finale round ends early once every squad has finished it, with a 10 s break before the next → results lock → winner reveal → grand champion when every map has its winner.
 
 - The panel shows what happens next and when (also shown on the projector and phones).
 - **Pause** freezes everything, including the autopilot's countdown. **Resume** carries on.
@@ -50,6 +50,16 @@ After that nothing needs a button: boarding countdown → bus → role claim →
 - **Manual control** switches the autopilot off for that map. **Start match** again hands it back from wherever the match is.
 - The autopilot runs inside the game's own clock, which every phone, the projector and this console keep ticking. Keep at least the projector or this page open during the match.
 - Reset map turns the autopilot off.
+
+## The start: airport, flight, jump (v6)
+- **Check-in:** players scan the QR (or open `/join`) and check in at "Chennai International Airport" with the **map number** and the **squad PIN** — no squad number to type. Their phone then shows a **boarding pass** (passenger, flight HX 26‹map›, seat, gate).
+- **Roles** are handed out by the game at take-off (one random captain per squad, then scout, decoder, intel). Nobody picks.
+- **Flight:** phones and the big screen show the plane taking off from Chennai and flying along OMR to Siruseri.
+- **Jump:** the plane crosses the campus in a straight line (about 55 s). The captain picks a landing spot inside the dashed **gliding circle** and presses **JUMP**; the squad parachutes down. When the plane is about to leave, everyone still on board is dropped automatically.
+- **On foot:** squads land on foot and walk to the nearest parking yard, where the buggy with their number waits (**GET IN**). Buggies cannot enter buildings — the captain parks at the door and walks in through the front entrance. Inside, the captain sees the building **in first person** (drag to look, joystick to walk, ▲▼ at the stairs); teammates watch the captain from behind.
+- **Gunfights** start in Phase 1: every squad member has a **FIRE** button when a rival is in range and nothing blocks the shot. Pistol (12 rounds), SMG (fast, short range), Sniper (slow, long range, headshots). At 0 HP a squad is knocked out into Recovery (never eliminated); the squad that knocked it gets points, coins and part of its coins.
+- **Zone (Free Fire style):** the white circle shows the next safe zone, a countdown runs, then the blue gas wall closes in smoothly. Damage outside grows every stage (1 → 8 HP every 2 s).
+- To run the earlier bus start instead (role claims, no plane), set `br_mode` to 0 in Settings.
 
 ## Fixed squad cards (same PINs and QR codes every time)
 - Tick **Create the squads with my fixed squad cards** when you create an event, or open **Links & PINs → Fixed squad cards** and type the host password.
@@ -82,7 +92,7 @@ Each map card shows the current **match phase** with *◀ / Next phase ▶* and 
 ## Running the game by hand
 Follow the run-sheet in [GAME_DESIGN.md](GAME_DESIGN.md#120-minute-run-sheet-per-map-parallel-maps-run-the-same-sheet). Typical sequence per map (or *All maps*):
 1. **Open boarding** (assigns buses). You can start with any number of complete squads from 1 to 15; incomplete squads stay in the lobby. An empty map is refused.
-2. **DRIVE** → 10 s shuttle → Gate 1 role claim (15 s) → map revealed.
+2. **DRIVE** → take-off and flight (40 s, roles assigned at take-off) → 6 s approach → the plane crosses the campus, squads jump (anyone still on board is dropped automatically when it leaves).
 3. During play: airdrops and **red zones** (Map & zone), **lockdown alarms** and loot top-ups (Suspense → Collapsing Campus), zone warnings (Map & zone or automatic). The safe zone is a shrinking circle; squads outside lose HP over time and are never teleported. Red zones give phones a 20 s warning, then hit squads still inside for 30 HP.
 4. **Begin finale** → set stage and **Launch round** for A, B, C (repeat C as you like), **Final lockdown** for D, launch E.
 5. **Lock results** → **Reveal winner** on each map → **Reveal grand champion**.
@@ -119,7 +129,7 @@ Follow the run-sheet in [GAME_DESIGN.md](GAME_DESIGN.md#120-minute-run-sheet-per
 - **Capacity:** designed for ≤ 60 players per map and ≤ 3 maps on the free tier (≈ 200 Realtime connections). For more, upgrade Supabase or run a second free project per extra map pair.
 - **Registration** is one step (name + squad number + PIN + consent). There is no separate pre-registration form or employee ID field (not collected by design).
 - **Map** is stylised and editable (`content/map.mjs`), not geographically accurate; it needs approval against a real campus plan. There is no in-app drag-and-drop map editor; host can enable/disable locations live.
-- **Encounters** are one-on-one duels (one battle per squad at a time). Multi-squad free-for-alls happen in airdrop races and finale rounds.
+- **Gunfights** are live: any squad member can hold FIRE at a rival in range and in sight. Multi-squad free-for-alls also happen in airdrop races and finale rounds.
 - **Content:** text/visual puzzles only. Audio and licensed movie challenges are not included (noise, copyright); add them via the mission editor with properly licensed assets.
 - **Trading** items between squads is negotiated in chat but not yet an in-app transaction (host can transfer with an audited adjustment).
 - **Alliances** are pairwise.

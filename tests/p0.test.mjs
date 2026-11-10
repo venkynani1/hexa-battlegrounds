@@ -41,6 +41,7 @@ before(async () => {
   await db.exec('create role anon nologin; create role authenticated nologin;');
   for (const f of readdirSync(MIG).filter((f) => f.endsWith('.sql')).sort()) await db.exec(readFileSync(new URL(f, MIG), 'utf8'));
   live = await call('host_create_event', 'LIVE1', 'Live', 'livepass1', 2);
+  await db.query(`update events set settings = settings || '{"br_mode": 0}'::jsonb`); // earlier start: bus + role claims
   liveArenas = (await all(`select id from arenas where event_id = $1 order by number`, [live.event_id])).map((r) => r.id);
 });
 
@@ -118,6 +119,8 @@ test('phase changes drive zone contraction; zone_cancel holds it; phases cannot 
   // collapse due → next warning for the following stage until the phase target (3) is reached
   for (let i = 0; i < 6; i++) {
     await db.query(`update arenas set zone_next_at = now() - interval '1 second' where id = $1 and zone_next_at is not null`, [A]);
+    // the gas wall has to finish closing in before the next warning (Free Fire rules)
+    await db.query(`update arenas set zone_shrink_from = now() - interval '60 seconds', zone_shrink_until = now() - interval '1 second' where id = $1 and zone_shrink_until is not null`, [A]);
     await unthrottle(A);
     await call('player_state', squads[1].tokens[0]);
   }

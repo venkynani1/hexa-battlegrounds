@@ -97,10 +97,12 @@ test('demo: one call creates a match of dummy squads and starts it', async () =>
   await fails(call('demo_view', (await call('host_login', 'CARDA', 'same-password')).token, 1, 'captain'), 'NOT_DEMO');
 });
 
-test('demo: dummies claim their roles, drop in and a host can open any dummy phone', async () => {
-  await db.query(`update arenas set phase = 'roles', roles_deadline = now() + interval '30 seconds', shuttle_arrive_at = now() where id = $1`, [arena]);
-  for (let i = 0; i < 25; i++) { await db.query(`update bot_clock set at = at - interval '2 seconds' where arena_id = $1`, [arena]); await db.query('select _tick($1, true)', [arena]); }
+test('demo: the game hands out roles at take-off, dummies jump from the plane and a host can open any dummy phone', async () => {
+  await db.query(`update arenas set phase = 'shuttle', shuttle_arrive_at = now() + interval '30 seconds' where id = $1`, [arena]);
+  await db.query('select _tick($1, true)', [arena]);
   assert.equal(Number((await one(`select count(*) n from players p join teams t on t.id = p.team_id where t.arena_id = $1 and p.role is not null`, [arena])).n), 24);
+  assert.equal(Number((await one(`select count(*) n from players p join teams t on t.id = p.team_id where t.arena_id = $1 and p.role = 'captain'`, [arena])).n), 6);
+  await db.query(`update arenas set phase = 'roles', roles_deadline = now() + interval '30 seconds', shuttle_arrive_at = now() where id = $1`, [arena]);
   await db.query(`update arenas set roles_deadline = now(), last_tick_at = null where id = $1`, [arena]);
   await db.query('select _tick($1, true)', [arena]);
   assert.equal((await one(`select phase from arenas where id = $1`, [arena])).phase, 'play');
@@ -113,8 +115,14 @@ test('demo: dummies claim their roles, drop in and a host can open any dummy pho
     const ds = await call('demo_status', v.token);
     assert.deepEqual([ds.demo, ds.bot, ds.manual, ds.squad], [true, true, false, 2]);
   }
-  await run(4);
-  assert.equal(Number((await one(`select count(*) n from teams where arena_id = $1 and (dropped or state = 'traveling')`, [arena])).n), 6);
+  // the plane is over the campus: dummies jump at different moments and land on foot
+  const pl = await one(`select plane_t0, plane_t1 from arenas where id = $1`, [arena]);
+  assert.ok(pl.plane_t0 && pl.plane_t1, 'the plane took off');
+  await db.query(`update arenas set plane_t0 = now() - interval '24 seconds', plane_t1 = now() + interval '31 seconds' where id = $1`, [arena]);
+  await run(30);
+  assert.equal(Number((await one(`select count(*) n from teams where arena_id = $1 and dropped`, [arena])).n), 6);
+  const landed = await all(`select vehicle, buggy_x from teams where arena_id = $1`, [arena]);
+  assert.ok(landed.every((r) => r.buggy_x !== null), 'every squad has a buggy waiting in a parking yard');
 });
 
 test('demo: dummies drive, search, solve challenges and score through the normal game rules', async () => {
@@ -127,6 +135,7 @@ test('demo: dummies drive, search, solve challenges and score through the normal
   assert.ok(Number(sub.ok) >= 6 && Number(sub.n) >= Number(sub.ok), 'answers go through captain_submit');
   const moved = await one(`select count(distinct location_id) n from mission_instances where arena_id = $1`, [arena]);
   assert.ok(Number(moved.n) >= 4, 'squads spread over several places');
+  assert.ok(Number((await one(`select count(*) n from teams where arena_id = $1 and vehicle <> 'none'`, [arena])).n) >= 3, 'dummies walked to their buggies and drove off');
 });
 
 test('demo: a squad can be taken over (its dummy stops) and handed back', async () => {
@@ -150,26 +159,26 @@ test('demo: a squad can be taken over (its dummy stops) and handed back', async 
   await fails(call('demo_control', real.token, true), 'NOT_DEMO');
 });
 
-test('demo: dummies fight each other once duels unlock, and the finale plays to a result', async () => {
+test('demo: dummies get into gunfights, knock squads out, and the finale plays to a result', async () => {
   await db.query(`select host_command($1, $2, 'set_phase', '{"phase": 3}'::jsonb, null)`, [demo.token, arena]);
-  // put everyone at one place so they are in range
-  await db.query(`update teams set pos_x = 0.47, pos_y = 0.585, level = 0, bldg = null, location_id = 'fountain', state = 'idle', protected_until = null, attack_cooldown_until = null where arena_id = $1`, [arena]);
+  await db.query(`update teams set pos_x = 0.47 + (number % 3) * 0.004, pos_y = 0.585 + (number % 2) * 0.004, pos_at = now(), level = 0, bldg = null, location_id = 'fountain', state = 'idle',
+    protected_until = null, hp = 40, shield = 0, vehicle = 'parked', buggy_x = 0.47, buggy_y = 0.585 where arena_id = $1`, [arena]);
   await db.query(`update mission_instances set status = 'cancelled' where arena_id = $1 and status = 'active'`, [arena]);
-  await db.query(`update bots set goal = null, done_loc = 'fountain', wait_until = now() + interval '1 hour' where arena_id = $1`, [arena]);
-  for (let i = 0; i < 60; i++) {
-    await db.query(`update teams set attack_cooldown_until = null, protected_until = null where arena_id = $1`, [arena]);
-    await db.query(`update bots set wait_until = null where arena_id = $1`, [arena]);
+  await db.query(`update bots set goal = null, done_loc = 'fountain', wait_until = null, think_for = null where arena_id = $1`, [arena]);
+  for (let i = 0; i < 40; i++) {
+    await db.query(`update players set shot_at = null, reload_until = null where team_id in (select id from teams where arena_id = $1)`, [arena]);
     await run(1);
-    if (Number((await one(`select count(*) n from battles where arena_id = $1 and status = 'resolved' and winner_id is not null`, [arena])).n) >= 1) break;
-    await db.query(`update bots set done_loc = location_id, goal = null from teams where teams.id = bots.team_id and bots.arena_id = $1`, [arena]);
+    if (Number((await one(`select coalesce(sum(kills), 0) k from teams where arena_id = $1`, [arena])).k) >= 1) break;
   }
-  assert.ok(Number((await one(`select count(*) n from battles where arena_id = $1 and winner_id is not null`, [arena])).n) >= 1, 'a duel was fought and won');
+  assert.ok(Number((await one(`select count(*) n from game_feed where arena_id = $1 and type = 'squad.gunfight'`, [arena])).n) >= 1, 'a gunfight broke out');
+  assert.ok(Number((await one(`select coalesce(sum(kills), 0) k from teams where arena_id = $1`, [arena])).k) >= 1, 'a squad was knocked out');
+  assert.ok(Number((await one(`select count(*) n from game_feed where arena_id = $1 and type = 'squad.knocked'`, [arena])).n) >= 1);
   await db.query(`select host_command($1, $2, 'begin_finale', '{}'::jsonb, null)`, [demo.token, arena]);
   await db.query(`select host_command($1, $2, 'launch_sync', '{"kind": "finale_battle"}'::jsonb, null)`, [demo.token, arena]);
   await run(40);
   const f = await one(`select count(*) filter (where status = 'solved') ok, count(*) n from mission_instances where arena_id = $1 and sync_round_id is not null`, [arena]);
-  assert.equal(Number(f.n), 6);
-  assert.ok(Number(f.ok) >= 3, `finale answers: ${f.ok}/6`);
+  assert.ok(Number(f.n) >= 4, `finale rounds: ${f.n}`);
+  assert.ok(Number(f.ok) >= 2, `finale answers: ${f.ok}`);
   assert.ok(Number((await one(`select sum(final_points) p from teams where arena_id = $1`, [arena])).p) > 0);
 });
 

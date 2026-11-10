@@ -87,6 +87,14 @@ Relay missions need a **codeword held by another squad's captain**, plus the squ
 ## Alliances
 Alliances need both captains, cost 10 coins each, last 10 minutes, give +10 trust and permanent mutual map visibility. Attacking an ally is allowed but is a **betrayal**: alliance broken, −20 trust, announced on the projector.
 
+## v6 · Battle royale rules (migration 0700)
+- **Start:** airport check-in (map number + squad PIN) → boarding pass → take-off and flight (roles assigned automatically) → the plane crosses the campus → the captain jumps within gliding range (0.3 of the campus) → parachute → land on foot.
+- **Buggy:** collected from the squad's numbered bay in the nearest parking yard; parks automatically at a building's wall; on foot 6, buggy 16 (‰ of the campus per second). Buildings are entered through the front door; rooms through their corridor door (client walls).
+- **First person** inside buildings for the captain; teammates see the captain in third person. Stairs are walked in first person.
+- **Gunfights:** `squad_fire` per player — range, fire rate and magazine per weapon, hit chance falls with distance and against moving targets, 12–30% headshots for double damage, cover behind buildings, spawn protection, allies cannot be shot. Knock-out = Recovery (unchanged) + `kill_points`/`kill_coins` and up to a third of the victim's coins.
+- **Zone:** `zone_shrink` seconds of smooth closing after each warning; damage `zone_tick_damage × (1, 1, 2, 3, 5, 8)` every `zone_tick_seconds`.
+- **Challenge pack 4** (225): Bomb Defusal, Signal Lights, Pattern Lock, Code Breaker, Balance Scales, Keyboard Cipher, World Clock, Escape Route — 626 challenges in total. Recovery puzzles grew from 17 to 41 because knock-outs are now common.
+
 ## Campus v4 (migration 0500): a vast campus with floors
 - **Scale.** A 1.6 km campus (3× the old one): a street grid with sidewalks and lamps, two big parking yards full of cars (one with solar carports), the central fountain plaza with benches and a working fountain, a cricket ground, courts, an amphitheatre, a helipad, a solar farm, a water tower, a lotus pond, a bus bay and palms along the plaza. 82 places in 10 buildings plus open ground.
 - **Buildings and floors.** Hexavarsity (4 floors), Phase 2 Tower (5), Ratan Tata Building (5), EB1/EB2/EB3 (4 each), Fitness Center (2), and single-storey Food Court, Data Center and Security HQ. Training rooms are spread over different floors; **Training Room 14 is on Hexavarsity's top floor**. Every room has walls and a sliding door that opens as your squad drives up.

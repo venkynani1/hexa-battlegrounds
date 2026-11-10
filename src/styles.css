@@ -852,3 +852,111 @@ html, body { overflow-x: clip; }
 }
 html.demo-view .hud-tl, html.demo-view .hud-tr, html.demo-view .hud-top { margin-top: 32px; }
 html.demo-view.in-game .toasts { top: calc(110px + env(safe-area-inset-top, 0px)); }
+
+/* ═══════════ v6 · airport check-in ═══════════ */
+.airport { min-height: 100dvh; background: linear-gradient(180deg, #0b1a2e 0%, #13304f 40%, #1b3f62 100%); color: #f2f6fc; }
+.airport-in { max-width: 520px; margin: 0 auto; padding: max(16px, env(safe-area-inset-top)) 16px 40px; display: flex; flex-direction: column; gap: 14px; }
+.airport-top { display: flex; gap: 12px; align-items: center; }
+.airport-top .ap-logo { width: 44px; height: 44px; border-radius: 12px; background: #ffc23d; color: #1c1403; display: grid; place-items: center; font-size: 24px; transform: rotate(-20deg); }
+.airport-top b { display: block; font-family: var(--font-head); font-size: 22px; letter-spacing: 0.02em; }
+.airport-top small { color: #9fb8d6; font-size: 13px; }
+.fids { background: #0a0d10; border: 2px solid #23303d; border-radius: 10px; padding: 8px 10px; font-family: var(--font-mono); color: #ffd23d; }
+.fids-head { display: flex; justify-content: space-between; font-size: 13px; color: #9fb8d6; border-bottom: 1px solid #23303d; padding-bottom: 6px; margin-bottom: 4px; }
+.fids-row { display: grid; grid-template-columns: 70px 1fr 64px 80px; gap: 6px; font-size: 13px; padding: 4px 0; align-items: center; }
+.fids-row span { color: #f2f6fc; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fids-row em { font-style: normal; color: #2fe06a; text-align: right; animation: fids-blink 1.6s steps(2) infinite; }
+@keyframes fids-blink { 50% { opacity: 0.35; } }
+.fids-foot { font-size: 12px; color: #9fb8d6; margin-top: 4px; }
+.checkin { background: #f4f7fb; color: #142033; border-radius: 16px; padding: 16px; display: flex; flex-direction: column; gap: 12px; box-shadow: 0 18px 40px rgba(0, 0, 0, 0.35); }
+.checkin .input { background: #fff; color: #142033; border-color: #c9d4e2; }
+.checkin label, .checkin .lbl { color: #3d4d63; font-size: 13px; font-weight: 600; }
+.checkin .check span { color: #3d4d63; }
+.checkin .muted { color: #5b6b80; }
+.ci-title { display: flex; flex-direction: column; border-bottom: 2px dashed #c9d4e2; padding-bottom: 10px; }
+.ci-title span { font-size: 12px; color: #5b6b80; }
+.ci-title b { font-family: var(--font-head); font-size: 20px; }
+.map-pick { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-top: 4px; }
+.map-pick button { border: 2px solid #c9d4e2; background: #fff; border-radius: 12px; padding: 10px 6px; display: flex; flex-direction: column; align-items: center; cursor: pointer; color: #142033; }
+.map-pick button b { font-family: var(--font-head); font-size: 30px; line-height: 1; }
+.map-pick button small { color: #5b6b80; font-size: 12px; }
+.map-pick button.on { border-color: #1e8fd6; background: #e6f3fc; box-shadow: 0 0 0 3px rgba(30, 143, 214, 0.25); }
+.pin-in { letter-spacing: 0.4em; font-size: 22px; text-align: center; }
+
+/* boarding pass */
+.lounge { display: flex; flex-direction: column; gap: 14px; }
+.gate-sign { background: #0a0d10; color: #ffd23d; border-radius: 10px; padding: 10px 14px; font-family: var(--font-mono); display: flex; justify-content: space-between; align-items: center; gap: 10px; }
+.gate-sign b { color: #f2f6fc; font-family: var(--font-head); font-size: 17px; text-align: right; }
+.gate-sign.go b { color: #2fe06a; animation: fids-blink 1.2s steps(2) infinite; }
+.bpass { background: #fdfdfb; color: #142033; border-radius: 16px; overflow: hidden; box-shadow: 0 16px 36px rgba(0, 0, 0, 0.35); }
+.bp-head { background: #1e8fd6; color: #fff; display: flex; justify-content: space-between; align-items: center; padding: 10px 14px; }
+.bp-air { font-family: var(--font-head); font-size: 20px; font-weight: 700; }
+.bp-class { font-size: 11px; letter-spacing: 0.18em; opacity: 0.85; }
+.bp-route { display: flex; justify-content: space-between; align-items: center; padding: 14px 18px 6px; }
+.bp-route b { font-family: var(--font-head); font-size: 40px; line-height: 1; display: block; }
+.bp-route small { color: #5b6b80; font-size: 12px; }
+.bp-route div:last-child { text-align: right; }
+.bp-plane { font-size: 26px; color: #1e8fd6; }
+.bp-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px 8px; padding: 8px 18px 12px; }
+.bp-grid small, .bp-role small { display: block; color: #5b6b80; font-size: 11px; }
+.bp-grid b { font-family: var(--font-head); font-size: 19px; }
+.bp-grid b.now { color: #d8232f; }
+.bp-role { padding: 0 18px 14px; }
+.bp-role b { font-family: var(--font-head); font-size: 20px; }
+.bp-role b.muted { font-size: 15px; color: #5b6b80; }
+.bp-tear { height: 0; border-top: 2px dashed #c9d4e2; margin: 0 10px; position: relative; }
+.bp-foot { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 12px 18px 14px; font-size: 12px; color: #5b6b80; }
+.bp-bar { width: 60%; height: 40px; }
+
+/* the flight */
+.cabin { position: relative; margin: -12px -14px 0; height: calc(100dvh - 70px); min-height: 520px; overflow: hidden; background: #0d1a2a; }
+.flight-canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+.flight-fallback { position: absolute; inset: 0; display: grid; place-items: center; font-size: 90px; color: #fff; background: linear-gradient(#5c9bd3, #a8d1f2); }
+.cabin-hud { position: absolute; inset: 0; display: flex; flex-direction: column; justify-content: space-between; padding: 12px; pointer-events: none; }
+.ch-top { display: flex; justify-content: space-between; align-items: center; gap: 8px; background: rgba(8, 14, 26, 0.72); color: #fff; border-radius: 12px; padding: 8px 12px; font-size: 13px; backdrop-filter: blur(6px); }
+.ch-top b { font-family: var(--font-head); font-size: 17px; text-align: center; }
+.route { width: 150px; height: 100px; border-radius: 12px; border: 2px solid rgba(255, 255, 255, 0.25); align-self: flex-end; margin-top: 8px; }
+.role-card { background: rgba(8, 14, 26, 0.85); color: #fff; border: 2px solid rgba(255, 255, 255, 0.2); border-radius: 16px; padding: 14px; backdrop-filter: blur(8px); margin-top: auto; }
+.role-card small { color: #b9c7de; display: block; }
+.role-card b { font-family: var(--font-head); font-size: 34px; display: block; line-height: 1.1; }
+.role-card p { margin: 6px 0; font-size: 14px; color: #dbe4f2; }
+.jump-light { display: flex; gap: 10px; align-items: center; justify-content: center; color: #fff; font-family: var(--font-head); font-size: 18px; margin-top: 10px; }
+.jump-light i { width: 18px; height: 18px; border-radius: 50%; background: #ff3b3b; box-shadow: 0 0 18px 6px #ff3b3b; animation: fids-blink 0.8s steps(2) infinite; }
+.flight-screen { position: fixed; inset: 0; background: #0d1a2a; }
+.fs-hud { position: absolute; inset: 0; display: flex; flex-direction: column; justify-content: space-between; padding: 3vh 3vw; pointer-events: none; }
+.fs-title { display: flex; justify-content: space-between; align-items: center; color: #fff; text-shadow: 0 2px 12px rgba(0, 0, 0, 0.6); }
+.fs-title span { font-size: 22px; color: #ffd23d; }
+.fs-title b { font-family: var(--font-head); font-size: clamp(30px, 4vw, 64px); }
+.fs-squads { display: flex; flex-wrap: wrap; gap: 8px; }
+.fs-squads span { background: rgba(8, 14, 26, 0.75); color: #fff; padding: 6px 12px; border-radius: 999px; font-size: 16px; }
+
+/* ═══════════ v6 · in-game: gunfights, on foot ═══════════ */
+.act.fire { width: 92px; height: 92px; border-color: rgba(255, 77, 94, 0.55); background: rgba(70, 10, 18, 0.72); touch-action: none; user-select: none; -webkit-user-select: none; }
+.act.fire span { font-family: var(--font-head); font-size: 17px; font-weight: 700; letter-spacing: 0.06em; }
+.act.fire small { font-size: 10px; opacity: 0.85; }
+.act.fire.live { border-color: #ff4d5e; background: rgba(200, 24, 44, 0.85); box-shadow: 0 0 0 4px rgba(255, 77, 94, 0.25), 0 0 28px rgba(255, 77, 94, 0.55); }
+.act.fire.live:active { transform: scale(0.92); background: #ff2238; }
+.act.fire.reload { background: rgba(60, 60, 60, 0.8); border-color: #9aa0a6; }
+.aim { position: absolute; left: 50%; top: 46%; transform: translate(-50%, -50%); z-index: 8; pointer-events: none; display: flex; flex-direction: column; align-items: center; gap: 6px; }
+.aim i { width: 46px; height: 46px; border: 2px solid #ff4d5e; border-radius: 50%; position: relative; }
+.aim i::before, .aim i::after { content: ''; position: absolute; background: #ff4d5e; }
+.aim i::before { left: 50%; top: -10px; bottom: -10px; width: 2px; transform: translateX(-50%); }
+.aim i::after { top: 50%; left: -10px; right: -10px; height: 2px; transform: translateY(-50%); }
+.aim.hit i { border-color: #fff; transform: scale(0.8) rotate(45deg); }
+.aim span { background: rgba(8, 14, 26, 0.75); color: #ffb3bb; font-size: 12px; padding: 2px 8px; border-radius: 999px; }
+.aim b { color: #fff; font-family: var(--font-head); font-size: 22px; text-shadow: 0 2px 8px #000; animation: dmg-up 0.7s ease-out forwards; }
+.aim b.crit { color: #ffd23d; font-size: 28px; }
+@keyframes dmg-up { from { transform: translateY(0); opacity: 1; } to { transform: translateY(-30px); opacity: 0; } }
+.hurt-arc { position: absolute; left: 50%; top: 50%; width: 70vmin; height: 70vmin; margin: -35vmin 0 0 -35vmin; z-index: 9; pointer-events: none; border-radius: 50%;
+  border-top: 14px solid rgba(255, 34, 56, 0.75); filter: blur(3px); animation: hurt 0.7s ease-out forwards; }
+@keyframes hurt { from { opacity: 1; } to { opacity: 0; } }
+.fpv-cross { position: absolute; left: 50%; top: 50%; width: 6px; height: 6px; margin: -3px 0 0 -3px; border-radius: 50%; background: rgba(255, 255, 255, 0.85); box-shadow: 0 0 0 2px rgba(0, 0, 0, 0.35); z-index: 7; pointer-events: none; }
+@media (prefers-reduced-motion: reduce) { .aim b, .hurt-arc, .fids-row em, .gate-sign.go b, .jump-light i { animation: none; } }
+
+/* ═══════════ v6 · clue mini-games ═══════════ */
+.bomb-svg { width: 100%; max-width: 360px; display: block; margin: 0 auto; }
+.minigame.signal { display: flex; flex-direction: column; align-items: center; }
+.lamp { width: 120px; height: 120px; border-radius: 50%; border: 6px solid #3b3f46; transition: background 0.08s, box-shadow 0.08s; margin: 10px auto 0; }
+.minigame.signal .row { width: 100%; }
+.pattern-svg { width: 100%; max-width: 280px; display: block; margin: 0 auto; }
+.act.md.getin { width: 64px; height: 64px; border-color: #2fe06a; background: rgba(20, 110, 50, 0.85); }
+.act.md.getin small { position: static; background: none; color: #fff; font-size: 10px; font-weight: 700; padding: 0; }

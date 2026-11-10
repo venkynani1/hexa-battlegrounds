@@ -22,7 +22,7 @@ export function PhaseBanner({ overlay, big = false }: { overlay: any; big?: bool
           {auto ? <span className="chip">{auto.label} in <Countdown to={auto.at} /></span>
             : next && <span className="chip">Next in <Countdown to={next} /></span>}
         </div>
-        <div className="muted" style={{ fontSize: big ? 16 : 12 }}>{info.theme} — {info.rules}{duelsIn > 0 ? ` Duels unlock in phase ${m.duel_phase ?? 2}.` : ''}</div>
+        <div className="muted" style={{ fontSize: big ? 16 : 12 }}>{info.theme} — {info.rules}{ph < 1 ? ' Gunfights start in phase 1.' : ''}</div>
         <div className="phase-track" style={{ marginTop: 6 }} aria-hidden>
           {MATCH_PHASES.map((_, i) => <i key={i} className={i < ph ? 'done' : i === ph ? 'now' : ''} />)}
         </div>

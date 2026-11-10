@@ -28,6 +28,7 @@ before(async () => {
   await db.exec('create role anon nologin; create role authenticated nologin;');
   for (const f of readdirSync(MIG).filter((f) => f.endsWith('.sql')).sort()) await db.exec(readFileSync(new URL(f, MIG), 'utf8'));
   ev = await call('host_create_event', 'CAMPUS', 'Campus', 'campuspass', 1);
+  await db.query(`update events set settings = settings || '{"br_mode": 0}'::jsonb`); // earlier start: bus + role claims
   arena = (await one(`select id from arenas where event_id = $1`, [ev.event_id])).id;
   const pins = await call('host_generate_teams', ev.token, 3);
   for (const p of pins) {

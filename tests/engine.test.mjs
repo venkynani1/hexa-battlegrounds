@@ -55,6 +55,7 @@ test('content library loaded and every template has three role clues', async () 
 
 test('host creates event; squads fill Map 1 (15) then overflow to Map 2', async () => {
   host = await call('host_create_event', 'HEXA26', 'Hexa Battlegrounds', 'supersecret', 2);
+  await db.query(`update events set settings = settings || '{"br_mode": 0}'::jsonb`); // earlier start: bus + role claims
   ev = host.event_id;
   await fails(call('host_create_event', 'HEXA26', 'x', 'supersecret', 2), 'CODE_TAKEN');
   await fails(call('host_login', 'HEXA26', 'wrong'), 'HOST_AUTH');

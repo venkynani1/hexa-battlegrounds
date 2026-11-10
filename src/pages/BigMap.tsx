@@ -15,11 +15,15 @@ export const METERS = 1600; // campus width shown as metres (distances read like
 const FILL: Record<string, string> = { learning: '#e9edf1', tower: '#b9c6d4', brick: '#c07a62', office: '#dcd0b8', pavilion: '#efe4cc', datacenter: '#a7afb8' };
 const V = 1000; // svg units per campus width
 
-export default function BigMap({ map, me, yaw, squads, zone, zoneNextAt, red, drops, marker, setMarker, onRun, canRun, speed, onClose, title, lock = [], level = 0, bldg = null, pickups = [] }: {
+export default function BigMap({ map, me, yaw, squads, zone, zoneNextAt, red, drops, marker, setMarker, onRun, canRun, speed, onClose, title, lock = [], level = 0, bldg = null, pickups = [], runLabel = 'Drive here', glide = null, buggy = null }: {
   map: MapData; me: XY | null; yaw: number; squads: { id: string; number: number; pos?: number[] | null; me?: boolean; allied?: boolean }[];
   zone: any; zoneNextAt?: string | null; red: any; drops: { id: string; location: string; tier: string }[];
   lock?: any[]; level?: number; bldg?: string | null; pickups?: { id: string; k: string; x: number; y: number; l: number }[];
   marker: XY | null; setMarker: (m: XY | null) => void; onRun: (locId: string) => void; canRun: boolean; speed: number; onClose: () => void; title: string;
+  /** jump mode: the button says "Land here"; places outside gliding range cannot be picked */
+  runLabel?: string; glide?: { x: number; y: number; r: number } | null;
+  /** where your buggy waits */
+  buggy?: number[] | null;
 }) {
   const svg = useRef<SVGSVGElement>(null);
   const [view, setView] = useState({ k: 1, x: 0, y: 0 });
@@ -198,6 +202,8 @@ export default function BigMap({ map, me, yaw, squads, zone, zoneNextAt, red, dr
               <path d="M-12 -2 H12 M0 -12 V12" stroke="#1b2430" strokeWidth={3} />
             </g>) : null; })}
           {/* marker + line from me */}
+          {glide && <circle cx={glide.x * V} cy={glide.y * V} r={glide.r * V} fill="rgba(46,230,255,0.08)" stroke="#2ee6ff" strokeWidth={3 / k} strokeDasharray={`${12 / k} ${8 / k}`} />}
+          {buggy && <g transform={`translate(${buggy[0] * V} ${buggy[1] * V})`}><rect x={-9 / k} y={-6 / k} width={18 / k} height={12 / k} rx={3 / k} fill="#ffc23d" stroke="#1b2430" strokeWidth={2 / k} /><text y={4 / k} textAnchor="middle" fontSize={9 / k} fontWeight="800" fill="#1b2430">🚙</text></g>}
           {marker && me && <line x1={me[0] * V} y1={me[1] * V} x2={marker[0] * V} y2={marker[1] * V} stroke="#ffd23d" strokeWidth={3 / k} strokeDasharray={`${10 / k} ${8 / k}`} />}
           {marker && (
             <g transform={`translate(${marker[0] * V} ${marker[1] * V}) scale(${1.2 / Math.sqrt(k)})`}>
@@ -255,7 +261,8 @@ export default function BigMap({ map, me, yaw, squads, zone, zoneNextAt, red, dr
               <b>{place ? place.name : 'Marker'}</b>
               <div className="muted">{Math.round(dist * METERS)} m · about {Math.max(1, Math.round(dist / speed))} s by buggy{place ? ` · ${place.reward}` : ''}{place && (place.level || 0) > 0 ? ` · ${floorLabel(place.level)}` : ''}</div>
             </div>
-            {place && canRun && <button className="btn primary" onClick={() => onRun(place.id)}>Drive here</button>}
+            {place && canRun && (!glide || Math.hypot(place.x - glide.x, place.y - glide.y) <= glide.r) && <button className="btn primary" onClick={() => onRun(place.id)}>{runLabel}</button>}
+            {place && canRun && glide && Math.hypot(place.x - glide.x, place.y - glide.y) > glide.r && <span className="muted" style={{ fontSize: 13 }}>Too far to glide from the plane — pick a place inside the dashed circle.</span>}
             <button className="btn ghost" onClick={() => setMarker(null)} aria-label="Remove marker">✕</button>
           </div>
         ) : (

@@ -5,9 +5,11 @@ import { SHORT } from '../components/CampusMap';
 
 Object.assign(SHORT_LABEL, SHORT);
 
-export default function World3D({ map, state, mode = 'follow', zoom = 1, onPick, className, live }: {
+export default function World3D({ map, state, mode = 'follow', zoom = 1, onPick, className, live, sceneRef: outRef }: {
   map: MapData; state: WorldState; mode?: CameraMode; zoom?: number; onPick?: (id: string) => void; className?: string;
   live?: MutableRefObject<{ x: number; y: number; moving: boolean }>;
+  /** gives the parent the scene (for one-off effects such as gun tracers) */
+  sceneRef?: MutableRefObject<WorldScene | null>;
 }) {
   const ref = useRef<HTMLCanvasElement>(null);
   const sceneRef = useRef<WorldScene | null>(null);
@@ -22,8 +24,9 @@ export default function World3D({ map, state, mode = 'follow', zoom = 1, onPick,
       sc = null; // no WebGL: the 2D map fallback is shown by the parent
     }
     sceneRef.current = sc;
+    if (outRef) outRef.current = sc;
     if (sc) { sc.liveMe = live || null; sc.setState(state); }
-    return () => { sc?.dispose(); sceneRef.current = null; };
+    return () => { sc?.dispose(); sceneRef.current = null; if (outRef) outRef.current = null; };
   }, [map]);
   useEffect(() => { sceneRef.current?.setState(state); }, [state]);
   useEffect(() => { sceneRef.current?.setMode(mode); }, [mode]);

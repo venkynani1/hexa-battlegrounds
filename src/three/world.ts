@@ -7,6 +7,8 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
+import { animateAvatar, animatePlane, Avatar, makeAvatar, makeChute, makePlane, makeTracer } from './people';
+import { zoneNow } from '../lib/zone';
 import type { MapData, Building } from '../lib/game';
 import { squadHex } from '../lib/game';
 import { serverTime } from '../lib/time';
@@ -20,10 +22,19 @@ const W = (x: number, y: number, level = 0) => new THREE.Vector3((x - 0.5) * S, 
 export type WorldSquad = {
   key: string; number: number; x: number; y: number; me?: boolean; ally?: boolean; inBattle?: boolean; down?: boolean; moving?: boolean;
   vx?: number; vy?: number; at?: number; level?: number; bldg?: string | null; label?: string;
+  /** on foot (the captain walks; the buggy is parked at `buggy`) */
+  foot?: boolean; buggy?: number[] | null; chute?: boolean; landAt?: number; hidden?: boolean;
+  hp?: number; shield?: number; fight?: boolean;
 };
 export type WorldState = {
   squads: WorldSquad[];
-  zone?: { cur?: number[] | null; next?: number[] | null } | null;
+  zone?: { cur?: number[] | null; next?: number[] | null; prev?: number[] | null; shrink_from?: string | null; shrink_until?: string | null } | null;
+  /** the drop plane's straight path over the campus */
+  plane?: { a: number[]; b: number[]; t0: string; t1: string } | null;
+  /** first-person view for your own captain (on foot inside a building) */
+  fpv?: boolean;
+  /** the rival squad your gun is locked on */
+  target?: string | null;
   red?: { x: number; y: number; r: number; at: string } | null;
   airdrops?: { key: string; location: string; tier: string }[];
   battles?: { key: string; x: number; y: number }[];
@@ -36,7 +47,7 @@ export type WorldState = {
   route?: { x: number; y: number } | null;
 };
 export type CameraMode = 'follow' | 'overview' | 'orbit';
-export type LiveMe = { x: number; y: number; moving: boolean; joy?: boolean; yaw?: number; level?: number; bldg?: string | null; vx?: number; vy?: number };
+export type LiveMe = { x: number; y: number; moving: boolean; joy?: boolean; jx?: number; yaw?: number; level?: number; bldg?: string | null; vx?: number; vy?: number };
 
 const TIER_HEX: Record<string, number> = { common: 0xdfe6ee, rare: 0x3ea5ff, legendary: 0xffc23d, mystery: 0xb07cff, cursed: 0xff4d5e, intel: 0x5dff9e, vault: 0xff9d2e };
 const STYLE: Record<string, { wall: string; glass: string; roof: number; band?: string }> = {
@@ -168,7 +179,8 @@ class Batch {
   }
 }
 
-type SquadObj = { car: Vehicle; ring: THREE.Mesh; label: THREE.Sprite; target: THREE.Vector3; heading: number; turn: number; data: WorldSquad; sig: string; y: number };
+type SquadObj = { car: THREE.Group; veh: Vehicle; avatar: Avatar; chute: THREE.Group; parked: Vehicle | null; hpBar: THREE.Sprite; hpKey: string; aimRing: THREE.Mesh;
+  ring: THREE.Mesh; label: THREE.Sprite; target: THREE.Vector3; heading: number; turn: number; data: WorldSquad; sig: string; y: number };
 type Bldg = {
   b: Building; body: THREE.Mesh; extras: THREE.Object3D[]; mats: THREE.MeshStandardMaterial[]; fade: number;
   interior: THREE.Group | null; floors: THREE.Group[]; doors: { mesh: THREE.Mesh; open: number; x: number; y: number; level: number; axis: 'x' | 'z'; home: number }[];
@@ -223,6 +235,17 @@ export class WorldScene {
   private myLevel = 0;
   private myBldg: string | null = null;
   private beacon: THREE.Mesh | null = null;
+  private zoneData: WorldState['zone'] = null;
+  private zoneT = 0;
+  private plane: THREE.Group | null = null;
+  private planeData: WorldState['plane'] = null;
+  private tracers: THREE.Group[] = [];
+  private fpv = false;
+  private pitch = -0.05;
+  private targetKey: string | null = null;
+  private climb: { t0: number; from: THREE.Vector3; to: THREE.Vector3; dir: number } | null = null;
+  private lastLevel = 0;
+  private lastBldg: string | null = null;
 
   constructor(private canvas: HTMLCanvasElement, map: MapData, opts: { onPick?: (id: string) => void; mode?: CameraMode } = {}) {
     this.onPick = opts.onPick;
@@ -728,6 +751,12 @@ export class WorldScene {
     const corM = new THREE.MeshStandardMaterial({ color: 0xb9c2cc, roughness: 0.7 });
     const stepM = new THREE.MeshStandardMaterial({ color: 0x9aa1a9, roughness: 0.6 });
     const deskM = new THREE.MeshStandardMaterial({ color: 0xc8a477, roughness: 0.7 });
+    const ceilTex = canvasTex(128, 128, (gg) => {
+      gg.fillStyle = '#e9e7e1'; gg.fillRect(0, 0, 128, 128);
+      gg.strokeStyle = 'rgba(0,0,0,0.12)'; for (let i = 0; i <= 128; i += 32) { gg.beginPath(); gg.moveTo(i, 0); gg.lineTo(i, 128); gg.moveTo(0, i); gg.lineTo(128, i); gg.stroke(); }
+      gg.fillStyle = '#fffdf2'; gg.fillRect(40, 40, 48, 48);
+    }, [Math.round(w / 6), Math.round(d / 6)]);
+    const ceilM = new THREE.MeshStandardMaterial({ map: ceilTex, emissive: 0xfff6e0, emissiveIntensity: 0.25, emissiveMap: ceilTex, roughness: 0.9, side: THREE.FrontSide });
     const corridorZ = W(0, (b.y0 + b.y1) / 2).z;
     const rooms = [...this.locs.values()].filter((l) => l.building === b.id && l.kind !== 'stairs' && l.enabled);
     const st = W(b.stairs[0], b.stairs[1]);
@@ -737,10 +766,16 @@ export class WorldScene {
       const box = new THREE.BoxGeometry(1, 1, 1);
       bt.add(box, slabM, [c.x, y + 0.15, c.z], 0, [w - 0.4, 0.3, d - 0.4]);
       bt.add(box, corM, [c.x, y + 0.32, corridorZ], 0, [w - 1.2, 0.04, 5]);
-      // outer walls as low glass (you can see out) with solid corners
+      // outer walls: solid below the windows and above them, glass in between (you can see out)
       for (const [px, pz, pw, pd] of [[0, -d / 2 + 0.3, w - 0.6, 0.2], [0, d / 2 - 0.3, w - 0.6, 0.2], [-w / 2 + 0.3, 0, 0.2, d - 0.6], [w / 2 - 0.3, 0, 0.2, d - 0.6]] as const) {
-        bt.add(box, glassM, [c.x + px, y + 1.4, c.z + pz], 0, [pw, 2.4, pd]);
+        bt.add(box, glassM, [c.x + px, y + 1.8, c.z + pz], 0, [pw, 1.6, pd]);
+        bt.add(box, wallM, [c.x + px, y + 0.55, c.z + pz], 0, [pw, 0.9, pd + 0.05]);
+        bt.add(box, wallM, [c.x + px, y + 3.25, c.z + pz], 0, [pw, FLOOR_H - 2.6, pd + 0.05]);
       }
+      // ceiling with light panels: only visible from below (first person), never blocks the view from above
+      const ceil = new THREE.Mesh(new THREE.PlaneGeometry(w - 0.6, d - 0.6), ceilM);
+      ceil.rotation.x = Math.PI / 2; ceil.position.set(c.x, y + FLOOR_H - 0.06, c.z);
+      fg.add(ceil);
       const here = rooms.filter((l) => (l.level || 0) === f);
       const cellW = Math.min(w / 3.2, 22); const cellD = Math.min((d - 6) / 2 - 0.5, 16);
       for (const l of here) {
@@ -818,19 +853,76 @@ export class WorldScene {
   setZoom(z: number) { this.zoom = Math.max(0.45, Math.min(2.4, z)); }
 
   private makeSquad(d: WorldSquad): SquadObj {
-    const car = makeVehicle({ color: squadHex(d.number), number: d.number });
+    const hex = squadHex(d.number);
+    const car = new THREE.Group();
+    const veh = makeVehicle({ color: hex, number: d.number });
+    const avatar = makeAvatar({ color: hex, number: d.number });
+    avatar.scale.setScalar(1.15); avatar.visible = false;
+    const chute = makeChute(hex); chute.position.y = 1.4; chute.visible = false;
+    car.add(veh, avatar, chute);
     const color = d.me ? 0x2ee6ff : d.ally ? 0x5dff9e : 0xff4d5e;
     const ring = new THREE.Mesh(new THREE.RingGeometry(3, 3.5, 40), new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.9, depthWrite: false, side: THREE.DoubleSide }));
     ring.rotation.x = -Math.PI / 2; ring.position.y = 0.3;
     car.add(ring);
+    const aimRing = new THREE.Mesh(new THREE.RingGeometry(2.2, 2.6, 4), new THREE.MeshBasicMaterial({ color: 0xff2238, transparent: true, depthWrite: false, side: THREE.DoubleSide }));
+    aimRing.position.y = 2.2; aimRing.visible = false; car.add(aimRing);
     const label = labelSprite(d.label || `SQ ${d.number}`, d.me ? '#2ee6ff' : d.ally ? '#5dff9e' : '#ff8a96', 'rgba(10,16,28,0.78)', this.mode === 'follow' ? 0.85 : 0.5, true); // 15 squads on the big map: small tags that do not cover each other
     label.position.y = 5;
     label.visible = !d.me;
     car.add(label);
+    const hpBar = new THREE.Sprite(new THREE.SpriteMaterial({ transparent: true, depthWrite: false }));
+    hpBar.scale.set(3.2, 0.42, 1); hpBar.position.y = 3.9; hpBar.visible = false; car.add(hpBar);
     const p = W(d.x, d.y, d.level || 0);
     car.position.copy(p);
     this.scene.add(car);
-    return { car, ring, label, target: p.clone(), heading: 0, turn: 0, data: d, sig: '', y: p.y };
+    return { car, veh, avatar, chute, parked: null, hpBar, hpKey: '', aimRing, ring, label, target: p.clone(), heading: 0, turn: 0, data: d, sig: '', y: p.y };
+  }
+
+  private drawHp(o: SquadObj) {
+    const hp = Math.max(0, Math.min(100, o.data.hp ?? 100)); const sh = Math.max(0, Math.min(100, o.data.shield ?? 0));
+    const key = `${hp}|${sh}`;
+    if (key === o.hpKey) return;
+    o.hpKey = key;
+    const c = document.createElement('canvas'); c.width = 128; c.height = 18;
+    const g = c.getContext('2d')!;
+    g.fillStyle = 'rgba(10,14,22,0.85)'; g.fillRect(0, 0, 128, 18);
+    g.fillStyle = hp > 50 ? '#f2f5f8' : hp > 25 ? '#ffc23d' : '#ff4d5e'; g.fillRect(2, 2, 124 * hp / 100, sh > 0 ? 9 : 14);
+    if (sh > 0) { g.fillStyle = '#3ea5ff'; g.fillRect(2, 12, 124 * sh / 100, 4); }
+    const m = o.hpBar.material as THREE.SpriteMaterial;
+    m.map?.dispose(); m.map = new THREE.CanvasTexture(c); m.map.colorSpace = THREE.SRGBColorSpace; m.needsUpdate = true;
+  }
+
+  /** a shot between two squads (by key or squad number); everyone sees the tracer */
+  shot(from: string | number, to: string | number, hit: boolean) {
+    const find = (k: string | number) => [...this.squads.values()].find((o) => o.data.key === k || o.data.number === Number(k));
+    const A = find(from); const B = find(to);
+    if (!A || !B || !A.car.visible) return;
+    const a = A.car.position.clone(); a.y += A.data.foot ? 1.5 : 1.8;
+    const b = B.car.position.clone(); b.y += B.data.foot ? 1.2 : 1.3;
+    if (!hit) b.add(new THREE.Vector3((Math.random() - 0.5) * 3, Math.random() * 1.5, (Math.random() - 0.5) * 3));
+    const tr = makeTracer(a, b, hit);
+    this.scene.add(tr); this.tracers.push(tr);
+    if (A.data.foot) A.avatar.userData.aimAt = performance.now();
+  }
+
+  /** the safe zone: the blue wall closes in smoothly while it shrinks (Free Fire style); white circle = next zone */
+  private drawZone() {
+    const z = zoneNow(this.zoneData, serverTime());
+    const cur = z.cur;
+    if (cur && cur[2] < 0.86) {
+      const c = W(cur[0], cur[1]);
+      this.zoneWall.visible = this.zoneOutside.visible = true;
+      this.zoneWall.position.set(c.x, 60, c.z); this.zoneWall.scale.set(cur[2] * S, 1, cur[2] * S);
+      if (Math.abs(this.zoneR - cur[2]) > 0.0006) {
+        this.zoneR = cur[2];
+        this.zoneOutside.geometry.dispose();
+        this.zoneOutside.geometry = new THREE.RingGeometry(cur[2] * S, 3000, 120, 1);
+      }
+      this.zoneOutside.position.set(c.x, 0.4, c.z);
+    } else { this.zoneWall.visible = this.zoneOutside.visible = false; }
+    const nx = z.next;
+    if (nx) { const c = W(nx[0], nx[1]); this.nextRing.visible = true; this.nextRing.position.set(c.x, 0.5, c.z); this.nextRing.scale.setScalar(nx[2] * S); }
+    else this.nextRing.visible = false;
   }
 
   setState(st: WorldState) {
@@ -840,28 +932,17 @@ export class WorldScene {
       seen.add(d.key);
       const sig = `${d.me}|${d.ally}|${d.label || ''}|${d.number}`;
       let o = this.squads.get(d.key);
-      if (o && o.sig !== sig) { this.scene.remove(o.car); o = undefined; }
+      if (o && o.sig !== sig) { this.scene.remove(o.car); if (o.parked) this.scene.remove(o.parked); o = undefined; }
       if (!o) { o = this.makeSquad(d); o.sig = sig; this.squads.set(d.key, o); }
       o.data = d;
       (o.ring.material as THREE.MeshBasicMaterial).opacity = d.down ? 0.35 : 0.9;
     }
-    for (const [k, o] of this.squads) if (!seen.has(k)) { this.scene.remove(o.car); this.squads.delete(k); }
-
-    const cur = st.zone?.cur;
-    if (cur && cur[2] < 0.86) {
-      const c = W(cur[0], cur[1]);
-      this.zoneWall.visible = this.zoneOutside.visible = true;
-      this.zoneWall.position.set(c.x, 60, c.z); this.zoneWall.scale.set(cur[2] * S, 1, cur[2] * S);
-      if (this.zoneR !== cur[2]) {
-        this.zoneR = cur[2];
-        this.zoneOutside.geometry.dispose();
-        this.zoneOutside.geometry = new THREE.RingGeometry(cur[2] * S, 3000, 160, 1);
-      }
-      this.zoneOutside.position.set(c.x, 0.4, c.z);
-    } else { this.zoneWall.visible = this.zoneOutside.visible = false; }
-    const nx = st.zone?.next;
-    if (nx) { const c = W(nx[0], nx[1]); this.nextRing.visible = true; this.nextRing.position.set(c.x, 0.5, c.z); this.nextRing.scale.setScalar(nx[2] * S); }
-    else this.nextRing.visible = false;
+    for (const [k, o] of this.squads) if (!seen.has(k)) { this.scene.remove(o.car); if (o.parked) this.scene.remove(o.parked); this.squads.delete(k); }
+    this.zoneData = st.zone || null;
+    this.planeData = st.plane || null;
+    this.fpv = !!st.fpv && this.mode === 'follow';
+    this.targetKey = st.target || null;
+    this.drawZone();
 
     if (st.red) {
       const c = W(st.red.x, st.red.y);
@@ -1022,9 +1103,10 @@ export class WorldScene {
         this.setZoom(zoom0 * (pinch0 / Math.max(20, Math.hypot(a.x - b.x, a.y - b.y))));
         dragged = true;
       } else if (pts.size === 1) {
-        const dx = e.clientX - last.x;
-        if (Math.abs(e.clientX - downPos.x) > 6) dragged = true;
-        if (dragged) this.yaw -= dx * 0.008;
+        const dx = e.clientX - last.x; const dy = e.clientY - last.y;
+        if (Math.abs(e.clientX - downPos.x) > 6 || Math.abs(e.clientY - downPos.y) > 6) dragged = true;
+        if (dragged) this.yaw -= dx * (this.fpv ? 0.006 : 0.008);
+        if (dragged && this.fpv) this.pitch = Math.max(-0.9, Math.min(0.7, this.pitch - dy * 0.005));
       }
       last = { x: e.clientX, y: e.clientY };
     });
@@ -1067,6 +1149,9 @@ export class WorldScene {
         const age = Math.max(0, Math.min(2.6, (now - (d.at || now)) / 1000)); // positions arrive every ~2 s: keep rolling in between
         o.target.copy(W(d.x + (d.vx || 0) * age, d.y + (d.vy || 0) * age, d.level || 0));
       }
+      // parachuting: drop from the plane's altitude to the ground by the landing time
+      if (d.chute && d.landAt) o.target.y += Math.min(150, Math.max(0, (d.landAt - now) / 1000) * 11);
+      if (d.hidden) { o.car.visible = false; if (o.parked) o.parked.visible = false; continue; }
       const before = o.car.position.clone();
       // own squad follows the prediction exactly; others glide with a short smoothing
       o.car.position.lerp(o.target, d.me && live ? 1 : Math.min(1, dt * 7));
@@ -1079,7 +1164,27 @@ export class WorldScene {
         o.heading += dh * Math.min(1, dt * 8); turn = dh / Math.max(dt, 0.016);
       }
       o.car.rotation.y = o.heading;
-      animateVehicle(o.car, t, dt, this.reduced ? 0 : spd, this.reduced ? 0 : turn, !!d.down);
+      const foot = !!d.foot || !!d.chute;
+      o.veh.visible = !foot;
+      o.avatar.visible = foot && !(d.me && this.fpv);
+      o.chute.visible = !!d.chute;
+      if (foot) animateAvatar(o.avatar, dt, this.reduced || d.chute ? 0 : spd, performance.now() - (o.avatar.userData.aimAt || 0) < 900);
+      else animateVehicle(o.veh, t, dt, this.reduced ? 0 : spd, this.reduced ? 0 : turn, !!d.down);
+      // the buggy waits where it was parked (or in its parking bay) while the captain walks
+      if (d.foot && d.buggy && !d.chute) {
+        if (!o.parked) { o.parked = makeVehicle({ color: squadHex(d.number), number: d.number }); this.scene.add(o.parked); }
+        const bp = W(d.buggy[0], d.buggy[1], 0);
+        o.parked.position.set(bp.x, 0, bp.z);
+        o.parked.visible = this.mode !== 'follow' || this.myLevel === 0;
+        o.parked.scale.setScalar(this.mode === 'follow' ? 1 : 2);
+      } else if (o.parked) o.parked.visible = false;
+      // health bar over a rival you are fighting or aiming at
+      const showHp = !d.me && d.hp != null && this.mode === 'follow' && (d.fight || this.targetKey === d.key || (d.hp ?? 100) < 100);
+      o.hpBar.visible = showHp;
+      if (showHp) this.drawHp(o);
+      o.aimRing.visible = this.targetKey === d.key;
+      if (o.aimRing.visible) { o.aimRing.rotation.set(0, t * 2, Math.PI / 4); o.aimRing.position.y = foot ? 2.4 : 3; }
+      o.label.position.y = foot ? 3.1 : 5; o.hpBar.position.y = foot ? 2.6 : 3.9;
       if (d.me && !this.reduced) o.ring.scale.setScalar(1 + Math.sin(t * 3) * 0.05);
       // squads on another floor of the building you are in are hidden; inside, outdoor squads are hidden
       const inMine = this.myLevel > 0;
@@ -1140,9 +1245,64 @@ export class WorldScene {
 
     // camera
     const insideB = this.myLevel > 0 || this.bldgs.some((B) => meObj && this.isInside(B, meObj.car.position));
-    if (this.mode === 'follow') {
+    // the drop plane crossing the campus
+    const pd = this.planeData;
+    if (pd) {
+      const a = new Date(pd.t0).getTime(); const b = new Date(pd.t1).getTime(); const p = (now - a) / Math.max(1, b - a);
+      if (!this.plane) { this.plane = makePlane(); this.plane.scale.setScalar(1.6); this.scene.add(this.plane); }
+      this.plane.visible = p > -0.02 && p < 1.05;
+      const A = W(pd.a[0], pd.a[1]); const Bp = W(pd.b[0], pd.b[1]);
+      this.plane.position.copy(A).lerp(Bp, Math.max(0, Math.min(1.05, p))); this.plane.position.y = 150;
+      this.plane.rotation.y = Math.atan2(-(Bp.x - A.x), -(Bp.z - A.z));
+      if (!this.reduced) animatePlane(this.plane, t);
+    } else if (this.plane) this.plane.visible = false;
+    // gun tracers fade in a blink
+    for (const tr of [...this.tracers]) {
+      const age = performance.now() - tr.userData.t0;
+      tr.children.forEach((c) => { ((c as THREE.Mesh).material as THREE.MeshBasicMaterial).opacity = Math.max(0, 1 - age / 180); });
+      if (age > 200) { this.scene.remove(tr); tr.children.forEach((c) => (c as THREE.Mesh).geometry.dispose()); this.tracers.splice(this.tracers.indexOf(tr), 1); }
+    }
+    if (this.zoneData?.shrink_until && now - this.zoneT > 120) { this.zoneT = now; this.drawZone(); }
+
+    // stairs walk in first person: follow the flight of steps up (or down) to the next floor
+    if (this.myLevel !== this.lastLevel) {
+      const B = this.bldgs.find((x) => x.b.id === (this.myBldg || this.lastBldg));
+      if (B && this.fpv) {
+        const st = W(B.b.stairs[0], B.b.stairs[1]); const up = this.myLevel > this.lastLevel;
+        const lo = new THREE.Vector3(st.x - 2.9, Math.min(this.myLevel, this.lastLevel) * FLOOR_H + 1.7, st.z - 1.2);
+        const hi = new THREE.Vector3(st.x + 2.4, Math.max(this.myLevel, this.lastLevel) * FLOOR_H + 1.7, st.z - 1.2);
+        this.climb = { t0: performance.now(), from: up ? lo : hi, to: up ? hi : lo, dir: up ? 1 : -1 };
+        this.yaw = up ? Math.PI / 2 : -Math.PI / 2;
+        this.pitch = up ? 0.32 : -0.38; // look up the flight of steps (or down it)
+      }
+      this.lastLevel = this.myLevel; this.lastBldg = this.myBldg;
+    }
+    if (this.mode === 'follow' && this.fpv && meObj) {
+      const eye = meObj.car.position.clone(); eye.y += 1.7;
+      if (this.climb) {
+        const p = Math.min(1, (performance.now() - this.climb.t0) / 1700);
+        eye.copy(this.climb.from).lerp(this.climb.to, p);
+        eye.y += Math.abs(Math.sin(p * Math.PI * 7)) * 0.07;
+        if (p >= 1) { this.climb = null; this.pitch = -0.05; }
+      } else if (live?.moving && !this.reduced) eye.y += Math.abs(Math.sin(t * 9)) * 0.05;
+      if (live?.joy && live.jx) this.yaw += live.jx * dt * 1.7;
+      const fwd = new THREE.Vector3(Math.sin(this.yaw) * Math.cos(this.pitch), Math.sin(this.pitch), -Math.cos(this.yaw) * Math.cos(this.pitch));
+      this.camPos.lerp(eye, Math.min(1, dt * 14));
+      this.camTarget.copy(this.camPos).add(fwd);
+    } else if (this.mode === 'follow' && meObj?.data.hidden && this.plane?.visible) {
+      // on board: a chase camera behind the plane, looking down at the campus ahead
+      const pp = this.plane.position; const fwd = new THREE.Vector3(-Math.sin(this.plane.rotation.y), 0, -Math.cos(this.plane.rotation.y));
+      this.camPos.lerp(pp.clone().addScaledVector(fwd, -95).add(new THREE.Vector3(0, 38, 0)), Math.min(1, k * 2));
+      this.camTarget.lerp(pp.clone().addScaledVector(fwd, 120).setY(10), Math.min(1, k * 2));
+    } else if (this.mode === 'follow' && meObj?.data.chute) {
+      // parachuting: above and behind, looking down at where you will land
+      const f = meObj.car.position; const fwd = new THREE.Vector3(Math.sin(this.yaw), 0, -Math.cos(this.yaw));
+      this.camPos.lerp(f.clone().addScaledVector(fwd, -16).add(new THREE.Vector3(0, 12, 0)), Math.min(1, k * 3));
+      this.camTarget.lerp(f.clone().addScaledVector(fwd, 14).add(new THREE.Vector3(0, -22, 0)), Math.min(1, k * 3));
+    } else if (this.mode === 'follow') {
       const f = meObj ? meObj.car.position : this.focus;
-      const dist = (insideB ? 13 : 17) * this.zoom; const height = (insideB ? 12 : 8.5) * this.zoom;
+      const onFoot = !!meObj?.data.foot;
+      const dist = (onFoot ? (insideB ? 7 : 8.5) : insideB ? 13 : 17) * this.zoom; const height = (onFoot ? (insideB ? 5 : 4.2) : insideB ? 12 : 8.5) * this.zoom;
       const fwd = new THREE.Vector3(Math.sin(this.yaw), 0, -Math.cos(this.yaw));
       const tgt = f.clone().addScaledVector(fwd, 4); tgt.y = f.y + 1.6;
       this.camTarget.lerp(tgt, Math.min(1, k * 3));
@@ -1158,7 +1318,7 @@ export class WorldScene {
     }
     this.camera.position.copy(this.camPos);
     this.camera.lookAt(this.camTarget);
-    const near = this.mode === 'follow' ? 0.3 : 3;
+    const near = this.mode === 'follow' ? (this.fpv ? 0.08 : 0.3) : 3;
     if (this.camera.near !== near) { this.camera.near = near; this.camera.updateProjectionMatrix(); }
 
     const stt = this.mode === 'follow' ? this.camTarget : new THREE.Vector3();
@@ -1181,7 +1341,7 @@ export class WorldScene {
         this.setFade(B, inside ? 0.0 : hits.has(B.body) || camIn ? 0.25 : 1, dt);
         if (B.interior) {
           B.interior.visible = inside;
-          B.floors.forEach((fg, i) => { fg.visible = inside && i <= this.myLevel; fg.children.forEach((ch) => { if ((ch as THREE.Sprite).isSprite) ch.visible = i === this.myLevel; }); });
+          B.floors.forEach((fg, i) => { fg.visible = inside && i <= this.myLevel; fg.children.forEach((ch) => { if ((ch as THREE.Sprite).isSprite) ch.visible = i === this.myLevel && ch.position.distanceTo(this.camera.position) > 9; }); });
           // sliding doors open as you drive up to a room
           for (const dr of B.doors) {
             const near = inside && dr.level === this.myLevel && Math.hypot(dr.x - (mp.x / S + 0.5), dr.y - (mp.z / S + 0.5)) < 0.03;

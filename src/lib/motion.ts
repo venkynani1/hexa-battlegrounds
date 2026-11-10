@@ -9,7 +9,7 @@ import { supabase } from './supabase';
 import { rpc } from './api';
 import { serverTime } from './time';
 
-export type Motion = { x: number; y: number; vx: number; vy: number; l: number; b?: string | null; h?: number; t: number; moving?: boolean };
+export type Motion = { x: number; y: number; vx: number; vy: number; l: number; b?: string | null; h?: number; t: number; moving?: boolean; /** the raw positions-feed record (HP, on foot, parachute, buggy…) */ q?: any };
 
 const MAX_EXTRAPOLATE = 1.2; // seconds: never run on past a lost message for long
 /** Positions that come from the ~2 s poll are carried a little longer so squads do not stop between polls. */
@@ -82,7 +82,7 @@ export function useRivals(token: string | null, enabled: boolean) {
             const v = q.vel || [0, 0];
             // `age` = how long ago the server recorded this position: start the prediction from then
             const age = q.vel && typeof q.age === 'number' ? Math.min(3, Math.max(0, q.age)) * 1000 : 0;
-            next.set(q.id, { x: q.pos[0], y: q.pos[1], vx: v[0] || 0, vy: v[1] || 0, l: q.level || 0, b: q.bldg, t: t - age, moving: !!q.vel });
+            next.set(q.id, { x: q.pos[0], y: q.pos[1], vx: v[0] || 0, vy: v[1] || 0, l: q.level || 0, b: q.bldg, t: t - age, moving: !!q.vel, q });
           }
           rivals.current = next;
         } catch { /* the full state refresh still covers positions */ }
@@ -93,4 +93,24 @@ export function useRivals(token: string | null, enabled: boolean) {
     return () => { stop = true; clearTimeout(timer); };
   }, [token, enabled]);
   return rivals;
+}
+
+/**
+ * Gunfire effects for one map: every shot (after the server has decided hit or miss) is broadcast so
+ * every phone and the big screen can draw the tracer at once. Presentation only — damage is on the server.
+ */
+export type Shot = { a: number; b: number; hit: boolean; crit?: boolean; dmg?: number; ko?: boolean; w?: string };
+export function useShots(arenaId: string | null | undefined, onShot: (s: Shot) => void) {
+  const chan = useRef<ReturnType<NonNullable<typeof supabase>['channel']> | null>(null);
+  const cb = useRef(onShot);
+  cb.current = onShot;
+  useEffect(() => {
+    if (!supabase || !arenaId) return;
+    const c = supabase.channel(`fx-${arenaId}`, { config: { broadcast: { self: false, ack: false } } });
+    c.on('broadcast', { event: 's' }, ({ payload }) => { if (payload && typeof (payload as any).a === 'number') cb.current(payload as Shot); });
+    c.subscribe();
+    chan.current = c;
+    return () => { supabase!.removeChannel(c); chan.current = null; };
+  }, [arenaId]);
+  return (s: Shot) => { chan.current?.send({ type: 'broadcast', event: 's', payload: s }); cb.current(s); };
 }

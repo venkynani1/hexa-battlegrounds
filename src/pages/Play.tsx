@@ -10,8 +10,9 @@ import WorldTab from './PlayWorld';
 import FruitSlash from '../components/FruitSlash';
 import BottleShoot from '../components/BottleShoot';
 import MemoryCards from '../components/MemoryCards';
+import { Bomb, PatternLock, SignalLights } from '../components/ClueGames';
 import PlayingCards from '../components/PlayingCards';
-import { BusInterior, ShuttleJourney } from '../components/Shuttle';
+import { Approach, Cabin, Lounge } from '../components/Flight';
 import { PhaseBanner } from '../components/Phase';
 import { Countdown, FeedList, HostOverlays, HpBar, Loading, SettingsSheet, Sheet, TimerBar, toast, ZoneChip } from '../components/ui';
 
@@ -133,9 +134,9 @@ export default function Play() {
       {!inGame && (
         <main className="content">
           {phase === 'lobby' && <Lobby s={s} />}
-          {phase === 'boarding' && <Boarding s={s} />}
-          {phase === 'shuttle' && <Shuttle s={s} />}
-          {phase === 'roles' && <Roles s={s} token={token} refresh={live.refresh} />}
+          {phase === 'boarding' && <Lounge s={s} />}
+          {phase === 'shuttle' && <Cabin s={s} />}
+          {phase === 'roles' && (s.arena.overlay?.flight ? <Approach s={s} /> : <Roles s={s} token={token} refresh={live.refresh} />)}
           {(phase === 'results' || phase === 'ended') && <Results s={s} />}
         </main>
       )}
@@ -244,7 +245,7 @@ function TopBar({ s, onSettings, connected }: { s: any; onSettings: () => void; 
 function Lobby({ s }: { s: any }) {
   return (
     <>
-      <BusInterior s={s} />
+      <Lounge s={s} />
       <HowToPlay />
     </>
   );
@@ -264,14 +265,6 @@ function HowToPlay() {
       </div>
     </div>
   );
-}
-
-function Boarding({ s }: { s: any }) {
-  return <BusInterior s={s} />;
-}
-
-function Shuttle({ s }: { s: any }) {
-  return <ShuttleJourney s={s} />;
 }
 
 function Roles({ s, token, refresh }: { s: any; token: string; refresh: () => void }) {
@@ -548,6 +541,9 @@ function ActivityCard({ a, s, token, refresh, battle = false }: { a: any; s: any
           {clue.game?.type === 'fruit' && !clue.expired && <FruitSlash fruits={clue.game.fruits} bomb={clue.game.bomb} />}
           {clue.game?.type === 'bottle' && !clue.expired && <BottleShoot bottles={clue.game.bottles} ammo={clue.game.ammo} />}
           {clue.game?.type === 'cards' && !clue.expired && <MemoryCards deck={clue.game.deck} />}
+          {clue.game?.type === 'bomb' && !clue.expired && <Bomb wires={clue.game.wires} serial={clue.game.serial} led={clue.game.led} />}
+          {clue.game?.type === 'signal' && !clue.expired && <SignalLights seq={clue.game.seq} replays={clue.game.replays} />}
+          {clue.game?.type === 'pattern' && !clue.expired && <PatternLock path={clue.game.path} />}
           {clue.cards && <PlayingCards cards={clue.cards} />}
           {clue.grid?.rows && <SudokuGrid rows={clue.grid.rows} />}
           {!(clue.grid?.rows) && !clue.cards && <div className={`clue ${clue.mono ? 'mono' : ''} ${clue.expired ? 'expired' : ''} ${(clue.reveal_seconds && !clue.expired) || clue.big ? 'big' : ''}`}>{clue.body}</div>}

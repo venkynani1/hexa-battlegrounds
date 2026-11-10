@@ -85,12 +85,15 @@ function Room({ sess, onEnd }: { sess: Session; onEnd: () => void }) {
 
   const squads: any[] = (x?.bots || []).filter((b: any) => b.map === map);
   useEffect(() => { if (squads.length && !squads.some((b) => b.number === squad)) setSquad(squads[0].number); }, [squads.length, map]);
+  // roles are handed out at take-off, so look the player up again when the map's phase changes
+  const mapPhase = x?.maps?.find((m: any) => m.number === map)?.phase;
+  const rolesKnown = !['lobby', 'boarding'].includes(mapPhase || 'lobby');
   useEffect(() => {
     if (squad == null) return;
     let stop = false;
     rpc<any>('demo_view', { p_token: sess.token, p_team: squad, p_role: role }).then((r) => { if (!stop) setPhone(r.token); }).catch((e) => toast(friendly(e), 'bad'));
     return () => { stop = true; };
-  }, [squad, role, sess.token]);
+  }, [squad, role, sess.token, rolesKnown]);
 
   async function endDemo() {
     if (!confirm('End this demo match and delete its dummy squads?')) return;

@@ -5,14 +5,16 @@
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import { friendly, rpc } from '../lib/api';
 import { feedText, floorLabel, floorName, locName, MapData, MATCH_PHASES, ROLES, ROLE_ORDER, Role, TIER_COLOR } from '../lib/game';
-import { POLL_EXTRAPOLATE, predict, useRivals, useSquadLink } from '../lib/motion';
+import { POLL_EXTRAPOLATE, predict, Shot, useRivals, useShots, useSquadLink } from '../lib/motion';
+import { inBuilding, walkBlocked } from '../lib/walls';
+import { zoneNow } from '../lib/zone';
 import { ROADS, LOTS } from '../../content/campus.mjs';
 import { msUntil, serverTime, useNow } from '../lib/time';
 import { buzz, sfx } from '../lib/sound';
 import { Countdown, HpBar, Sheet, toast } from '../components/ui';
 import CampusMap, { SHORT } from '../components/CampusMap';
 import BigMap, { METERS } from './BigMap';
-import type { WorldState } from '../three/world';
+import type { WorldScene, WorldState } from '../three/world';
 
 const World3D = lazy(() => import('../three/World3D'));
 
@@ -103,12 +105,12 @@ function Coach({ isCaptain }: { isCaptain: boolean }) {
   const [step, setStep] = useState(() => { try { return localStorage.getItem(KEY) ? -1 : 0; } catch { return 0; } });
   if (step < 0) return null;
   const tips = isCaptain ? [
-    { at: 'bl', title: 'Drive', text: 'Your squad is a buggy. Put your thumb anywhere bottom-left and drag. Drag the right side of the screen to turn the camera.' },
+    { at: 'bl', title: 'Move', text: 'Thumb anywhere bottom-left and drag. You land on foot: walk to the parking yard and tap GET IN at your numbered buggy. Buggies stop at building doors — walk inside. Drag the right side to look around.' },
     { at: 'tl', title: 'Map', text: 'Tap the minimap for the full campus. Tap a place, then Drive — or Drop for your first landing.' },
-    { at: 'br', title: 'Act', text: 'The big button changes: SEARCH in a place, CRACK at a crate or vault, ENGAGE near enemies, SOLVE during a challenge.' },
+    { at: 'br', title: 'Act & fight', text: 'The big button changes: SEARCH, CRACK a crate, SOLVE a challenge. When a rival squad is in range, hold FIRE — everyone in your squad can shoot.' },
     { at: 'tr', title: 'Floors & lockdowns', text: 'Rooms are upstairs: drive onto a green STAIRS ring and use ▲▼. When a building sounds its alarm, get out before the doors shut.' },
   ] : [
-    { at: 'tl', title: 'Your squad', text: 'Your captain drives the squad buggy. You can watch, turn the camera and open the map.' },
+    { at: 'tl', title: 'Your squad', text: 'Your captain moves the squad. You watch, open the map — and hold FIRE when a rival squad comes into range.' },
     { at: 'br', title: 'Your clue', text: 'When a challenge starts, your clue opens by itself. Read it out — the captain types the answer.' },
   ];
   const t = tips[step];
@@ -129,11 +131,13 @@ function Coach({ isCaptain }: { isCaptain: boolean }) {
 }
 
 // ── Icons (simple line icons, original) ─────────────────────────────────
-type IconName = 'search' | 'crate' | 'target' | 'puzzle' | 'med' | 'bag' | 'plus' | 'minus' | 'map' | 'chat' | 'gear';
+type IconName = 'search' | 'crate' | 'target' | 'puzzle' | 'med' | 'bag' | 'plus' | 'minus' | 'map' | 'chat' | 'gear' | 'car' | 'chute';
 const ICONS: Record<IconName, string> = {
   search: 'M10.5 4a6.5 6.5 0 1 1 0 13 6.5 6.5 0 0 1 0-13Zm4.8 11.3L20 20',
   crate: 'M4 8l8-4 8 4v8l-8 4-8-4V8Zm0 0l8 4 8-4M12 12v8',
   target: 'M12 3v4M12 17v4M3 12h4M17 12h4M12 7a5 5 0 1 1 0 10 5 5 0 0 1 0-10Zm0 4a1 1 0 1 1 0 2 1 1 0 0 1 0-2Z',
+  car: 'M4 15l1.5-5h13L20 15v3H4v-3Zm2 3v2m12-2v2M7 15h.01M17 15h.01M7 10l1.5-4h7L17 10',
+  chute: 'M3 11a9 7 0 0 1 18 0M3 11l9 9 9-9M8 11l4 9 4-9M12 11v9',
   puzzle: 'M9 4h3a2 2 0 1 1 4 0h3v5a2 2 0 1 1 0 4v6h-5a2 2 0 1 0-4 0H5v-5a2 2 0 1 0 0-4V4h4Z',
   med: 'M10 4h4v6h6v4h-6v6h-4v-6H4v-4h6V4Z',
   bag: 'M8 7V5a4 4 0 0 1 8 0v2M5 7h14l-1 13H6L5 7Zm4 5h6',
@@ -238,7 +242,17 @@ function KillFeed({ feed, map }: { feed: any[]; map: MapData | null }) {
   );
 }
 
-type Live = { x: number; y: number; moving: boolean; joy?: boolean; yaw?: number; level?: number; bldg?: string | null; vx?: number; vy?: number };
+type Live = { x: number; y: number; moving: boolean; joy?: boolean; jx?: number; yaw?: number; level?: number; bldg?: string | null; vx?: number; vy?: number };
+
+/** a clear line of fire outdoors: no building between the two squads */
+function clearShot(map: MapData | null, a: XY, b: XY) {
+  for (const B of map?.buildings || []) {
+    const near = (p: XY) => p[0] > B.x0 - 0.002 && p[0] < B.x1 + 0.002 && p[1] > B.y0 - 0.002 && p[1] < B.y1 + 0.002;
+    if (near(a) || near(b)) continue;
+    for (let k = 1; k < 16; k++) { const x = a[0] + (b[0] - a[0]) * k / 16; const y = a[1] + (b[1] - a[1]) * k / 16; if (x > B.x0 && x < B.x1 && y > B.y0 && y < B.y1) return false; }
+  }
+  return true;
+}
 
 export default function WorldTab({ s, token, map, refresh, openMission, openSquad, openComms, unread, onSettings, connected, spectating }: {
   s: any; token: string; map: MapData | null; refresh: () => void; openMission: () => void; openSquad: () => void; openComms: () => void; unread: number; onSettings: () => void; connected: boolean;
@@ -248,13 +262,25 @@ export default function WorldTab({ s, token, map, refresh, openMission, openSqua
   useNow(500);
   const isCaptain = s.me.role === 'captain' && !spectating;
   const world = s.arena.overlay?.world || { speed: 0.016, loc_radius: 0.018, engage_range: 0.04 };
-  const zone = s.arena.overlay?.zone;
+  const zoneRaw = s.arena.overlay?.zone;
+  const zn = zoneNow(zoneRaw, serverTime());
+  // what the maps draw: the circle right now (moving while the wall closes in) and the white target circle
+  const zone = zoneRaw ? { ...zoneRaw, cur: zn.cur, next: zn.next } : zoneRaw;
   const red = s.arena.overlay?.red && msUntil(s.arena.overlay.red.at) > -2000 ? s.arena.overlay.red : null;
   const lock: any[] = s.arena.overlay?.lock || [];
   const buildings = map?.buildings || [];
   const level: number = s.team.level || 0;
   const bldg: string | null = s.team.bldg || null;
-  const canMove = isCaptain && s.arena.phase === 'play' && !s.arena.paused && s.team.state !== 'recovery' && !s.battle;
+  const canMove = isCaptain && s.arena.phase === 'play' && !s.arena.paused && s.team.state !== 'recovery' && !s.battle && s.team.dropped !== false;
+  // on foot or in the buggy (older servers: always the buggy)
+  const vehRef = useRef<string>(s.team.vehicle || 'in');
+  useEffect(() => { vehRef.current = s.team.vehicle || 'in'; }, [s.team.vehicle]);
+  const onFoot = (s.team.vehicle || 'in') !== 'in';
+  const inPlane = !!s.team.in_plane && s.arena.phase === 'play';
+  const chute = !!s.team.parachute;
+  const plane = s.arena.overlay?.plane || null;
+  const weapon = s.team.weapon || { id: 'pistol', name: 'Pistol', range: 0.055, rate: 650, mag: 12, reload: 1600 };
+  const sceneRef = useRef<WorldScene | null>(null);
   const [zoom] = useState(1);
   const [mapOpen, setMapOpen] = useState(false);
   const [marker, setMarker] = useState<XY | null>(null);
@@ -295,6 +321,8 @@ export default function WorldTab({ s, token, map, refresh, openMission, openSqua
       const r = await rpc('captain_steer', { p_token: token, p_x: me.current.x, p_y: me.current.y, p_vx: final ? 0 : me.current.vx || 0, p_vy: final ? 0 : me.current.vy || 0 });
       if (r.clamped) { me.current.x = r.x; me.current.y = r.y; }
       if (r.wall && performance.now() - wallToast.current > 4000) { wallToast.current = performance.now(); toast('Sealed by a lockdown — drive around it', 'bad'); }
+      if (r.parked) { vehRef.current = 'parked'; sfx.tap(); buzz(30); toast('Buggy parked — you are on foot. Walk in through the front door.', 'info'); refresh(); }
+      if (r.vehicle) vehRef.current = r.vehicle;
       if (r.picked?.length) {
         sfx.pickup(); buzz(25);
         for (const k of r.picked) toast(k === 'medkit' ? '+1 Med kit' : k === 'shield' ? '+20 Shield' : '+15 coins', 'good');
@@ -320,6 +348,12 @@ export default function WorldTab({ s, token, map, refresh, openMission, openSqua
       raf = requestAnimationFrame(step);
       const dt = Math.min(0.1, (t - last) / 1000); last = t;
       const L = me.current;
+      if (s.team.in_plane && plane) {
+        const a = new Date(plane.t0).getTime(); const b = new Date(plane.t1).getTime(); const p = Math.max(0, Math.min(1, (serverTime() - a) / Math.max(1, b - a)));
+        L.x = plane.a[0] + (plane.b[0] - plane.a[0]) * p; L.y = plane.a[1] + (plane.b[1] - plane.a[1]) * p; L.moving = true; L.level = 0;
+        L.yaw = Math.atan2(plane.b[0] - plane.a[0], -(plane.b[1] - plane.a[1]));
+        return;
+      }
       if (isCaptain) {
         const v = vec.current;
         const mag = Math.hypot(v.x, v.y);
@@ -328,9 +362,23 @@ export default function WorldTab({ s, token, map, refresh, openMission, openSqua
           // the joystick is relative to where the camera looks (push up = drive forward)
           const yaw = L.yaw || 0; const c = Math.cos(yaw); const sn = Math.sin(yaw);
           const wx = c * v.x - sn * v.y; const wy = sn * v.x + c * v.y;
-          let nx = clamp01(L.x + wx * world.speed * dt); let ny = clamp01(L.y + wy * world.speed * dt);
+          const foot = vehRef.current !== 'in';
+          const spd = foot ? (world.foot_speed || 0.006) : world.speed;
+          L.jx = v.x;
+          let nx = clamp01(L.x + wx * spd * dt); let ny = clamp01(L.y + wy * spd * dt);
           if (level > 0 && B) { nx = Math.max(B.x0 + 0.004, Math.min(B.x1 - 0.004, nx)); ny = Math.max(B.y0 + 0.004, Math.min(B.y1 - 0.004, ny)); }
           else if (sealedAt(nx, ny) && !sealedAt(L.x, L.y)) { nx = L.x; ny = L.y; }
+          if (!foot && level === 0 && inBuilding(map, nx, ny) && !inBuilding(map, L.x, L.y)) {
+            // a buggy stops at the building: the server parks it and the captain walks on
+            nx = L.x; ny = L.y;
+            if (t - lastSend.current > 250) sendSteer();
+          }
+          if (foot && map && walkBlocked(map, [L.x, L.y], [nx, ny], level, bldg)) {
+            // slide along the wall
+            if (!walkBlocked(map, [L.x, L.y], [nx, L.y], level, bldg)) ny = L.y;
+            else if (!walkBlocked(map, [L.x, L.y], [L.x, ny], level, bldg)) nx = L.x;
+            else { nx = L.x; ny = L.y; }
+          }
           // velocity actually achieved (smoothed): slow phones and walls never make teammates overshoot
           const ivx = (nx - L.x) / Math.max(dt, 0.001); const ivy = (ny - L.y) / Math.max(dt, 0.001);
           L.vx = (L.vx || 0) * 0.75 + ivx * 0.25; L.vy = (L.vy || 0) * 0.75 + ivy * 0.25;
@@ -375,7 +423,7 @@ export default function WorldTab({ s, token, map, refresh, openMission, openSqua
     raf = requestAnimationFrame(step);
     const iv = setInterval(() => tick((n) => n + 1), 300); // refresh HUD readouts and rival positions
     return () => { cancelAnimationFrame(raf); clearInterval(iv); };
-  }, [s, map, canMove, world.speed, isCaptain, level, bldg, lock.length]);
+  }, [s, map, canMove, world.speed, world.foot_speed, isCaptain, level, bldg, lock.length]);
 
   const myLevel = me.current.level ?? level;
   const myXY: XY = [me.current.x, me.current.y];
@@ -384,6 +432,82 @@ export default function WorldTab({ s, token, map, refresh, openMission, openSqua
   const enemiesNear = squads.filter((x: any) => x.id !== s.team.id && x.pos && dist(x.pos, myXY) <= world.engage_range && x.state !== 'recovery'
     && (x.level || 0) === level && (level === 0 || x.bldg === bldg));
   const dropsHere = (s.airdrops || []).filter((a: any) => here && a.location === here.id);
+
+  // ── gunfights: every squad member can shoot the nearest rival in range and in sight ──
+  const phaseNow = s.arena.overlay?.match?.phase ?? 0;
+  const fireFrom = world.fire_from_phase ?? 1;
+  const canFight = s.arena.phase === 'play' && !s.arena.paused && phaseNow >= fireFrom && s.team.dropped !== false && !inPlane && !chute
+    && s.team.state !== 'recovery' && s.team.state !== 'traveling' && !!s.me.role;
+  const targets = !canFight ? [] : squads.filter((x: any) => x.id !== s.team.id && !x.allied && x.state !== 'recovery' && !x.protected)
+    .map((x: any) => {
+      const rv = rivals.current.get(x.id);
+      const fresh = rv && serverTime() - rv.t < 6000;
+      if (fresh && (rv!.q?.plane || rv!.q?.chute)) return null;
+      const p = fresh ? predict(rv!, undefined, POLL_EXTRAPOLATE) : x.pos ? { x: x.pos[0], y: x.pos[1] } : null;
+      const lv = fresh ? rv!.l : x.level || 0; const bd = fresh ? rv!.b : x.bldg;
+      if (!p || lv !== level || (level > 0 && bd !== bldg)) return null;
+      const d = Math.hypot(p.x - myXY[0], p.y - myXY[1]);
+      if (d > weapon.range || (level === 0 && !clearShot(map, myXY, [p.x, p.y]))) return null;
+      return { id: x.id, number: x.number, d, hp: fresh ? rv!.q?.hp : x.hp };
+    }).filter(Boolean).sort((a: any, b: any) => a.d - b.d) as { id: string; number: number; d: number; hp?: number }[];
+  const target = targets[0] || null;
+  const [ammo, setAmmo] = useState<number | null>(null);
+  const [reloadAt, setReloadAt] = useState(0);
+  const [hitFx, setHitFx] = useState<{ t: number; crit?: boolean; dmg?: number; ko?: boolean } | null>(null);
+  const [hurt, setHurt] = useState<{ t: number; ang: number } | null>(null);
+  const firing = useRef(false);
+  const fireBusy = useRef(false);
+  const targetRef = useRef(target); targetRef.current = target;
+  const sendShot = useShots(s.arena.id, (sh: Shot) => {
+    sceneRef.current?.shot(sh.a, sh.b, sh.hit);
+    if (sh.b === s.team.number && sh.hit) {
+      // hit from a direction: show it on the screen edge
+      const from = squads.find((x: any) => x.number === sh.a);
+      const rv = from ? rivals.current.get(from.id) : null;
+      const fp = rv ? [rv.x, rv.y] : from?.pos;
+      const ang = fp ? Math.atan2(fp[0] - me.current.x, -(fp[1] - me.current.y)) - (me.current.yaw || 0) : 0;
+      setHurt({ t: performance.now(), ang }); sfx.damage(); buzz(sh.crit ? [60, 40, 60] : 40);
+      if (sh.ko) { toast(`Squad ${sh.a} knocked your squad out!`, 'bad'); refresh(); }
+    }
+  });
+  async function fireOnce() {
+    const tg = targetRef.current;
+    if (!tg || fireBusy.current) return;
+    if (reloadAt > performance.now()) return;
+    fireBusy.current = true;
+    try {
+      const r = await rpc<any>('squad_fire', { p_token: token, p_target: tg.id });
+      sfx.weapon(); buzz(10);
+      sendShot({ a: s.team.number, b: tg.number, hit: r.hit, crit: r.crit, dmg: r.dmg, ko: r.knocked, w: r.weapon?.id });
+      setAmmo(r.mag);
+      if (r.reload_until) { setReloadAt(performance.now() + Math.max(300, msUntil(r.reload_until))); sfx.tap(); }
+      if (r.hit) setHitFx({ t: performance.now(), crit: r.crit, dmg: r.dmg, ko: r.knocked });
+      if (r.knocked) { sfx.success(); buzz([80, 40, 120]); toast(`You knocked out Squad ${tg.number}! +points and loot`, 'good'); refresh(); }
+    } catch (e: any) {
+      const code = e?.code || '';
+      if (!['TOO_FAST', 'RELOADING'].includes(code)) { firing.current = false; toast(friendly(e), 'bad'); }
+    } finally { fireBusy.current = false; }
+  }
+  function startFire() {
+    if (firing.current) return;
+    firing.current = true;
+    const loop = () => { if (!firing.current) return; fireOnce(); setTimeout(loop, (weapon.rate || 650) + 40); };
+    loop();
+  }
+  const stopFire = () => { firing.current = false; };
+  useEffect(() => () => { firing.current = false; }, []);
+  useEffect(() => { if (!target) firing.current = false; }, [target?.id]);
+  const reloading = reloadAt > performance.now();
+  const ammoLeft = ammo ?? s.me.mag ?? weapon.mag;
+
+  // ── the plane and the jump ──
+  const overCampus = inPlane && me.current.x > 0.03 && me.current.x < 0.97 && me.current.y > 0.03 && me.current.y < 0.97;
+  const glide = world.glide_range || 0.3;
+  const planeLeaves = plane ? new Date(plane.t0).getTime() + (new Date(plane.t1).getTime() - new Date(plane.t0).getTime()) * 0.8 : 0;
+  // ── the buggy ──
+  const buggy: XY | null = s.team.buggy || null;
+  const buggyDist = buggy ? Math.hypot(buggy[0] - myXY[0], buggy[1] - myXY[1]) : 1;
+  const nearBuggy = onFoot && level === 0 && buggyDist < 0.008;
   const duelPhase = s.arena.overlay?.match?.duel_phase ?? 2;
   const duelsLocked = (s.arena.overlay?.match?.phase ?? 99) < duelPhase;
   const cooldown = s.team.attack_cooldown_until && msUntil(s.team.attack_cooldown_until) > 0;
@@ -424,6 +548,12 @@ export default function WorldTab({ s, token, map, refresh, openMission, openSqua
         at: mine ? now : fresh ? rv!.t : new Date(s.server_now).getTime(),
         level: mine ? myLevel : fresh ? rv!.l : x.level || 0, bldg: mine ? bldg : fresh ? rv!.b : x.bldg,
         label: mine ? `SQ ${x.number} · YOU` : `SQ ${x.number}`,
+        ...(mine
+          ? { foot: onFoot || chute, buggy: s.team.buggy || null, chute, landAt: chute && s.team.travel_arrive_at ? new Date(s.team.travel_arrive_at).getTime() : undefined, hidden: inPlane, hp: s.team.hp, shield: s.team.shield }
+          : fresh && rv!.q
+            ? { foot: (rv!.q.veh && rv!.q.veh !== 'in') || rv!.q.chute, buggy: rv!.q.buggy || null, chute: !!rv!.q.chute, landAt: rv!.q.land_at ? new Date(rv!.q.land_at).getTime() : undefined,
+                hidden: !!rv!.q.plane, hp: rv!.q.hp, shield: rv!.q.shield, fight: !!rv!.q.fight }
+            : {}),
       };
     }),
     zone, red, locRadius: world.loc_radius, lock,
@@ -431,7 +561,7 @@ export default function WorldTab({ s, token, map, refresh, openMission, openSqua
     airdrops: (s.airdrops || []).map((a: any) => ({ key: a.id, location: a.location, tier: a.tier })),
     battles: [],
     focus: { x: me.current.x, y: me.current.y },
-  }), [s, zone, red, world.loc_radius, lock, Math.floor(now / 300), myLevel]);
+  }), [s, zone, red, world.loc_radius, lock, Math.floor(now / 300), myLevel, onFoot, chute, inPlane]);
 
   async function act(fn: string, args: any, ok?: string) {
     setBusy(true);
@@ -454,13 +584,19 @@ export default function WorldTab({ s, token, map, refresh, openMission, openSqua
     finally { refresh(); setTimeout(() => setClimbing(null), 650); }
   }
 
+  const markerDist = marker ? Math.hypot(marker[0] - myXY[0], marker[1] - myXY[1]) : 0;
+  const markerBearing = marker ? Math.atan2(marker[0] - myXY[0], -(marker[1] - myXY[1])) : null;
+  const markerPlace = marker ? map?.locations.filter((l) => l.kind !== 'start' && l.enabled && (l.level || 0) === level && (level === 0 || l.building === bldg))
+    .map((l) => ({ l, d: Math.hypot(l.x - marker[0], l.y - marker[1]) })).sort((a, b) => a.d - b.d)[0] : null;
+  const markerLoc = markerPlace && markerPlace.d < 0.03 ? markerPlace.l : null;
   // primary context action
   let primary: { label: string; icon: IconName; sub?: string; tone: string; onClick: () => void; disabled?: boolean } | null = null;
   if (s.battle) primary = { icon: 'target', label: 'DUEL', sub: 'answer now', tone: 'danger', onClick: openMission };
   else if (s.mission) primary = { icon: 'puzzle', label: 'SOLVE', sub: s.mission.title, tone: 'primary', onClick: openMission };
   else if (s.team.state === 'recovery') primary = { icon: 'med', label: 'REVIVE', sub: 'recovery', tone: 'good', onClick: openMission };
   else if (isCaptain && dropsHere.length) primary = { icon: 'crate', label: 'CRACK', sub: dropsHere[0].tier === 'vault' ? 'VAULT' : `${dropsHere[0].tier} crate`, tone: 'gold', disabled: busy, onClick: () => act('captain_claim_airdrop', { p_airdrop: dropsHere[0].id }).then((r) => r && openMission()) };
-  else if (isCaptain && enemiesNear.length && !duelsLocked) primary = { icon: 'target', label: 'ENGAGE', sub: `SQ ${enemiesNear[0].number}`, tone: 'danger', disabled: busy || !!cooldown, onClick: () => setEngage(true) };
+  else if (isCaptain && inPlane && overCampus) primary = { icon: 'chute', label: 'JUMP', sub: markerLoc && Math.hypot(markerLoc.x - myXY[0], markerLoc.y - myXY[1]) <= glide ? (SHORT[markerLoc.id] || markerLoc.name) : 'pick a spot', tone: 'gold', disabled: busy,
+    onClick: () => { if (markerLoc && Math.hypot(markerLoc.x - myXY[0], markerLoc.y - myXY[1]) <= glide) runTo(markerLoc.id); else { toast('Tap where to land — inside the dashed circle', 'info'); setMapOpen(true); } } };
   else if (isCaptain && here && here.kind !== 'stairs' && s.arena.phase === 'play') primary = { icon: 'search', label: 'SEARCH', sub: searchesLeft > 0 ? `${searchesLeft} left` : 'area empty', tone: 'primary', disabled: busy || searchesLeft <= 0 || s.team.state !== 'idle', onClick: () => act('captain_explore', {}).then((r) => r && openMission()) };
   const medkits = s.inventory?.medkit || 0;
   const weapons = Object.entries(s.inventory || {}).filter(([k]) => ['pistol', 'smg', 'sniper'].includes(k)) as [string, number][];
@@ -468,14 +604,9 @@ export default function WorldTab({ s, token, map, refresh, openMission, openSqua
 
   const webgl = hasWebGL();
   const zoneWarn = !!zone?.next_at && msUntil(zone.next_at) > 0;
-  const markerDist = marker ? Math.hypot(marker[0] - myXY[0], marker[1] - myXY[1]) : 0;
-  const markerBearing = marker ? Math.atan2(marker[0] - myXY[0], -(marker[1] - myXY[1])) : null;
-  const markerPlace = marker ? map?.locations.filter((l) => l.kind !== 'start' && l.enabled && (l.level || 0) === level && (level === 0 || l.building === bldg))
-    .map((l) => ({ l, d: Math.hypot(l.x - marker[0], l.y - marker[1]) })).sort((a, b) => a.d - b.d)[0] : null;
-  const markerLoc = markerPlace && markerPlace.d < 0.03 ? markerPlace.l : null;
   async function runTo(id: string) {
     const r = await act('captain_move', { p_location: id });
-    if (r) { sfx.go(); toast(`${!s.team.dropped ? 'Parachuting' : 'Driving'} to ${SHORT[id] || locName(map, id)} · ${Math.round(r.seconds)}s`, 'info'); setMapOpen(false); }
+    if (r) { sfx.go(); toast(`${!s.team.dropped ? '🪂 Jumped! Gliding' : onFoot ? 'Running' : 'Driving'} to ${SHORT[id] || locName(map, id)} · ${Math.round(r.seconds)}s`, 'info'); setMapOpen(false); setMarker(null); }
   }
   const auto = s.arena.overlay?.auto?.on ? s.arena.overlay.auto : null;
   // one banner, most urgent first (no stacked boxes over the view)
@@ -488,13 +619,20 @@ export default function WorldTab({ s, token, map, refresh, openMission, openSqua
     : red && msUntil(red.at) > 0 ? { tone: 'warn', text: <>💥 Red zone strike in <Countdown to={red.at} /></> }
     : s.arena.phase === 'finale' && auto?.at && auto.label !== 'Round ends' && msUntil(auto.at) > 0 ? { tone: 'warn', text: <>Next: {auto.label} in <Countdown to={auto.at} /></> }
     : s.arena.phase === 'finale' ? { tone: 'warn', text: 'Finale in Training Room 14 — open the mission' }
-    : !s.team.dropped && s.arena.phase === 'play' ? { tone: 'info', text: isCaptain ? '🪂 Open the map and pick where to drop' : '🪂 Your captain is picking a drop point' }
+    : inPlane && !overCampus && msUntil(plane?.t0) > -60000 ? { tone: 'info', text: '✈ Approaching Hexaware — get ready to jump' }
+    : inPlane ? { tone: 'warn', text: <>🪂 {isCaptain ? 'Pick a landing spot and JUMP' : 'Your captain is choosing where to land'} · plane leaves in <Countdown to={new Date(planeLeaves).toISOString()} /></> }
+    : chute ? { tone: 'info', text: '🪂 Parachuting down…' }
+    : zn.shrinking && outside ? { tone: 'bad', text: <>☢ The zone is closing in — {zoneRaw?.dps ?? 1} HP/s outside!</>, arrow: zoneArrow }
     : nextLock && msUntil(nextLock.at) > 0 ? { tone: 'warn', text: <>🚨 {floorName(nextLock.n, nextLock.l)} seals in <Countdown to={nextLock.at} /></> }
     : s.arena.phase === 'play' && auto?.label === 'Finale' && auto.at && msUntil(auto.at) > 0 && msUntil(auto.at) < 120_000 ? { tone: 'warn', text: <>🏁 Finale in Training Room 14 in <Countdown to={auto.at} /></> }
-    : zoneWarn ? { tone: 'zone', text: <>Safe zone shrinking in <Countdown to={zone.next_at} /></> }
+    : zn.shrinking ? { tone: 'zone', text: <>☢ Zone closing · <Countdown to={new Date(zn.until!).toISOString()} /> · run to the white circle</> }
+    : zoneWarn ? { tone: 'zone', text: <>Safe zone shrinks in <Countdown to={zone.next_at} /> · white circle = next zone</> }
+    : onFoot && s.team.vehicle === 'none' && level === 0 && !inB && buggy && s.arena.phase === 'play' ? { tone: 'info', text: <>🚙 Walk to the parking yard — buggy {s.team.number} waits · {Math.round(buggyDist * METERS)} m</>, arrow: Math.atan2(buggy[0] - myXY[0], -(buggy[1] - myXY[1])) - (me.current.yaw || 0) }
     : null;
   const travelDest = s.team.state === 'traveling' && s.team.travel_to ? map?.locations.find((l) => l.id === s.team.travel_to) : null;
-  const world3d: WorldState = { ...state, waypoint: marker ? { x: marker[0], y: marker[1] } : null, route: travelDest ? { x: travelDest.x, y: travelDest.y } : null };
+  const fpv = isCaptain && onFoot && !chute && (level > 0 || !!inB);
+  const world3d: WorldState = { ...state, zone: zoneRaw, plane: s.arena.phase === 'play' ? plane : null, fpv, target: target?.id || null,
+    waypoint: marker ? { x: marker[0], y: marker[1] } : null, route: travelDest && s.team.dropped ? { x: travelDest.x, y: travelDest.y } : null };
   const where = here ? (SHORT[here.id] || here.name) : inB ? inB.name : travelDest ? null : 'Open ground';
 
   return (
@@ -502,7 +640,7 @@ export default function WorldTab({ s, token, map, refresh, openMission, openSqua
       <div className="world-view">
         {map && webgl ? (
           <Suspense fallback={<div className="world-loading">Loading 3D campus…</div>}>
-            <World3D map={map} state={world3d} mode="follow" zoom={zoom} live={me}
+            <World3D map={map} state={world3d} mode="follow" zoom={zoom} live={me} sceneRef={sceneRef}
               onPick={(id) => { const l = map.locations.find((x) => x.id === id); if (l) { sfx.tap(); setMarker([l.x, l.y]); } }} />
           </Suspense>
         ) : map ? (
@@ -514,6 +652,14 @@ export default function WorldTab({ s, token, map, refresh, openMission, openSqua
       </div>
       {myLock && <div className="alarm-vignette" aria-hidden />}
       {climbing && <div className="climb-flash" role="status">{climbing}</div>}
+      {hurt && performance.now() - hurt.t < 700 && <div className="hurt-arc" style={{ transform: `rotate(${hurt.ang}rad)` }} aria-hidden />}
+      {fpv && <div className="fpv-cross" aria-hidden />}
+      {target && canFight && (
+        <div className={`aim ${hitFx && performance.now() - hitFx.t < 260 ? 'hit' : ''}`} aria-hidden>
+          <i /><span>SQ {target.number}{typeof target.hp === 'number' ? ` · ${target.hp} HP` : ''} · {Math.round(target.d * METERS)} m</span>
+          {hitFx && performance.now() - hitFx.t < 700 && <b className={hitFx.crit ? 'crit' : ''}>{hitFx.ko ? 'KNOCKED!' : `-${hitFx.dmg}`}</b>}
+        </div>
+      )}
 
       {/* top-left: minimap, team */}
       <div className="hud-tl">
@@ -580,9 +726,9 @@ export default function WorldTab({ s, token, map, refresh, openMission, openSqua
       <div className="hud-bc">
         {marker ? (
           <div className="hud-marker">
-            <span className="grow"><b>{markerLoc ? (SHORT[markerLoc.id] || markerLoc.name) : 'Marker'}</b> · {Math.round(markerDist * METERS)} m · {Math.max(1, Math.round(markerDist / world.speed))} s</span>
+            <span className="grow"><b>{markerLoc ? (SHORT[markerLoc.id] || markerLoc.name) : 'Marker'}</b> · {Math.round(markerDist * METERS)} m{!inPlane && <> · {Math.max(1, Math.round(markerDist / (onFoot ? (world.foot_speed || 0.006) : world.speed)))} s</>}</span>
             {markerLoc && isCaptain && s.arena.phase === 'play' && here?.id !== markerLoc.id && (
-              <button className="btn xs primary" disabled={busy || !canMove} onClick={() => runTo(markerLoc.id)}>{!s.team.dropped ? '🪂 Drop' : 'Drive'}</button>
+              <button className="btn xs primary" disabled={busy || !(canMove || (inPlane && overCampus))} onClick={() => runTo(markerLoc.id)}>{inPlane ? '🪂 Jump' : onFoot ? 'Run' : 'Drive'}</button>
             )}
             <button className="btn xs ghost" onClick={() => setMarker(null)} aria-label="Remove marker">✕</button>
           </div>
@@ -603,14 +749,28 @@ export default function WorldTab({ s, token, map, refresh, openMission, openSqua
       </div>
 
       {/* bottom-left: joystick or role hint */}
-      {isCaptain && s.arena.phase === 'play'
+      {isCaptain && s.arena.phase === 'play' && !inPlane && !chute
         ? <Joystick disabled={!canMove} onMove={(x, y) => { vec.current = { x, y }; }} />
         : <div className="hud-bl-hint">{spectating && s.me.role === 'captain'
             ? <>🤖 Demo: this dummy captain drives by itself. Tap <b>Take control</b> to drive.</>
-            : <>{ROLES[s.me.role as Role]?.icon} You are {ROLES[s.me.role as Role]?.name}. <b>{s.roles?.captain || 'The captain'}</b> drives the squad.</>}</div>}
+            : <>{ROLES[s.me.role as Role]?.icon} You are {ROLES[s.me.role as Role]?.name}. <b>{s.roles?.captain || 'The captain'}</b> {onFoot ? 'leads the squad on foot' : 'drives the squad'}{canFight ? ' — hold FIRE when a rival is in range' : ''}.</>}</div>}
 
       {/* bottom-right: actions */}
       <div className="hud-actions">
+        {canFight && (
+          <button className={`act fire ${target ? 'live' : ''} ${reloading ? 'reload' : ''}`} disabled={!target}
+            onPointerDown={(e) => { e.preventDefault(); (e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId); startFire(); }}
+            onPointerUp={stopFire} onPointerCancel={stopFire} onPointerLeave={stopFire} onContextMenu={(e) => e.preventDefault()}
+            aria-label={target ? `Fire at squad ${target.number}` : 'No target in range'}>
+            <Icon name="target" /><span>{reloading ? 'RELOAD' : 'FIRE'}</span><small>{weapon.name} · {ammoLeft}/{weapon.mag}</small>
+          </button>
+        )}
+        {isCaptain && nearBuggy && canMove && (
+          <button className="act md getin" disabled={busy} onClick={() => act('captain_vehicle', { p_in: true }).then((r) => { if (r) { vehRef.current = 'in'; sfx.go(); buzz(30); toast('Engine on — drive!', 'good'); } })} aria-label="Get in your buggy"><Icon name="car" /><small>GET IN</small></button>
+        )}
+        {isCaptain && s.team.vehicle === 'in' && canMove && level === 0 && (
+          <button className="act md" disabled={busy} onClick={() => act('captain_vehicle', { p_in: false }).then((r) => { if (r) vehRef.current = 'parked'; })} aria-label="Get out of the buggy"><Icon name="car" /><small>OUT</small></button>
+        )}
         {isCaptain && medkits > 0 && hp < 100 && s.team.state !== 'recovery' && (
           <button className="act md good" disabled={busy} onClick={() => act('captain_use_item', { p_item: 'medkit' }, '+ HP')} aria-label="Use med kit"><Icon name="med" /><small>{medkits}</small></button>
         )}
@@ -621,27 +781,6 @@ export default function WorldTab({ s, token, map, refresh, openMission, openSqua
         )}
       </div>
 
-      {/* engage: pick a weapon */}
-      <Sheet open={engage} onClose={() => setEngage(false)} title="Engage enemy squad">
-        <div className="col">
-          {enemiesNear.map((x: any) => (
-            <div key={x.id} className="panel danger col" style={{ gap: 8 }}>
-              <div className="row between"><b>Squad {x.number} · {x.name}</b>{x.allied && <span className="chip good">Ally (betrayal!)</span>}</div>
-              <div className="row wrap" style={{ gap: 6 }}>
-                {weapons.map(([w, q]) => (
-                  <button key={w} className="btn danger grow" disabled={busy || x.protected || x.in_battle || !!cooldown}
-                    onClick={async () => { sfx.weapon(); const r = await act('captain_attack', { p_target: x.id, p_weapon: w }); setEngage(false); if (r) openMission(); }}>
-                    {w.toUpperCase()}{w !== 'pistol' ? ` ×${q}` : ''}
-                  </button>
-                ))}
-              </div>
-              {x.protected && <span className="muted" style={{ fontSize: 13 }}>Protected after respawn — try later.</span>}
-            </div>
-          ))}
-          <p className="muted" style={{ margin: 0, fontSize: 13 }}>A duel is a puzzle race: the first squad to answer wins and the loser takes damage. Pistol 25 damage (90 s, reusable) · SMG 20 (50 s, one use) · Sniper 40 (120 s, hard, one use).</p>
-        </div>
-      </Sheet>
-
       <Coach isCaptain={isCaptain} />
 
       {mapOpen && map && (
@@ -649,7 +788,8 @@ export default function WorldTab({ s, token, map, refresh, openMission, openSqua
           squads={squads.map((x: any) => ({ id: x.id, number: x.number, pos: x.pos, me: x.id === s.team.id, allied: x.allied }))}
           zone={zone} zoneNextAt={zone?.next_at} red={red} drops={s.airdrops || []} marker={marker} setMarker={setMarker}
           lock={lock} level={level} bldg={bldg} pickups={s.pickups || []}
-          onRun={runTo} canRun={isCaptain && s.arena.phase === 'play' && canMove} speed={world.speed} onClose={() => setMapOpen(false)} />
+          onRun={runTo} canRun={isCaptain && s.arena.phase === 'play' && (canMove || (inPlane && overCampus))} speed={onFoot ? (world.foot_speed || 0.006) : world.speed} onClose={() => setMapOpen(false)}
+          runLabel={inPlane ? '🪂 Land here' : onFoot ? 'Run here' : 'Drive here'} glide={inPlane ? { x: myXY[0], y: myXY[1], r: glide } : null} buggy={onFoot ? buggy : null} />
       )}
     </div>
   );

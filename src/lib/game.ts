@@ -31,9 +31,9 @@ export const ZONE_TEXT = [
 ];
 
 export const MATCH_PHASES = [
-  { name: 'Deployment', theme: 'Arrival and reconnaissance', rules: 'Intro missions only. No duels, no zone damage.' },
-  { name: 'Exploration', theme: 'Explore and collect', rules: 'Standard missions and first airdrops. The whole campus is safe.' },
-  { name: 'First Contact', theme: 'Competition begins', rules: 'Puzzle duels unlock. The first zone contraction is announced.' },
+  { name: 'Deployment', theme: 'Arrival and reconnaissance', rules: 'Land, collect your buggy, intro missions. No shooting yet, no zone damage.' },
+  { name: 'Exploration', theme: 'Explore and collect', rules: 'Gunfights are on. Standard missions and first airdrops. The whole campus is safe.' },
+  { name: 'First Contact', theme: 'Competition begins', rules: 'The first white circle is marked — then the gas wall closes in.' },
   { name: 'Conflict & Intelligence', theme: 'Risk versus reward', rules: 'Harder missions pay more. The zone closes to central campus.' },
   { name: 'Final Convergence', theme: 'High-stakes comeback', rules: 'Only Hexavarsity stays safe. Make your last big plays.' },
   { name: 'Training Room 14', theme: 'Final showdown', rules: 'Every squad plays the synchronized finale.' },
@@ -100,7 +100,12 @@ export function feedText(type: string, p: any, map: MapData | null): { text: str
     case 'shuttle.arrived': return { text: 'Shuttles arrived at Gate 1', tone: 'info' };
     case 'map.revealed': return { text: 'Campus map revealed — drop now!', tone: 'warn' };
     case 'squad.movement.started': return { text: `Squad ${p.team} → ${L(p.to)}`, tone: 'info' };
-    case 'squad.arrived': return { text: `Squad ${p.team} landed at ${L(p.location)}`, tone: 'info' };
+    case 'squad.arrived': return { text: `Squad ${p.team} reached ${L(p.location)}`, tone: 'info' };
+    case 'squad.jumped': return { text: `🪂 Squad ${p.team} jumped — gliding to ${L(p.to)}`, tone: 'info' };
+    case 'squad.buggy': return { text: `🚙 Squad ${p.team} collected their buggy`, tone: 'info' };
+    case 'plane.over': return { text: '✈ The plane is over Hexaware — squads are jumping', tone: 'warn' };
+    case 'squad.gunfight': return { text: `🔫 Gunfight: Squad ${p.a} vs Squad ${p.b}${p.location ? ` at ${L(p.location)}` : ''}`, tone: 'bad' };
+    case 'squad.knocked': return { text: `💀 Squad ${p.by} knocked out Squad ${p.team}${p.shooter ? ` (${p.shooter}, ${String(p.weapon || '').toUpperCase()})` : ''}`, tone: 'bad' };
     case 'encounter.detected': return { text: `ENEMY CONTACT at ${L(p.location)} (${p.squads} squads)`, tone: 'bad' };
     case 'mission.completed': return { text: `Squad ${p.team} cleared “${p.title}” +${p.points}`, tone: 'good' };
     case 'mission.failed': return { text: `Squad ${p.team} failed a mission`, tone: 'bad' };
@@ -113,8 +118,8 @@ export function feedText(type: string, p: any, map: MapData | null): { text: str
     case 'airdrop.spawned': return { text: `✈ ${String(p.tier).toUpperCase()} airdrop at ${L(p.location)}`, tone: 'warn' };
     case 'airdrop.contested': return { text: `Squad ${p.team} is cracking the airdrop at ${L(p.location)}`, tone: 'warn' };
     case 'airdrop.claimed': return { text: p.tier === 'vault' ? `Squad ${p.team} cracked the VAULT!` : `Squad ${p.team} claimed the ${p.tier} airdrop!`, tone: 'good' };
-    case 'zone.warning': return { text: `⚠ Safe zone shrinking (stage ${p.stage})`, tone: 'bad' };
-    case 'zone.collapsed': return { text: `☢ Safe zone shrank — stage ${p.stage}`, tone: 'bad' };
+    case 'zone.warning': return { text: `⚠ New safe zone marked — the wall moves soon (stage ${p.stage})`, tone: 'bad' };
+    case 'zone.collapsed': return { text: `☢ The zone is closing in — stage ${p.stage}`, tone: 'bad' };
     case 'zone.relocated': return { text: `Squad ${p.team} evacuated to ${L(p.to)}`, tone: 'info' };
     case 'zone.outside': return { text: `☢ ${p.squads} squad${p.squads === 1 ? '' : 's'} caught outside the safe zone`, tone: 'bad' };
     case 'redzone.warning': return { text: `💥 Red zone incoming${p.location ? ` near ${L(p.location)}` : ''}`, tone: 'bad' };

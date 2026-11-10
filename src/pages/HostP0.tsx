@@ -6,7 +6,7 @@ import { friendly, newKey, rpc, store } from '../lib/api';
 import { MapData, MATCH_PHASES, neighbors } from '../lib/game';
 import { msUntil, serverTime, useNow } from '../lib/time';
 import { Countdown, QR, toast } from '../components/ui';
-import { busCode } from '../components/Shuttle';
+import { busCode } from '../components/Flight';
 
 type Cmd = (arenaId: string | null, command: string, args?: any, reason?: string, quiet?: boolean) => Promise<any>;
 
