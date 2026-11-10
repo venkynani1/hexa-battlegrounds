@@ -5,7 +5,7 @@
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import { friendly, rpc } from '../lib/api';
 import { feedText, floorLabel, floorName, locName, MapData, MATCH_PHASES, ROLES, ROLE_ORDER, Role, TIER_COLOR } from '../lib/game';
-import { predict, useRivals, useSquadLink } from '../lib/motion';
+import { POLL_EXTRAPOLATE, predict, useRivals, useSquadLink } from '../lib/motion';
 import { ROADS, LOTS } from '../../content/campus.mjs';
 import { msUntil, serverTime, useNow } from '../lib/time';
 import { buzz, sfx } from '../lib/sound';
@@ -240,11 +240,13 @@ function KillFeed({ feed, map }: { feed: any[]; map: MapData | null }) {
 
 type Live = { x: number; y: number; moving: boolean; joy?: boolean; yaw?: number; level?: number; bldg?: string | null; vx?: number; vy?: number };
 
-export default function WorldTab({ s, token, map, refresh, openMission, openSquad, openComms, unread, onSettings, connected }: {
+export default function WorldTab({ s, token, map, refresh, openMission, openSquad, openComms, unread, onSettings, connected, spectating }: {
   s: any; token: string; map: MapData | null; refresh: () => void; openMission: () => void; openSquad: () => void; openComms: () => void; unread: number; onSettings: () => void; connected: boolean;
+  /** demo mode: a dummy captain drives this squad, so this screen only watches */
+  spectating?: boolean;
 }) {
   useNow(500);
-  const isCaptain = s.me.role === 'captain';
+  const isCaptain = s.me.role === 'captain' && !spectating;
   const world = s.arena.overlay?.world || { speed: 0.016, loc_radius: 0.018, engage_range: 0.04 };
   const zone = s.arena.overlay?.zone;
   const red = s.arena.overlay?.red && msUntil(s.arena.overlay.red.at) > -2000 ? s.arena.overlay.red : null;
@@ -358,7 +360,7 @@ export default function WorldTab({ s, token, map, refresh, openMission, openSqua
         } else {
           // no live feed (realtime blocked): glide along the positions poll, else the last full state
           const own = rivals.current.get(s.team.id);
-          if (own && serverTime() - own.t < 4000) { target = predict(own); moving = Math.hypot(own.vx, own.vy) > 1e-5; }
+          if (own && serverTime() - own.t < 6000) { target = predict(own, undefined, POLL_EXTRAPOLATE); moving = Math.hypot(own.vx, own.vy) > 1e-5; }
           else if (serverPos) target = { x: serverPos[0], y: serverPos[1] };
         }
         if (target) {
@@ -603,7 +605,9 @@ export default function WorldTab({ s, token, map, refresh, openMission, openSqua
       {/* bottom-left: joystick or role hint */}
       {isCaptain && s.arena.phase === 'play'
         ? <Joystick disabled={!canMove} onMove={(x, y) => { vec.current = { x, y }; }} />
-        : <div className="hud-bl-hint">{ROLES[s.me.role as Role]?.icon} You are {ROLES[s.me.role as Role]?.name}. <b>{s.roles?.captain || 'The captain'}</b> drives the squad.</div>}
+        : <div className="hud-bl-hint">{spectating && s.me.role === 'captain'
+            ? <>🤖 Demo: this dummy captain drives by itself. Tap <b>Take control</b> to drive.</>
+            : <>{ROLES[s.me.role as Role]?.icon} You are {ROLES[s.me.role as Role]?.name}. <b>{s.roles?.captain || 'The captain'}</b> drives the squad.</>}</div>}
 
       {/* bottom-right: actions */}
       <div className="hud-actions">

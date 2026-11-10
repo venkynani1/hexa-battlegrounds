@@ -4,7 +4,7 @@ import { useLive } from '../lib/live';
 import { msUntil, useNow } from '../lib/time';
 import { FINALE_STAGES, KIND_LABEL, locName, MapData, ROLE_ORDER, ROLES, Role, TIER_COLOR, useMapData, ZONE_TEXT } from '../lib/game';
 import CampusMap from '../components/CampusMap';
-import { PacingPanel, PhaseControls, RosterPanel } from './HostP0';
+import { PacingPanel, PhaseControls, rememberPins, RosterPanel } from './HostP0';
 import { Countdown, FeedList, Modal, QR, toast } from '../components/ui';
 
 type Section = 'control' | 'squads' | 'map' | 'missions' | 'production' | 'finale' | 'links' | 'settings' | 'log';
@@ -22,7 +22,8 @@ function HostLogin({ onLogin }: { onLogin: (t: string) => void }) {
   const [code, setCode] = useState(store.get('hb_host_code') || '');
   const [name, setName] = useState('Hexaware Battlegrounds × Operation Siruseri');
   const [secret, setSecret] = useState('');
-  const [maps, setMaps] = useState(2);
+  const [maps, setMaps] = useState(3);
+  const [fixed, setFixed] = useState(true);
   const [err, setErr] = useState('');
   const [busy, setBusy] = useState(false);
   async function submit(e: FormEvent) {
@@ -33,6 +34,10 @@ function HostLogin({ onLogin }: { onLogin: (t: string) => void }) {
         ? await rpc('host_login', { p_code: code, p_secret: secret })
         : await rpc('host_create_event', { p_code: code, p_name: name, p_secret: secret, p_arenas: maps });
       store.set('hb_host_code', r.code);
+      if (mode === 'create' && fixed) {
+        // create the squads with this host's fixed PINs straight away (same cards every time)
+        try { const c = await rpc<any>('host_fixed_cards', { p_token: r.token, p_secret: secret }); rememberPins(c.squads || []); } catch { /* can be done later in Links & PINs */ }
+      }
       onLogin(r.token);
     } catch (ex) { setErr(friendly(ex)); } finally { setBusy(false); }
   }
@@ -60,6 +65,11 @@ function HostLogin({ onLogin }: { onLogin: (t: string) => void }) {
             <input id="s" className="input" type="password" value={secret} onChange={(e) => setSecret(e.target.value)} minLength={6} required autoComplete="current-password" /></div>
           {err && <div className="chip bad" style={{ whiteSpace: 'normal', padding: 10 }}>{err}</div>}
           <button className="btn primary big" disabled={busy}>{mode === 'login' ? 'Enter control room' : 'Create event'}</button>
+          <a href="/demo" className="btn ghost">No players yet? Watch a demo match with dummy squads</a>
+          {mode === 'create' && (
+            <label className="check"><input type="checkbox" checked={fixed} onChange={(e) => setFixed(e.target.checked)} />
+              <span>Create the squads with my <b>fixed squad cards</b>: the same PINs and QR codes every time I use this host password.</span></label>
+          )}
           {mode === 'create' && <p className="muted" style={{ margin: 0, fontSize: 13 }}>Share the host password only with your co-host. Anyone with it controls the game.</p>}
         </form>
       </div>

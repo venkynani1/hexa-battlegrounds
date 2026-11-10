@@ -120,6 +120,9 @@ export function PhaseControls({ a, cmd }: { a: any; cmd: Cmd }) {
 // ── Roster: codenames, QR per squad, PIN reset, CSV ──────────────────────
 const issuedPins = new Map<number, string>(); // squad number → PIN shown in this browser session only
 
+/** PINs the server handed to this browser session (never stored). */
+export function rememberPins(rows: any[]) { rows.forEach((r) => r.pin && issuedPins.set(r.number, r.pin)); }
+
 export function RosterPanel({ d, token, cmd, refresh }: { d: any; token: string; cmd: Cmd; refresh: () => void }) {
   const [roster, setRoster] = useState<any[]>([]);
   const [count, setCount] = useState(15);
@@ -128,7 +131,21 @@ export function RosterPanel({ d, token, cmd, refresh }: { d: any; token: string;
   const load = useCallback(() => rpc('host_roster', { p_token: token }).then(setRoster).catch((e) => toast(friendly(e), 'bad')), [token]);
   useEffect(() => { load(); }, [load, d.teams.length]);
   const origin = window.location.origin;
-  const remember = (rows: any[]) => { rows.forEach((r) => r.pin && issuedPins.set(r.number, r.pin)); force((x) => x + 1); };
+  const remember = (rows: any[]) => { rememberPins(rows); force((x) => x + 1); };
+  // fixed squad cards: same PINs and QR codes every time (derived from the host password on the server)
+  const [cardSet, setCardSet] = useState<string | null>(null);
+  const [secret, setSecret] = useState('');
+  const [fixing, setFixing] = useState(false);
+  useEffect(() => { rpc<any>('host_extras', { p_token: token }).then((x) => setCardSet(x.card_set || null)).catch(() => {}); }, [token]);
+  const joinLink = (n: number) => (cardSet ? `${origin}/join?c=${cardSet}-${n}` : `${origin}/join?e=${d.event.code}&s=${n}`);
+  async function fixedCards() {
+    setFixing(true);
+    try {
+      const r = await rpc<any>('host_fixed_cards', { p_token: token, p_secret: secret });
+      remember(r.squads || []); setCardSet(r.set); setSecret('');
+      toast(r.created ? `Fixed cards ready: ${r.created} squads created` : 'Fixed cards ready: PINs shown below', 'good'); load(); refresh();
+    } catch (e) { toast(friendly(e), 'bad'); } finally { setFixing(false); }
+  }
 
   async function generate() {
     try { remember(await rpc('host_generate_teams', { p_token: token, p_count: count })); toast(`${count} squads created — print or download the PINs now`, 'good'); load(); refresh(); }
@@ -153,7 +170,7 @@ export function RosterPanel({ d, token, cmd, refresh }: { d: any; token: string;
     if (pin) { issuedPins.set(t.number, pin); force((x) => x + 1); toast(`New PIN for squad ${t.number}: ${pin}`, 'good'); }
   }
   function download() {
-    const rows = roster.map((t) => [t.map, t.number, t.name, busCode(t.bus), issuedPins.get(t.number) || '', `${origin}/join?e=${d.event.code}&s=${t.number}`]);
+    const rows = roster.map((t) => [t.map, t.number, t.name, busCode(t.bus), issuedPins.get(t.number) || '', joinLink(t.number)]);
     const body = 'map,squad,name,bus,pin,join_link\n' + rows.map((r) => r.map((x) => `"${String(x).replace(/"/g, '""')}"`).join(',')).join('\n');
     const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([body], { type: 'text/csv' }));
     a.download = `${d.event.code}-roster.csv`; a.click();
@@ -161,6 +178,15 @@ export function RosterPanel({ d, token, cmd, refresh }: { d: any; token: string;
   const known = roster.filter((t) => issuedPins.has(t.number)).length;
   return (
     <>
+      <div className="panel col no-print" style={{ borderColor: 'var(--gold)' }}>
+        <div className="panel-title">Fixed squad cards {cardSet && <span className="chip good" style={{ marginLeft: 8 }}>in use</span>}</div>
+        <p style={{ margin: 0, fontSize: 14 }}>The same PIN and the same QR code for every squad, every time you create an event with this host password: squads 1–15 on Map 1, 16–30 on Map 2, 31–45 on Map 3. Print the cards once and reuse them for rehearsals and the real event.</p>
+        <form className="row wrap" onSubmit={(e) => { e.preventDefault(); fixedCards(); }}>
+          <input className="input grow" type="password" value={secret} onChange={(e) => setSecret(e.target.value)} placeholder="Host password" aria-label="Host password" autoComplete="current-password" minLength={6} required style={{ minWidth: 180 }} />
+          <button className="btn gold" disabled={fixing || secret.length < 6}>{cardSet ? 'Show my fixed PINs' : 'Use my fixed cards'}</button>
+        </form>
+        <p className="muted" style={{ fontSize: 12, margin: 0 }}>Missing squads are created; squads that already exist keep their players and get their fixed PIN. The QR code opens the newest event that uses these cards. Change the host password and you get a different card set.</p>
+      </div>
       <div className="grid2 no-print">
         <div className="panel col">
           <div className="panel-title">Create squads with secure PINs</div>
@@ -191,7 +217,7 @@ export function RosterPanel({ d, token, cmd, refresh }: { d: any; token: string;
         <div className="roster-grid">
           {roster.map((t) => (
             <div key={t.team_id} className="roster-card">
-              <QR value={`${origin}/join?e=${d.event.code}&s=${t.number}`} size={96} />
+              <QR value={joinLink(t.number)} size={96} />
               <div className="col" style={{ gap: 2, minWidth: 0 }}>
                 <b className="up" style={{ fontSize: 17 }}>#{String(t.number).padStart(2, '0')} {t.name}</b>
                 <span className="muted" style={{ fontSize: 12 }}>Map {t.map} · {busCode(t.bus)} · {t.players}/4 joined</span>

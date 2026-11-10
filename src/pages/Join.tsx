@@ -18,6 +18,17 @@ export default function Join() {
   const existing = store.get('hb_token');
 
   useEffect(() => { if (params.get('e')) setCode(params.get('e')!.toUpperCase()); }, [params]);
+  // fixed squad card: the QR code carries the card set and squad number; the server says which event is on
+  const card = /^([a-f0-9]{6,20})-(\d{1,3})$/i.exec(params.get('c') || '');
+  const [cardNote, setCardNote] = useState('');
+  useEffect(() => {
+    if (!card) return;
+    setTeam(card[2]);
+    rpc<any>('card_event', { p_set: card[1].toLowerCase() }).then((r) => {
+      if (r?.code) { setCode(r.code); setCardNote(`Squad ${Number(card[2])} · ${r.name}`); }
+      else setCardNote('No event is open for this card yet. Ask the organiser, or type the event code.');
+    }).catch(() => setCardNote('Could not look up this card. Type the event code shown on the big screen.'));
+  }, [card?.[1], card?.[2]]);
 
   async function submit(e: FormEvent) {
     e.preventDefault();
@@ -59,6 +70,7 @@ export default function Join() {
 
         <form className="panel col" onSubmit={submit} style={{ gap: 14 }}>
           <div className="panel-title">Squad registration</div>
+          {cardNote && <div className="chip" role="status" style={{ whiteSpace: 'normal', padding: 10 }}>🎫 {cardNote}</div>}
           <div className="field">
             <label htmlFor="code">Event code</label>
             <input id="code" className="input mono" value={code} onChange={(e) => setCode(e.target.value.toUpperCase())} placeholder="e.g. HEXA26" autoCapitalize="characters" required />

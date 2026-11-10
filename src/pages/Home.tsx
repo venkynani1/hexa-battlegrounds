@@ -1,36 +1,76 @@
-import { Link } from 'react-router-dom';
+import { lazy, Suspense, useState } from 'react';
+import { Link, useNavigate } from 'react-router-dom';
 import { configured } from '../lib/supabase';
+import { store } from '../lib/api';
 import { ROLE_ORDER, ROLES } from '../lib/game';
-import { unlockAudio } from '../lib/sound';
+import { sfx, unlockAudio } from '../lib/sound';
 
+const Stage = lazy(() => import('../three/LobbyStage'));
+
+// Landing page as a game lobby: your buggy on the launch pad, squad slots on the left,
+// the match card and the big start button bottom-right.
 export default function Home() {
+  const nav = useNavigate();
+  const resume = !!store.get('hb_token');
+  const [code, setCode] = useState(store.get('hb_event') || '');
+  const webgl = typeof document !== 'undefined' && !!document.createElement('canvas').getContext('webgl');
+
+  function start() {
+    unlockAudio(); sfx.tap();
+    if (resume) nav('/play');
+    else nav(code.trim() ? `/join?e=${encodeURIComponent(code.trim().toUpperCase())}` : '/join');
+  }
+
   return (
-    <div className="app">
-      <div className="content" style={{ paddingBottom: 40, justifyContent: 'center' }}>
-        <div className="center" style={{ padding: '24px 0 8px' }}>
-          <div className="brand"><span className="l1">Hexaware</span><span className="l2" style={{ fontSize: 52 }}>Battlegrounds</span><span className="l3">× Operation Siruseri</span></div>
-          <div className="tagline" style={{ marginTop: 14 }}>Drop. Decode. Dominate.</div>
+    <div className="lobby">
+      <div className="lobby-sky" aria-hidden />
+      {webgl && <Suspense fallback={null}><Stage /></Suspense>}
+      <div className="lobby-shade" aria-hidden />
+
+      <header className="lobby-top">
+        <div className="lobby-brand">
+          <span className="lb1">Hexaware</span>
+          <h1 className="lb2">Battlegrounds</h1>
+          <span className="lb3">Operation Siruseri</span>
         </div>
+        <nav className="lobby-links" aria-label="Organiser tools">
+          <Link to="/demo" className="lobby-chip" onClick={() => unlockAudio()}>▶ Watch a demo match</Link>
+          <Link to="/host" className="lobby-chip ghost">Host console</Link>
+        </nav>
+      </header>
+
+      <aside className="lobby-squad" aria-label="The four roles in a squad">
+        {ROLE_ORDER.map((r) => (
+          <div key={r} className="lobby-slot" style={{ ['--c' as any]: ROLES[r].color }}>
+            <span className="ls-ico" aria-hidden>{ROLES[r].icon}</span>
+            <span className="ls-txt"><b>{ROLES[r].name}</b><small>{ROLES[r].blurb}</small></span>
+          </div>
+        ))}
+      </aside>
+
+      <p className="lobby-tag">Drop. Decode. Dominate.</p>
+
+      <section className="lobby-go" aria-label="Start">
         {!configured && (
-          <div className="panel danger">
-            <div className="panel-title">Server not configured</div>
-            <p style={{ margin: 0 }}>Add the Supabase integration in Vercel (Storage → Supabase) or set <code>VITE_SUPABASE_URL</code> and <code>VITE_SUPABASE_ANON_KEY</code>, then redeploy. See README.</p>
-          </div>
+          <div className="lobby-warn">Server not set up yet. Add the Supabase integration in Vercel (Storage → Supabase), then redeploy.</div>
         )}
-        <Link to="/join" className="btn primary big block" onClick={() => unlockAudio()}>Join my squad</Link>
-        <div className="panel">
-          <div className="panel-title">Four roles. One squad.</div>
-          <div className="role-grid">
-            {ROLE_ORDER.map((r) => (
-              <div key={r} className="role-tile" style={{ color: ROLES[r].color, cursor: 'default', minHeight: 110 }}>
-                <span className="ico" aria-hidden>{ROLES[r].icon}</span><span className="nm" style={{ fontSize: 16 }}>{ROLES[r].name}</span>
-              </div>
-            ))}
-          </div>
-          <p className="muted" style={{ marginBottom: 0, fontSize: 14 }}>Every major mission splits the clues across Scout, Decoder and Intel Officer. Only the Captain can submit. Talk to your squad.</p>
+        <div className="lobby-mode">
+          <div className="lm-head"><b>Squad battle royale</b><span>4 players a squad, 15 squads a map</span></div>
+          {!resume && (
+            <label className="lm-code">
+              <span>Event code</span>
+              <input value={code} onChange={(e) => setCode(e.target.value.toUpperCase())} placeholder="HEXA26" maxLength={12} autoCapitalize="characters" autoComplete="off"
+                onKeyDown={(e) => { if (e.key === 'Enter') start(); }} />
+            </label>
+          )}
+          {resume && <div className="lm-resume">You are already in a squad on this phone.</div>}
         </div>
-        <Link to="/host" className="btn ghost block">Host console</Link>
-      </div>
+        <button className="lobby-start" onClick={start}>
+          <b>{resume ? 'Resume' : 'Start'}</b>
+          <span>{resume ? 'Back to my squad' : 'Join my squad'}</span>
+        </button>
+        {resume && <Link to="/join" className="lobby-alt">Join a different squad</Link>}
+      </section>
     </div>
   );
 }

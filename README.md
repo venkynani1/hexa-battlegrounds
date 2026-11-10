@@ -44,14 +44,17 @@ Create a repository and push this folder.
 1. Open the Supabase dashboard (Vercel → Storage → your database → **Open in Supabase**).
 2. **SQL Editor → New query** → paste the whole of [`supabase/RUN-ME-IN-SUPABASE.sql`](supabase/RUN-ME-IN-SUPABASE.sql) → **Run**. That one file is all you ever need:
    - It works on a **new** project and on **every earlier version** (original setup, upgrade 1, 2 or 3, even a half-finished upgrade) — the new version overrides the old one. Events, squads, PINs and scores are kept.
-   - It downloads the complete script [`supabase/full/hexa-battlegrounds-v4.sql`](supabase/full) (too big to paste) from this GitHub repository at a fixed commit, checks its SHA-256 fingerprint, then runs it in **one transaction** — all or nothing.
-   - Expected result: *Success. No rows returned* and the notice *Hexa Battlegrounds database is up to date (v4)*. Running it again is harmless.
-   - If your project blocks outbound HTTP: run `supabase/full/hexa-battlegrounds-v4.sql` with `psql`, or from your laptop `DATABASE_URL="<POSTGRES_URL_NON_POOLING>" npm run db:setup` (Windows PowerShell: `$env:DATABASE_URL="<value>"; npm run db:setup`). Last resort: paste `supabase/setup/part-01.sql` … `part-55.sql` in order.
+   - It downloads the complete script [`supabase/full/hexa-battlegrounds-v5.sql`](supabase/full) (too big to paste) from this GitHub repository at a fixed commit, checks its SHA-256 fingerprint, then runs it in **one transaction** — all or nothing.
+   - Expected result: *Success. No rows returned* and the notice *Hexa Battlegrounds database is up to date (v5)*. Running it again is harmless.
+   - If your project blocks outbound HTTP: run `supabase/full/hexa-battlegrounds-v5.sql` with `psql`, or from your laptop `DATABASE_URL="<POSTGRES_URL_NON_POOLING>" npm run db:setup` (Windows PowerShell: `$env:DATABASE_URL="<value>"; npm run db:setup`). Last resort: paste `supabase/setup/part-01.sql` … `part-55.sql` in order.
    - Vercel's own query box runs one statement at a time and will fail with "cannot insert multiple commands into a prepared statement" — use Supabase's SQL Editor.
 3. **Realtime:** Project Settings → Realtime → make sure **public channels are allowed** (do not enable "private channels only"). The game sends tiny "something changed" pings, and each captain's phone sends its squad's position and velocity to its own teammates (no answers, no PINs). Without Realtime the game still works and falls back to polling.
 
 ### 5. Deploy
 Vercel → **Deployments → Redeploy**. Open `https://<your-app>.vercel.app/host` → **Create event** (event code, host password, number of maps).
+
+### Try it without players
+Open `https://<your-app>.vercel.app/demo` and start a demo match: dummy squads play a whole match while you watch the big screen and any dummy player's phone. See the host manual for fixed squad cards (same PINs and QR codes every time).
 
 ### 6. Before the event
 Follow [`docs/HOST_MANUAL.md`](docs/HOST_MANUAL.md) — especially the rehearsal checklist.

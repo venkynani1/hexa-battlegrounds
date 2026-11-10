@@ -77,6 +77,8 @@ const MESSAGES: Record<string, string> = {
   LOCK_RESULTS_FIRST: 'Lock the results first.',
   LOCK_ALL_MAPS_FIRST: 'Lock results on every map first.',
   CODE_TAKEN: 'That event code is already in use.',
+  DEMO_BUSY: 'Several demos were started in the last few minutes. Wait a little and try again.',
+  NOT_DEMO: 'That only works inside a demo match.',
   WEAK_SECRET: 'Host password must be at least 6 characters.',
   BAD_CODE: 'Event code: 3–12 letters or digits.',
   ALL_MAPS_FULL: 'All maps are full (15 squads each). Create the event with more maps.',
@@ -120,15 +122,29 @@ export function newKey(): string {
   return Math.random().toString(36).slice(2) + Date.now().toString(36) + Math.random().toString(36).slice(2);
 }
 
+// A demo view runs in its own tab or frame with its session in the address (#demo=… for a dummy
+// player's phone, #host=… for the demo's host console). It never touches the sessions saved on
+// this device, so a real squad or host login in another tab is left alone.
+const hashParam = (k: string) => {
+  try { const m = new RegExp(`[#&]${k}=([A-Za-z0-9_-]{8,200})`).exec(window.location.hash); return m ? m[1] : null; } catch { return null; }
+};
+const TAB: Record<string, string | null> = { hb_token: hashParam('demo'), hb_host_token: hashParam('host') };
+/** True when this tab/frame is showing a dummy player's phone in demo mode. */
+export const demoTab = !!TAB.hb_token;
+export const demoHostTab = !!TAB.hb_host_token;
+
 // Local session storage (per device)
 export const store = {
   get: (k: string) => {
+    if (TAB[k]) return TAB[k];
     try { return localStorage.getItem(k); } catch { return null; }
   },
   set: (k: string, v: string) => {
+    if (TAB[k]) return;
     try { localStorage.setItem(k, v); } catch { /* private mode */ }
   },
   del: (k: string) => {
+    if (TAB[k]) { TAB[k] = null; return; }
     try { localStorage.removeItem(k); } catch { /* private mode */ }
   },
 };

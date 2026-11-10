@@ -51,6 +51,21 @@ After that nothing needs a button: boarding countdown → bus → role claim →
 - The autopilot runs inside the game's own clock, which every phone, the projector and this console keep ticking. Keep at least the projector or this page open during the match.
 - Reset map turns the autopilot off.
 
+## Fixed squad cards (same PINs and QR codes every time)
+- Tick **Create the squads with my fixed squad cards** when you create an event, or open **Links & PINs → Fixed squad cards** and type the host password.
+- Squads 1–15 are Map 1, 16–30 Map 2, 31–45 Map 3. Each squad's PIN and QR code are the same in every event you create **with the same host password on the same database**. Print the cards once and reuse them.
+- The QR code holds no secrets: it opens the newest event that uses your cards and fills in the squad number. Players still type the PIN.
+- A different host password gives a different card set. **Issue new PIN** on one squad overrides its fixed PIN for this event only.
+
+## Demo mode (no players needed)
+- Open `/demo` (or **Watch a demo match** on the home page), pick 1–3 maps and a length, press **Start the demo match**.
+- Every map gets 15 dummy squads of 4 dummy players. They drop, drive, search, answer (sometimes wrongly), fight, open crates and vaults, run from lockdowns and play the finale, using the same rules as real phones.
+- The big screen is the projector view. The phone on the right is the screen of any dummy player you pick (squad + role). On a Captain's phone, **Take control** lets you drive and answer yourself; **Hand back** returns it to the dummy.
+- **Host console** opens the normal console for the demo match. Keep the demo page open: it keeps the match clock ticking. Demos are deleted after a few hours or with **End demo**.
+
+## Load test
+`SUPABASE_URL=… SUPABASE_KEY=<anon key> MAPS=3 MINUTES=5 npm run loadtest` simulates 180 phones (polling, positions feed, captains steering 3 times a second, searching and answering) and prints response times. Target: p95 under 500 ms and no server errors.
+
 ## Collapsing Campus (lockdowns)
 Suspense → **Collapsing Campus**:
 - **Sound the next alarm now** — the next building/floor on the collapse order gets a countdown (`lock_warning`, default 45 s) and a vault opens inside.

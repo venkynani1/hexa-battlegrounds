@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { friendly, GameError, newKey, rpc, store } from '../lib/api';
+import { demoTab, friendly, GameError, newKey, rpc, store } from '../lib/api';
 import { useLive } from '../lib/live';
 import { msUntil, progress, secondsLeft, useNow, fmtClock, serverTime } from '../lib/time';
 import { FINALE_STAGES, MATCH_PHASES, KIND_LABEL, locName, MapData, ROLE_ORDER, ROLES, Role, TIER_COLOR, useMapData } from '../lib/game';
@@ -35,6 +35,16 @@ export default function Play() {
   const s = live.data;
   const [tab, setTab] = useState<Tab>('world');
   const [settings, setSettings] = useState(false);
+  // demo mode: is this phone watching a dummy squad that plays by itself?
+  const [demo, setDemo] = useState<{ demo: boolean; bot: boolean; manual: boolean; can_control: boolean; squad: number } | null>(null);
+  const loadDemo = useCallback(() => { if (token) rpc('demo_status', { p_token: token }).then(setDemo).catch(() => {}); }, [token]);
+  useEffect(() => { if (demoTab) loadDemo(); }, [loadDemo]);
+  const botDriven = !!demo?.bot;
+  useEffect(() => { document.documentElement.classList.toggle('demo-view', !!demo?.demo); return () => document.documentElement.classList.remove('demo-view'); }, [demo?.demo]);
+  async function takeControl(manual: boolean) {
+    try { await rpc('demo_control', { p_token: token, p_manual: manual }); toast(manual ? 'You control this squad now' : 'Handed back to the dummy captain', 'good'); loadDemo(); live.refresh(); }
+    catch (e) { toast(friendly(e), 'bad'); }
+  }
 
   useEffect(() => { if (!token) nav('/join'); }, [token, nav]);
   useEffect(() => {
@@ -45,6 +55,7 @@ export default function Play() {
   }, [s?.arena?.id, s?.team?.id]);
   useEffect(() => {
     if (live.error instanceof GameError && live.error.code === 'AUTH') {
+      if (demoTab) return; // a demo phone whose match was ended just says so
       store.del('hb_token');
       toast(friendly(live.error), 'bad');
       nav('/join');
@@ -61,14 +72,16 @@ export default function Play() {
   const lastAct = useRef<string | null>(null);
   useEffect(() => {
     const act = s?.battle?.id || s?.mission?.id || null;
-    if (act && act !== lastAct.current && s?.me?.role && s.me.role !== 'captain') setTab('mission');
+    if (act && act !== lastAct.current && s?.me?.role && (s.me.role !== 'captain' || botDriven)) setTab('mission');
+    // watching a dummy squad: when the challenge ends, go back to the map to see the squad move on
+    if (!act && lastAct.current && botDriven) setTimeout(() => setTab('world'), 2500);
     lastAct.current = act;
-  }, [s?.battle?.id, s?.mission?.id]);
+  }, [s?.battle?.id, s?.mission?.id, botDriven]);
 
   // a new screen (lobby → bus → game → results) always starts at the top-left, never half-scrolled
   useEffect(() => { try { window.scrollTo(0, 0); document.documentElement.scrollLeft = 0; } catch { /* ignore */ } }, [s?.arena?.phase]);
   if (!token) return null;
-  if (!s) return <Loading text={live.error ? friendly(live.error) : 'Connecting to your squad…'} />;
+  if (!s) return <Loading text={live.error ? (demoTab ? 'This demo match has ended.' : friendly(live.error)) : 'Connecting to your squad…'} />;
 
   const phase = s.arena.phase;
   const role: Role | null = s.me.role;
@@ -84,7 +97,15 @@ export default function Play() {
       {!inGame && <TopBar s={s} onSettings={() => setSettings(true)} connected={live.connected} />}
       {inGame && (
         <WorldTab s={s} token={token} map={map} refresh={live.refresh} openMission={() => setTab('mission')} openSquad={() => setTab('squad')}
-          openComms={() => setTab('comms')} unread={unread} onSettings={() => setSettings(true)} connected={live.connected} />
+          openComms={() => setTab('comms')} unread={unread} onSettings={() => setSettings(true)} connected={live.connected} spectating={botDriven} />
+      )}
+      {demo?.demo && (
+        <div className="demo-bar" role="status">
+          <span><b>DEMO</b> · Squad {demo.squad}{role ? ` · ${ROLES[role].name}` : ''}{demo.manual ? ' · you play' : ''}</span>
+          {demo.can_control && role === 'captain' && inGame && (
+            <button onClick={() => takeControl(!demo.manual)}>{demo.manual ? 'Hand back' : 'Take control'}</button>
+          )}
+        </div>
       )}
       {inGame && <RoleReveal s={s} />}
       {/* in-game panels slide over the world: the game never disappears behind tabs */}

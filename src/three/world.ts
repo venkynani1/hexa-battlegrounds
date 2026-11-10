@@ -6,6 +6,7 @@
 // Campus coordinates are 0..1 (x east, y south); world units = S per campus width; one storey = FLOOR_H.
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
+import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
 import type { MapData, Building } from '../lib/game';
 import { squadHex } from '../lib/game';
 import { serverTime } from '../lib/time';
@@ -107,6 +108,32 @@ const noiseTex = (base: string, dots: string[], n: number, rep: [number, number]
   g.fillStyle = base; g.fillRect(0, 0, size, size);
   for (let i = 0; i < n; i++) { g.fillStyle = dots[i % dots.length]; g.fillRect(Math.random() * size, Math.random() * size, dot, dot); }
 }, rep);
+
+/** Lawn: soft light/dark patches with fine blade strokes on top, so it reads as grass up close and from the air. */
+function grassTex(rep: [number, number]) {
+  const size = 512;
+  const t = canvasTex(size, size, (g) => {
+    g.fillStyle = '#5a9844'; g.fillRect(0, 0, size, size);
+    const patch = ['rgba(120,176,84,0.22)', 'rgba(64,122,52,0.22)', 'rgba(142,186,92,0.16)', 'rgba(52,104,48,0.18)'];
+    for (let i = 0; i < 90; i++) {
+      const x = Math.random() * size; const y = Math.random() * size; const r = 24 + Math.random() * 60;
+      // draw each patch on all nine neighbouring tiles so the texture repeats without seams
+      for (const ox of [-size, 0, size]) for (const oy of [-size, 0, size]) {
+        const gr = g.createRadialGradient(x + ox, y + oy, 0, x + ox, y + oy, r);
+        gr.addColorStop(0, patch[i % patch.length]); gr.addColorStop(1, 'rgba(0,0,0,0)');
+        g.fillStyle = gr; g.fillRect(x + ox - r, y + oy - r, r * 2, r * 2);
+      }
+    }
+    const blade = ['rgba(150,200,100,0.5)', 'rgba(60,118,50,0.5)', 'rgba(104,160,72,0.5)', 'rgba(44,96,44,0.45)', 'rgba(178,208,112,0.35)'];
+    g.lineWidth = 1;
+    for (let i = 0; i < 9000; i++) {
+      const x = Math.random() * size; const y = Math.random() * size; const a = -Math.PI / 2 + (Math.random() - 0.5) * 1.2; const l = 2 + Math.random() * 4;
+      g.strokeStyle = blade[i % blade.length]; g.beginPath(); g.moveTo(x, y); g.lineTo(x + Math.cos(a) * l, y + Math.sin(a) * l); g.stroke();
+    }
+  }, rep);
+  t.anisotropy = 8;
+  return t;
+}
 
 /** Collects static geometry per material and merges it: thousands of props, a few draw calls. */
 class Batch {
@@ -216,7 +243,10 @@ export class WorldScene {
     this.scene.fog = new THREE.Fog(haze, 380, 1500);
 
     this.buildSky();
-    this.scene.add(new THREE.HemisphereLight(0xcfe8ff, 0x5d7a3f, 1.2));
+    // soft reflections so car paint, glass and steel pick up light like the real things
+    const pm = new THREE.PMREMGenerator(this.renderer);
+    this.scene.environment = pm.fromScene(new RoomEnvironment(), 0.04).texture; this.scene.environmentIntensity = 0.16; pm.dispose();
+    this.scene.add(new THREE.HemisphereLight(0xcfe8ff, 0x5d7a3f, 1.1));
     this.sun = new THREE.DirectionalLight(0xfff0d6, 2.5);
     this.sun.castShadow = !this.lowEnd;
     this.sun.shadow.mapSize.set(2048, 2048);
@@ -326,7 +356,7 @@ export class WorldScene {
     };
 
     // ground + campus boundary
-    const ground = new THREE.Mesh(new THREE.PlaneGeometry(5000, 5000), new THREE.MeshLambertMaterial({ map: noiseTex('#5c9a43', ['#68a84d', '#518a3b', '#76b358', '#4a7e36'], 6000, [140, 140]) }));
+    const ground = new THREE.Mesh(new THREE.PlaneGeometry(5000, 5000), new THREE.MeshLambertMaterial({ map: grassTex([210, 210]) }));
     ground.rotation.x = -Math.PI / 2; ground.receiveShadow = true;
     this.scene.add(ground);
     const wallH = 2.4;
@@ -353,6 +383,7 @@ export class WorldScene {
     const roadSegs: number[][] = [];
     const lampPts: THREE.Vector3[] = [];
     const dashes: { p: THREE.Vector3; a: number }[] = [];
+    const zebra: { p: THREE.Vector3; a: number }[] = [];
     for (const r of ROADS) {
       for (let i = 0; i < r.pts.length - 1; i++) {
         const [ax, ay] = r.pts[i]; const [bx, by] = r.pts[i + 1];
@@ -363,12 +394,20 @@ export class WorldScene {
         batch.add(P.box, M.curb, [mid.x, 0.1, mid.z], ang, [w + 0.6, 0.16, len + w]);
         batch.add(P.plane, M.road, [mid.x, 0.26, mid.z], ang, [w, 1, len + w]);
         for (let d = 3; d < len - 3; d += 6) dashes.push({ p: a.clone().lerp(b, d / len), a: ang });
+        if (len > 46) {
+          const across = new THREE.Vector3(Math.cos(ang), 0, -Math.sin(ang));
+          for (const d of [w / 2 + 9, len - w / 2 - 9]) {
+            const c = a.clone().lerp(b, d / len);
+            for (let k = -w / 2 + 0.6; k < w / 2 - 0.3; k += 1.1) zebra.push({ p: c.clone().addScaledVector(across, k), a: ang });
+          }
+        }
         const side = new THREE.Vector3(Math.cos(ang), 0, -Math.sin(ang)).multiplyScalar(w / 2 + 2.6);
         for (let d = 8; d < len - 4; d += 34) { const p = a.clone().lerp(b, d / len); lampPts.push(p.clone().add(side)); lampPts.push(p.clone().sub(side)); }
         roadSegs.push([ax, ay, bx, by, r.w]);
       }
     }
     for (const d of dashes) batch.add(P.plane, M.lane, [d.p.x, 0.3, d.p.z], d.a, [0.22, 1, 2.6]);
+    for (const z of zebra) batch.add(P.plane, M.lane, [z.p.x, 0.3, z.p.z], z.a, [0.55, 1, 3.4]);
     for (const p of lampPts) {
       batch.add(P.cyl6, M.metal, [p.x, 3, p.z], 0, [0.22, 6, 0.22]);
       batch.add(P.box, M.lampHead, [p.x, 6.05, p.z], 0, [1, 0.22, 0.45]);
@@ -546,7 +585,10 @@ export class WorldScene {
       spots.push({ x, y, palm: nearWater || rnd() < 0.2 });
     }
     const trunks = new THREE.InstancedMesh(new THREE.CylinderGeometry(0.22, 0.34, 2.4, 6), new THREE.MeshStandardMaterial({ color: 0x6b4a2e, roughness: 1 }), spots.length);
-    const crowns = new THREE.InstancedMesh(new THREE.IcosahedronGeometry(2.1, 1), new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.9, flatShading: true }), spots.length);
+    // canopy: three overlapping lumps instead of one ball (one ball on slow phones)
+    const lump = (r: number, x: number, y: number, z: number) => new THREE.IcosahedronGeometry(r, 1).translate(x, y, z);
+    const crownGeo = this.lowEnd ? new THREE.IcosahedronGeometry(2.1, 1) : mergeGeometries([lump(1.75, 0, 0, 0), lump(1.3, 1.05, -0.45, 0.4), lump(1.2, -0.9, -0.3, -0.7), lump(1.05, 0.1, 0.95, 0.2)])!;
+    const crowns = new THREE.InstancedMesh(crownGeo, new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.95, flatShading: true }), spots.length);
     const palmT = new THREE.InstancedMesh(new THREE.CylinderGeometry(0.16, 0.26, 7, 6), new THREE.MeshStandardMaterial({ color: 0x8a6a48, roughness: 1 }), spots.length);
     const palmC = new THREE.InstancedMesh(new THREE.ConeGeometry(3.2, 1.6, 7, 1, true), new THREE.MeshStandardMaterial({ color: 0x3f8a3a, roughness: 0.9, flatShading: true, side: THREE.DoubleSide }), spots.length);
     let nt = 0; let np = 0;
@@ -679,7 +721,7 @@ export class WorldScene {
     const b = B.b; const g = new THREE.Group();
     const w = (b.x1 - b.x0) * S; const d = (b.y1 - b.y0) * S;
     const c = W((b.x0 + b.x1) / 2, (b.y0 + b.y1) / 2);
-    const slabM = new THREE.MeshStandardMaterial({ map: canvasTex(128, 128, (gg) => { gg.fillStyle = '#d9d6cf'; gg.fillRect(0, 0, 128, 128); gg.strokeStyle = 'rgba(0,0,0,0.08)'; for (let i = 0; i <= 128; i += 32) { gg.beginPath(); gg.moveTo(i, 0); gg.lineTo(i, 128); gg.stroke(); gg.beginPath(); gg.moveTo(0, i); gg.lineTo(128, i); gg.stroke(); } }, [Math.round(w / 4), Math.round(d / 4)]), roughness: 0.7 });
+    const slabM = new THREE.MeshStandardMaterial({ map: canvasTex(128, 128, (gg) => { gg.fillStyle = '#b9b3a6'; gg.fillRect(0, 0, 128, 128); gg.strokeStyle = 'rgba(0,0,0,0.2)'; for (let i = 0; i <= 128; i += 32) { gg.beginPath(); gg.moveTo(i, 0); gg.lineTo(i, 128); gg.stroke(); gg.beginPath(); gg.moveTo(0, i); gg.lineTo(128, i); gg.stroke(); } }, [Math.round(w / 4), Math.round(d / 4)]), roughness: 0.7 });
     const wallM = new THREE.MeshStandardMaterial({ color: 0xf1efe9, roughness: 0.8 });
     const glassM = new THREE.MeshStandardMaterial({ color: 0x9ed4f5, transparent: true, opacity: 0.35, roughness: 0.05 });
     const doorM = new THREE.MeshStandardMaterial({ color: 0x3a6ea5, roughness: 0.4, metalness: 0.3 });
@@ -781,7 +823,7 @@ export class WorldScene {
     const ring = new THREE.Mesh(new THREE.RingGeometry(3, 3.5, 40), new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.9, depthWrite: false, side: THREE.DoubleSide }));
     ring.rotation.x = -Math.PI / 2; ring.position.y = 0.3;
     car.add(ring);
-    const label = labelSprite(d.label || `SQ ${d.number}`, d.me ? '#2ee6ff' : d.ally ? '#5dff9e' : '#ff8a96', 'rgba(10,16,28,0.78)', 0.85, true);
+    const label = labelSprite(d.label || `SQ ${d.number}`, d.me ? '#2ee6ff' : d.ally ? '#5dff9e' : '#ff8a96', 'rgba(10,16,28,0.78)', this.mode === 'follow' ? 0.85 : 0.5, true); // 15 squads on the big map: small tags that do not cover each other
     label.position.y = 5;
     label.visible = !d.me;
     car.add(label);
@@ -1022,7 +1064,7 @@ export class WorldScene {
       const d = o.data;
       if (!(d.me && live)) {
         // dead-reckon rivals between updates (velocity in campus units / s)
-        const age = Math.max(0, Math.min(1.2, (now - (d.at || now)) / 1000));
+        const age = Math.max(0, Math.min(2.6, (now - (d.at || now)) / 1000)); // positions arrive every ~2 s: keep rolling in between
         o.target.copy(W(d.x + (d.vx || 0) * age, d.y + (d.vy || 0) * age, d.level || 0));
       }
       const before = o.car.position.clone();

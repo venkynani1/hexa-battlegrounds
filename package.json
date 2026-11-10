@@ -8,7 +8,7 @@
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
     "content": "node scripts/build-content.mjs",
-    "test": "node --test tests/engine.test.mjs tests/p0.test.mjs tests/world.test.mjs tests/auto.test.mjs tests/campus.test.mjs",
+    "test": "node --test tests/engine.test.mjs tests/p0.test.mjs tests/world.test.mjs tests/auto.test.mjs tests/campus.test.mjs tests/demo.test.mjs",
     "db:bundle": "node scripts/bundle-sql.mjs",
     "loadtest": "node scripts/loadtest.mjs",
     "local": "node scripts/local-server.mjs",

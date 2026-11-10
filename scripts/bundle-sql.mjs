@@ -93,14 +93,15 @@ if (cur) parts.push(cur);
 for (const old of ['upgrade', 'upgrade-2', 'upgrade-3']) rmSync(new URL(`../supabase/${old}/`, import.meta.url), { recursive: true, force: true });
 
 // ── One file ───────────────────────────────────────────────────────────────────
-// supabase/full/hexa-battlegrounds-v4.sql: every migration, in order, one statement per line. Running it
+// supabase/full/hexa-battlegrounds-v5.sql: every migration, in order, one statement per line. Running it
 // on ANY earlier install (or an empty project) brings the database to the latest version and keeps data.
 // supabase/RUN-ME-IN-SUPABASE.sql: the single paste for the Supabase SQL Editor. It downloads that file
 // from GitHub at a pinned commit, checks its SHA-256 and runs it in one transaction (all or nothing).
 const fullDir = new URL('../supabase/full/', import.meta.url);
 mkdirSync(fullDir, { recursive: true });
-const FULL = 'hexa-battlegrounds-v4.sql';
-let full = `-- HEXA BATTLEGROUNDS — complete database (v4: vast campus, floors, Collapsing Campus, challenge pack 3).\n` +
+const FULL = 'hexa-battlegrounds-v5.sql';
+for (const f of readdirSync(fullDir)) if (f !== FULL) rmSync(new URL(f, fullDir)); // older versions are superseded
+let full = `-- HEXA BATTLEGROUNDS — complete database (v5: vast campus, floors, Collapsing Campus, 401 challenges, fixed squad cards, demo mode).\n` +
   `-- Brings any earlier install, or an empty project, to the latest version. Keeps events, squads and scores. Safe to re-run.\n`;
 for (const f of files) {
   full += `\n-- ═══ ${f} ═══\n`;
@@ -112,14 +113,14 @@ const ref = process.env.HEXA_REF || 'main';
 const repo = process.env.HEXA_REPO || 'venkynani1/hexa-battlegrounds';
 const url = `https://raw.githubusercontent.com/${repo}/${ref}/supabase/full/${FULL}`;
 const boot = `-- ════════════════════════════════════════════════════════════════════════════
--- HEXA BATTLEGROUNDS × OPERATION SIRUSERI — ONE-FILE DATABASE UPGRADE (v4)
+-- HEXA BATTLEGROUNDS × OPERATION SIRUSERI — ONE-FILE DATABASE UPGRADE (v5)
 --
 -- Supabase → SQL Editor → New query → paste this whole file → Run. That's all.
 --   • Works on a brand-new project and on every earlier version (setup, upgrade 1/2/3, half-run upgrades).
 --   • Keeps every event, squad, PIN and score. Everything runs in ONE transaction: all or nothing.
 --   • It downloads the full script (${(full.length / 1024).toFixed(0)} KB, too big to paste) from GitHub, checks its
 --     SHA-256 fingerprint so nothing else can run, then executes it.
--- Expected result: "Success. No rows returned" and a notice: Hexa Battlegrounds database is up to date (v4).
+-- Expected result: "Success. No rows returned" and a notice: Hexa Battlegrounds database is up to date (v5).
 -- If your project blocks outbound HTTP, run supabase/full/${FULL} instead
 -- (psql, or: DATABASE_URL="<POSTGRES_URL_NON_POOLING>" npm run db:setup).
 -- ════════════════════════════════════════════════════════════════════════════
@@ -142,7 +143,7 @@ begin
     raise exception 'The downloaded file does not match the expected fingerprint. Get the latest RUN-ME-IN-SUPABASE.sql from GitHub and try again.';
   end if;
   execute v_sql;
-  raise notice 'Hexa Battlegrounds database is up to date (v4).';
+  raise notice 'Hexa Battlegrounds database is up to date (v5).';
 end
 $hexa$;
 `;

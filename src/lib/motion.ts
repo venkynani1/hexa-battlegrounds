@@ -12,10 +12,12 @@ import { serverTime } from './time';
 export type Motion = { x: number; y: number; vx: number; vy: number; l: number; b?: string | null; h?: number; t: number; moving?: boolean };
 
 const MAX_EXTRAPOLATE = 1.2; // seconds: never run on past a lost message for long
+/** Positions that come from the ~2 s poll are carried a little longer so squads do not stop between polls. */
+export const POLL_EXTRAPOLATE = 3.4;
 
 /** Where a moving thing is now, given its last known position and velocity. */
-export function predict(m: Motion, now = serverTime()) {
-  const dt = Math.max(0, Math.min(MAX_EXTRAPOLATE, (now - m.t) / 1000));
+export function predict(m: Motion, now = serverTime(), max = MAX_EXTRAPOLATE) {
+  const dt = Math.max(0, Math.min(max, (now - m.t) / 1000));
   return { x: Math.max(0.02, Math.min(0.98, m.x + m.vx * dt)), y: Math.max(0.02, Math.min(0.98, m.y + m.vy * dt)) };
 }
 
@@ -78,7 +80,9 @@ export function useRivals(token: string | null, enabled: boolean) {
           for (const q of r.squads || []) {
             if (!q.pos) continue;
             const v = q.vel || [0, 0];
-            next.set(q.id, { x: q.pos[0], y: q.pos[1], vx: v[0] || 0, vy: v[1] || 0, l: q.level || 0, b: q.bldg, t, moving: !!q.vel });
+            // `age` = how long ago the server recorded this position: start the prediction from then
+            const age = q.vel && typeof q.age === 'number' ? Math.min(3, Math.max(0, q.age)) * 1000 : 0;
+            next.set(q.id, { x: q.pos[0], y: q.pos[1], vx: v[0] || 0, vy: v[1] || 0, l: q.level || 0, b: q.bldg, t: t - age, moving: !!q.vel });
           }
           rivals.current = next;
         } catch { /* the full state refresh still covers positions */ }
