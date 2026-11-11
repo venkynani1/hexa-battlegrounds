@@ -1,7 +1,7 @@
 // Heavy load test against a real Supabase project (or the local server).
 // Simulates full maps of real phones doing what real phones do:
 //   • every phone: full state every few seconds + the positions feed every ~2 s
-//   • every captain: steering 3 times a second while driving, searching, answering, climbing stairs
+//   • every captain: jumping, steering 3 times a second while running/driving, opening boxes, answering
 //
 //   SUPABASE_URL=https://xyz.supabase.co SUPABASE_KEY=<anon key> \
 //   MAPS=3 MINUTES=5 node scripts/loadtest.mjs
@@ -121,10 +121,12 @@ async function phone(token) {
           await state();
         } else if (st.team.state === 'traveling') {
           await sleep(1500); await state(); pos = st?.team?.pos ? [...st.team.pos] : pos;
+        } else if (!st.team.dropped && !st.team.jump_at) {
+          // in the plane: jump somewhere over the campus (refused until the plane is over it)
+          await rpc('captain_jump', { p_token: token }).catch(() => {});
+          await sleep(1500); await state(); pos = st?.team?.pos ? [...st.team.pos] : pos;
         } else if (!st.team.dropped) {
-          const l = ground[Math.floor(Math.random() * ground.length)];
-          await rpc('captain_move', { p_token: token, p_location: l.id });
-          await sleep(1500); await state();
+          await sleep(1500); await state(); pos = st?.team?.pos ? [...st.team.pos] : pos;
         } else if (pos) {
           // drive to a place like a thumb on the joystick: a steer call every 300 ms
           if (!goal) goal = ground[Math.floor(Math.random() * ground.length)];

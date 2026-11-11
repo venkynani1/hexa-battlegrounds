@@ -84,7 +84,7 @@ export function BoardingPass({ s }: { s: any }) {
       </div>
       <div className="bp-role">
         <small>Role</small>
-        {role ? <b style={{ color: ROLES[role].color }}>{ROLES[role].icon} {ROLES[role].name}</b> : <b className="muted">Assigned by the crew at take-off</b>}
+        {role ? <b style={{ color: ROLES[role].color }}>{ROLES[role].icon} {ROLES[role].name}</b> : <b className="muted">Pick it on board</b>}
       </div>
       <div className="bp-tear" aria-hidden />
       <div className="bp-foot"><Barcode seed={`${s.team.id}${s.me.name}`} /><span className="mono">{String(s.team.number).padStart(2, '0')}·{(s.me.seat || 'A').slice(-1)}·HX26{map}</span></div>
@@ -133,12 +133,12 @@ export function Cabin({ s }: { s: any }) {
         <Route p={p} />
         {role ? (
           <div className="role-card" style={{ borderColor: ROLES[role].color }}>
-            <small>The crew has assigned your role</small>
+            <small>Your role</small>
             <b style={{ color: ROLES[role].color }}>{ROLES[role].icon} {ROLES[role].name}</b>
             <p>{ROLES[role].blurb}</p>
             <span className="muted">Captain: <b>{s.roles?.captain || '—'}</b></span>
           </div>
-        ) : <div className="role-card"><small>Roles are being assigned…</small></div>}
+        ) : <div className="role-card"><small>Pick your role below ↓ before the jump</small></div>}
       </div>
     </div>
   );
@@ -157,7 +157,7 @@ export function Approach({ s }: { s: any }) {
           <div className="role-card" style={{ borderColor: ROLES[role].color }}>
             <small>You are the</small>
             <b style={{ color: ROLES[role].color }}>{ROLES[role].icon} {ROLES[role].name}</b>
-            <p>{role === 'captain' ? 'Open the map, pick a landing spot inside the dashed circle and press JUMP. Your squad lands with you.' : 'Your captain picks where the squad lands. Watch the map and talk it through.'}</p>
+            <p>{role === 'captain' ? 'When the plane is over campus, press JUMP. Steer the fall with the joystick — the parachute opens by itself. If you do not jump, the squad is pushed out at the end of the run.' : 'Your captain jumps and steers the squad down. Shout where to land!'}</p>
           </div>
         )}
         <div className="jump-light" aria-hidden><i /><span>Get ready to jump</span></div>

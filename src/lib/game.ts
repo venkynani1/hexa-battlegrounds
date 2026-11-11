@@ -101,7 +101,8 @@ export function feedText(type: string, p: any, map: MapData | null): { text: str
     case 'map.revealed': return { text: 'Campus map revealed — drop now!', tone: 'warn' };
     case 'squad.movement.started': return { text: `Squad ${p.team} → ${L(p.to)}`, tone: 'info' };
     case 'squad.arrived': return { text: `Squad ${p.team} reached ${L(p.location)}`, tone: 'info' };
-    case 'squad.jumped': return { text: `🪂 Squad ${p.team} jumped — gliding to ${L(p.to)}`, tone: 'info' };
+    case 'squad.jumped': return { text: p.to ? `🪂 Squad ${p.team} jumped — gliding to ${L(p.to)}` : `🪂 Squad ${p.team} jumped`, tone: 'info' };
+    case 'squad.landed': return { text: `🪂 Squad ${p.team} landed${p.location ? ` at ${L(p.location)}` : ''}`, tone: 'info' };
     case 'squad.buggy': return { text: `🚙 Squad ${p.team} collected their buggy`, tone: 'info' };
     case 'plane.over': return { text: '✈ The plane is over Hexaware — squads are jumping', tone: 'warn' };
     case 'squad.gunfight': return { text: `🔫 Gunfight: Squad ${p.a} vs Squad ${p.b}${p.location ? ` at ${L(p.location)}` : ''}`, tone: 'bad' };

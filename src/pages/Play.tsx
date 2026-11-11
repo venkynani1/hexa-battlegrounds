@@ -12,7 +12,7 @@ import BottleShoot from '../components/BottleShoot';
 import MemoryCards from '../components/MemoryCards';
 import { Bomb, PatternLock, SignalLights } from '../components/ClueGames';
 import PlayingCards from '../components/PlayingCards';
-import { Approach, Cabin, Lounge } from '../components/Flight';
+import { Approach, Cabin, flightTimes, Lounge } from '../components/Flight';
 import { PhaseBanner } from '../components/Phase';
 import { Countdown, FeedList, HostOverlays, HpBar, Loading, SettingsSheet, Sheet, TimerBar, toast, ZoneChip } from '../components/ui';
 
@@ -135,8 +135,8 @@ export default function Play() {
         <main className="content">
           {phase === 'lobby' && <Lobby s={s} />}
           {phase === 'boarding' && <Lounge s={s} />}
-          {phase === 'shuttle' && <Cabin s={s} />}
-          {phase === 'roles' && (s.arena.overlay?.flight ? <Approach s={s} /> : <Roles s={s} token={token} refresh={live.refresh} />)}
+          {phase === 'shuttle' && <><Cabin s={s} /><Roles s={s} token={token} refresh={live.refresh} /></>}
+          {phase === 'roles' && (s.arena.overlay?.flight ? <><Approach s={s} /><Roles s={s} token={token} refresh={live.refresh} /></> : <Roles s={s} token={token} refresh={live.refresh} />)}
           {(phase === 'results' || phase === 'ended') && <Results s={s} />}
         </main>
       )}
@@ -270,7 +270,9 @@ function HowToPlay() {
 function Roles({ s, token, refresh }: { s: any; token: string; refresh: () => void }) {
   useNow(200);
   const [busy, setBusy] = useState<string | null>(null);
-  const left = secondsLeft(s.arena.roles_deadline);
+  const inFlight = s.arena.phase === 'shuttle';
+  const flightEnd = inFlight ? flightTimes(s).t1 : 0;
+  const left = inFlight ? Math.max(0, Math.ceil((flightEnd - serverTime()) / 1000)) : secondsLeft(s.arena.roles_deadline);
   async function claim(r: Role) {
     unlockAudio();
     setBusy(r);
@@ -281,10 +283,10 @@ function Roles({ s, token, refresh }: { s: any; token: string; refresh: () => vo
   return (
     <>
       <div className="panel warn center">
-        <div className="kind-tag">Gate 1 · Identity check</div>
-        <h2 style={{ fontSize: 30, marginTop: 6 }}>Claim your role!</h2>
+        <div className="kind-tag">{inFlight ? 'On board · before the jump' : 'Over Hexaware · last call'}</div>
+        <h2 style={{ fontSize: 28, marginTop: 6 }}>{s.me.role ? 'Your squad’s roles' : 'Pick your role'}</h2>
         <div className={`timer-big ${left <= 5 ? 'low' : ''}`} style={{ marginTop: 8 }}>{left}s</div>
-        <p className="muted" style={{ margin: '6px 0 0', fontSize: 13 }}>First tap wins. Unclaimed roles are assigned automatically.</p>
+        <p className="muted" style={{ margin: '6px 0 0', fontSize: 13 }}>Talk it over — first tap wins. The captain jumps and steers the squad. Roles nobody picks are handed out when the plane is over Hexaware.</p>
       </div>
       <div className="role-grid">
         {ROLE_ORDER.map((r) => {
@@ -292,7 +294,7 @@ function Roles({ s, token, refresh }: { s: any; token: string; refresh: () => vo
           const mine = s.me.role === r;
           return (
             <button key={r} className={`role-tile ${holder && !mine ? 'taken' : ''} ${mine ? 'mine' : ''}`} style={{ color: ROLES[r].color }}
-              disabled={!!holder || !!s.me.role || !!busy || left === 0} onClick={() => claim(r)} aria-label={`Claim ${ROLES[r].name}`}>
+              disabled={!!holder || !!s.me.role || !!busy} onClick={() => claim(r)} aria-label={`Claim ${ROLES[r].name}`}>
               <span className="ico" aria-hidden>{ROLES[r].icon}</span>
               <span className="nm">{ROLES[r].name}</span>
               <span className="who">{holder ? (mine ? 'YOU' : holder) : busy === r ? 'Claiming…' : 'Available'}</span>

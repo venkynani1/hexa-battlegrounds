@@ -23,7 +23,7 @@ export type WorldSquad = {
   key: string; number: number; x: number; y: number; me?: boolean; ally?: boolean; inBattle?: boolean; down?: boolean; moving?: boolean;
   vx?: number; vy?: number; at?: number; level?: number; bldg?: string | null; label?: string;
   /** on foot (the captain walks; the buggy is parked at `buggy`) */
-  foot?: boolean; buggy?: number[] | null; chute?: boolean; landAt?: number; hidden?: boolean;
+  foot?: boolean; buggy?: number[] | null; chute?: boolean; landAt?: number; jumpAt?: number; hidden?: boolean;
   hp?: number; shield?: number; fight?: boolean;
 };
 export type WorldState = {
@@ -199,7 +199,7 @@ export class WorldScene {
   private raf = 0;
   private clock = new THREE.Clock();
   private pads: THREE.Mesh[] = [];
-  private labels: { sprite: THREE.Sprite; pos: THREE.Vector3; id: string; level: number; bldg: string | null }[] = [];
+  private labels: { sprite: THREE.Sprite; pos: THREE.Vector3; id: string; level: number; bldg: string | null; inB?: boolean }[] = [];
   private squads = new Map<string, SquadObj>();
   private drops = new Map<string, THREE.Group>();
   private battles = new Map<string, THREE.Group>();
@@ -222,6 +222,8 @@ export class WorldScene {
   private reduced: boolean;
   private lowEnd: boolean;
   private highlightRing!: THREE.Mesh;
+  private hlId: string | null = null;
+  private crateMats: Record<string, THREE.Material> | null = null;
   private ray = new THREE.Raycaster();
   private animated: THREE.Object3D[] = [];
   private water: THREE.Points | null = null;
@@ -640,17 +642,18 @@ export class WorldScene {
       const level = l.level || 0;
       const c = W(l.x, l.y, level);
       const color = l.id === 'tr14' ? 0xffc23d : l.kind === 'stairs' ? 0x5dff9e : 0xffffff;
-      const ring = new THREE.Mesh(new THREE.RingGeometry(0.95, 1, 64), new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.85, depthWrite: false, side: THREE.DoubleSide }));
-      ring.rotation.x = -Math.PI / 2; ring.position.set(c.x, c.y + 0.32, c.z);
-      const fill = new THREE.Mesh(new THREE.CircleGeometry(1, 40), new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.06, depthWrite: false }));
+      // a challenge box (or, at a lift, a lift call pad) instead of a circle on the floor
+      const ring = l.kind === 'stairs' ? this.makeLiftPad() : this.makeBox(l.id === 'tr14');
+      ring.position.set(c.x, c.y + 0.3, c.z);
+      const fill = new THREE.Mesh(new THREE.CircleGeometry(1, 40), new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0, depthWrite: false }));
       fill.rotation.x = -Math.PI / 2; fill.position.set(c.x, c.y + 0.3, c.z);
       fill.userData = { id: l.id, ring, level, bldg: level > 0 ? l.building : null };
       this.pads.push(fill);
       this.scene.add(ring, fill);
-      const name = l.kind === 'stairs' ? '⇅ STAIRS' : SHORT_LABEL[l.id] || l.name.replace(/\s*\(.*\)$/, '').replace(' — Final Battleground', '');
+      const name = l.kind === 'stairs' ? '🛗 LIFT' : SHORT_LABEL[l.id] || l.name.replace(/\s*\(.*\)$/, '').replace(' — Final Battleground', '');
       const sp = labelSprite(name, l.id === 'tr14' ? '#ffd56b' : l.kind === 'stairs' ? '#5dff9e' : '#ffffff', 'rgba(10,16,28,0.7)', 0.7, true);
-      sp.position.set(c.x, c.y + 3.2, c.z);
-      this.labels.push({ sprite: sp, pos: sp.position.clone(), id: l.id, level, bldg: level > 0 ? l.building : null });
+      sp.position.set(c.x, c.y + 4.2, c.z);
+      this.labels.push({ sprite: sp, pos: sp.position.clone(), id: l.id, level, bldg: level > 0 ? l.building : null, inB: !!l.building });
       this.scene.add(sp);
     }
     // Training Room 14 beacon (hidden when you are inside Hexavarsity)
@@ -738,78 +741,54 @@ export class WorldScene {
     return { b, body, extras, mats: [sideX, sideZ, roof, parMat, unitMat], fade: 1, interior: null, floors: [], doors: [], alarm, shutter, sealed: false, lockLabel: null, lockKey: '', bands };
   }
 
-  // Interior of a building: a slab per floor, rooms with walls and sliding doors along a corridor,
-  // a stairwell with real steps, and room name plates. Built once, on first entry.
+  // Interior of a building: every floor is one open hall (like Free Fire's buildings): a tiled slab,
+  // pillars, glass outer walls, a few low partitions for cover, and a glass lift in the core.
+  // No ceilings, rooms or doors, so the third-person camera always sees the captain clearly.
   private buildInterior(B: Bldg) {
     const b = B.b; const g = new THREE.Group();
     const w = (b.x1 - b.x0) * S; const d = (b.y1 - b.y0) * S;
     const c = W((b.x0 + b.x1) / 2, (b.y0 + b.y1) / 2);
-    const slabM = new THREE.MeshStandardMaterial({ map: canvasTex(128, 128, (gg) => { gg.fillStyle = '#b9b3a6'; gg.fillRect(0, 0, 128, 128); gg.strokeStyle = 'rgba(0,0,0,0.2)'; for (let i = 0; i <= 128; i += 32) { gg.beginPath(); gg.moveTo(i, 0); gg.lineTo(i, 128); gg.stroke(); gg.beginPath(); gg.moveTo(0, i); gg.lineTo(128, i); gg.stroke(); } }, [Math.round(w / 4), Math.round(d / 4)]), roughness: 0.7 });
-    const wallM = new THREE.MeshStandardMaterial({ color: 0xf1efe9, roughness: 0.8 });
-    const glassM = new THREE.MeshStandardMaterial({ color: 0x9ed4f5, transparent: true, opacity: 0.35, roughness: 0.05 });
-    const doorM = new THREE.MeshStandardMaterial({ color: 0x3a6ea5, roughness: 0.4, metalness: 0.3 });
-    const corM = new THREE.MeshStandardMaterial({ color: 0xb9c2cc, roughness: 0.7 });
-    const stepM = new THREE.MeshStandardMaterial({ color: 0x9aa1a9, roughness: 0.6 });
-    const deskM = new THREE.MeshStandardMaterial({ color: 0xc8a477, roughness: 0.7 });
-    const ceilTex = canvasTex(128, 128, (gg) => {
-      gg.fillStyle = '#e9e7e1'; gg.fillRect(0, 0, 128, 128);
-      gg.strokeStyle = 'rgba(0,0,0,0.12)'; for (let i = 0; i <= 128; i += 32) { gg.beginPath(); gg.moveTo(i, 0); gg.lineTo(i, 128); gg.moveTo(0, i); gg.lineTo(128, i); gg.stroke(); }
-      gg.fillStyle = '#fffdf2'; gg.fillRect(40, 40, 48, 48);
-    }, [Math.round(w / 6), Math.round(d / 6)]);
-    const ceilM = new THREE.MeshStandardMaterial({ map: ceilTex, emissive: 0xfff6e0, emissiveIntensity: 0.25, emissiveMap: ceilTex, roughness: 0.9, side: THREE.FrontSide });
-    const corridorZ = W(0, (b.y0 + b.y1) / 2).z;
-    const rooms = [...this.locs.values()].filter((l) => l.building === b.id && l.kind !== 'stairs' && l.enabled);
+    const slabM = new THREE.MeshStandardMaterial({ map: canvasTex(128, 128, (gg) => { gg.fillStyle = '#d6d2c8'; gg.fillRect(0, 0, 128, 128); gg.strokeStyle = 'rgba(0,0,0,0.13)'; gg.lineWidth = 2; for (let i = 0; i <= 128; i += 64) { gg.beginPath(); gg.moveTo(i, 0); gg.lineTo(i, 128); gg.stroke(); gg.beginPath(); gg.moveTo(0, i); gg.lineTo(128, i); gg.stroke(); } }, [Math.round(w / 6), Math.round(d / 6)]), roughness: 0.55 });
+    const edgeM = new THREE.MeshStandardMaterial({ color: 0x8a939e, roughness: 0.7 });
+    const pillarM = new THREE.MeshStandardMaterial({ color: 0xe9e6df, roughness: 0.8 });
+    const glassM = new THREE.MeshStandardMaterial({ color: 0x9ed4f5, transparent: true, opacity: 0.22, roughness: 0.05, depthWrite: false });
+    const coverM = new THREE.MeshStandardMaterial({ color: 0x5b6573, roughness: 0.6 });
+    const liftM = new THREE.MeshStandardMaterial({ color: 0xb8c2cc, metalness: 0.8, roughness: 0.25 });
+    const liftGlass = new THREE.MeshStandardMaterial({ color: 0x5dff9e, transparent: true, opacity: 0.18, emissive: 0x5dff9e, emissiveIntensity: 0.25, depthWrite: false });
     const st = W(b.stairs[0], b.stairs[1]);
+    const box = new THREE.BoxGeometry(1, 1, 1);
     for (let f = 0; f < b.floors; f++) {
       const fg = new THREE.Group(); const y = f * FLOOR_H;
       const bt = new Batch();
-      const box = new THREE.BoxGeometry(1, 1, 1);
       bt.add(box, slabM, [c.x, y + 0.15, c.z], 0, [w - 0.4, 0.3, d - 0.4]);
-      bt.add(box, corM, [c.x, y + 0.32, corridorZ], 0, [w - 1.2, 0.04, 5]);
-      // outer walls: solid below the windows and above them, glass in between (you can see out)
+      // a clean edge band and a waist-high glass rail all round (you can see out, nothing blocks the view)
       for (const [px, pz, pw, pd] of [[0, -d / 2 + 0.3, w - 0.6, 0.2], [0, d / 2 - 0.3, w - 0.6, 0.2], [-w / 2 + 0.3, 0, 0.2, d - 0.6], [w / 2 - 0.3, 0, 0.2, d - 0.6]] as const) {
-        bt.add(box, glassM, [c.x + px, y + 1.8, c.z + pz], 0, [pw, 1.6, pd]);
-        bt.add(box, wallM, [c.x + px, y + 0.55, c.z + pz], 0, [pw, 0.9, pd + 0.05]);
-        bt.add(box, wallM, [c.x + px, y + 3.25, c.z + pz], 0, [pw, FLOOR_H - 2.6, pd + 0.05]);
+        bt.add(box, edgeM, [c.x + px, y + 0.4, c.z + pz], 0, [pw, 0.5, pd + 0.05]);
+        bt.add(box, glassM, [c.x + px, y + 1.3, c.z + pz], 0, [pw, 1.3, pd]);
       }
-      // ceiling with light panels: only visible from below (first person), never blocks the view from above
-      const ceil = new THREE.Mesh(new THREE.PlaneGeometry(w - 0.6, d - 0.6), ceilM);
-      ceil.rotation.x = Math.PI / 2; ceil.position.set(c.x, y + FLOOR_H - 0.06, c.z);
-      fg.add(ceil);
-      const here = rooms.filter((l) => (l.level || 0) === f);
-      const cellW = Math.min(w / 3.2, 22); const cellD = Math.min((d - 6) / 2 - 0.5, 16);
-      for (const l of here) {
-        const p = W(l.x, l.y);
-        const north = p.z < corridorZ;
-        const rz = north ? corridorZ - 2.5 - cellD / 2 : corridorZ + 2.5 + cellD / 2;
-        const doorSideZ = north ? rz + cellD / 2 : rz - cellD / 2;
-        // three solid walls + corridor wall with a door gap
-        bt.add(box, wallM, [p.x - cellW / 2, y + 1.5, rz], 0, [0.25, 2.7, cellD]);
-        bt.add(box, wallM, [p.x + cellW / 2, y + 1.5, rz], 0, [0.25, 2.7, cellD]);
-        bt.add(box, wallM, [p.x, y + 1.5, north ? rz - cellD / 2 : rz + cellD / 2], 0, [cellW, 2.7, 0.25]);
-        const gap = 3.2;
-        const seg = (cellW - gap) / 2;
-        bt.add(box, wallM, [p.x - gap / 2 - seg / 2, y + 1.5, doorSideZ], 0, [seg, 2.7, 0.25]);
-        bt.add(box, wallM, [p.x + gap / 2 + seg / 2, y + 1.5, doorSideZ], 0, [seg, 2.7, 0.25]);
-        // furniture: rows of desks
-        for (let k = -1; k <= 1; k++) bt.add(box, deskM, [p.x + k * cellW * 0.28, y + 0.75, rz + (north ? -1.5 : 1.5)], 0, [cellW * 0.2, 0.1, 1.4]);
-        if (l.id === 'tr14') bt.add(box, new THREE.MeshStandardMaterial({ color: 0xffc23d, emissive: 0xffa000, emissiveIntensity: 0.4 }), [p.x, y + 0.36, rz], 0, [cellW - 1, 0.04, cellD - 1]);
-        // sliding door
-        const dm = new THREE.Mesh(new THREE.BoxGeometry(gap, 2.5, 0.15), doorM);
-        dm.position.set(p.x, y + 1.45, doorSideZ);
-        fg.add(dm);
-        B.doors.push({ mesh: dm, open: 0, x: l.x, y: l.y, level: f, axis: 'x', home: p.x });
-        const lab = labelSprite(SHORT_LABEL[l.id] || l.name.replace(' — Final Battleground', ''), l.id === 'tr14' ? '#ffd56b' : '#ffffff', 'rgba(10,16,28,0.78)', 0.9);
-        lab.position.set(p.x, y + 3.4, doorSideZ);
-        fg.add(lab);
+      // pillars on a regular grid
+      const nx = Math.max(2, Math.round(w / 14)); const nz = Math.max(2, Math.round(d / 14));
+      for (let i = 1; i < nx; i++) for (let k = 1; k < nz; k++) {
+        const px = c.x - w / 2 + (i * w) / nx; const pz = c.z - d / 2 + (k * d) / nz;
+        if (Math.hypot(px - st.x, pz - st.z) < 5) continue;
+        bt.add(box, pillarM, [px, y + 1.6, pz], 0, [0.8, 2.6, 0.8]);
       }
-      // stairwell: a flight of steps going up from this floor, railing, a landing
+      // a few low cover walls (waist high) between the pillars
+      let seed = (b.id.length * 31 + f * 7) % 97;
+      const rnd = () => { seed = (seed * 9301 + 49297) % 233280; return seed / 233280; };
+      for (let k = 0; k < Math.min(6, Math.round((w * d) / 260)); k++) {
+        const px = c.x - w / 2 + 3 + rnd() * (w - 6); const pz = c.z - d / 2 + 3 + rnd() * (d - 6);
+        if (Math.hypot(px - st.x, pz - st.z) < 6) continue;
+        const along = rnd() > 0.5;
+        bt.add(box, coverM, [px, y + 0.85, pz], 0, along ? [3.2, 1.1, 0.35] : [0.35, 1.1, 3.2]);
+      }
+      // the lift: a glass cab in a dark frame, with the floor number over the doors
       if (b.floors > 1) {
-        for (let k = 0; k < 12; k++) bt.add(box, stepM, [st.x - 2.4 + k * 0.4, y + 0.3 + (k + 1) * (FLOOR_H / 12) / 2, st.z - 1.2], 0, [0.4, (k + 1) * (FLOOR_H / 12), 2.2]);
-        bt.add(box, stepM, [st.x, y + 0.2, st.z + 1.4], 0, [5, 0.1, 2.4]);
-        bt.add(box, new THREE.MeshStandardMaterial({ color: 0x2b2f36, metalness: 0.6, roughness: 0.4 }), [st.x, y + 1.2, st.z - 2.4], 0, [5, 0.08, 0.08]);
-        const sl = labelSprite(`⇅ STAIRS · ${f === 0 ? 'G' : f}`, '#5dff9e', 'rgba(10,16,28,0.8)', 0.9);
-        sl.position.set(st.x, y + 3.6, st.z); fg.add(sl);
+        for (const [ox, oz] of [[-1.6, -1.6], [1.6, -1.6]] as const) bt.add(box, liftM, [st.x + ox, y + FLOOR_H / 2, st.z + oz], 0, [0.14, FLOOR_H, 0.14]);
+        bt.add(box, liftM, [st.x, y + FLOOR_H - 0.1, st.z - 1.6], 0, [3.3, 0.2, 0.14]);
+        bt.add(box, liftGlass, [st.x, y + FLOOR_H / 2, st.z - 1.6], 0, [3.2, FLOOR_H, 0.05]);
+        const sl = labelSprite(`🛗 LIFT · ${f === 0 ? 'G' : f}`, '#5dff9e', 'rgba(10,16,28,0.8)', 0.8);
+        sl.position.set(st.x, y + FLOOR_H - 0.2, st.z + 1.8); fg.add(sl);
       }
       bt.flush(fg, false);
       fg.visible = false;
@@ -846,8 +825,51 @@ export class WorldScene {
     this.scene.add(this.zoneWall, this.zoneOutside, this.nextRing, this.red);
   }
 
+  // A challenge box: a sturdy supply crate with a squad-blue stripe; its lid opens when you walk up.
+  private makeBox(gold: boolean) {
+    if (!this.crateMats) {
+      const wood = canvasTex(64, 64, (g) => {
+        g.fillStyle = '#2b3a4f'; g.fillRect(0, 0, 64, 64);
+        g.strokeStyle = 'rgba(255,255,255,0.12)'; g.lineWidth = 2; for (let i = 8; i < 64; i += 14) { g.beginPath(); g.moveTo(0, i); g.lineTo(64, i); g.stroke(); }
+        g.strokeStyle = '#9fb0c4'; g.lineWidth = 4; g.strokeRect(2, 2, 60, 60);
+        g.fillStyle = '#2ee6ff'; g.font = 'bold 30px sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText('?', 32, 34);
+      });
+      this.crateMats = {
+        body: new THREE.MeshStandardMaterial({ map: wood, roughness: 0.6, metalness: 0.3 }),
+        gold: new THREE.MeshStandardMaterial({ color: 0xffc23d, roughness: 0.4, metalness: 0.6, emissive: 0x6a4500, emissiveIntensity: 0.4 }),
+        stripe: new THREE.MeshStandardMaterial({ color: 0x2ee6ff, emissive: 0x2ee6ff, emissiveIntensity: 0.9 }),
+        glow: new THREE.MeshBasicMaterial({ color: 0x9ff4ff, transparent: true, opacity: 0.55, blending: THREE.AdditiveBlending, depthWrite: false }),
+      };
+    }
+    const M = this.crateMats;
+    const g = new THREE.Group();
+    const body = new THREE.Mesh(new THREE.BoxGeometry(1.8, 1.1, 1.2), gold ? M.gold : M.body);
+    body.position.y = 0.55; body.castShadow = true;
+    const stripe = new THREE.Mesh(new THREE.BoxGeometry(1.84, 0.12, 1.24), M.stripe); stripe.position.y = 0.85;
+    const hinge = new THREE.Group(); hinge.position.set(0, 1.1, -0.6);
+    const lid = new THREE.Mesh(new THREE.BoxGeometry(1.9, 0.16, 1.3), gold ? M.gold : M.body); lid.position.set(0, 0.08, 0.6); lid.castShadow = true;
+    hinge.add(lid);
+    const glow = new THREE.Mesh(new THREE.CylinderGeometry(0.7, 0.2, 2.6, 16, 1, true), M.glow); glow.position.y = 2.2; glow.visible = false;
+    g.add(body, stripe, hinge, glow);
+    g.userData = { lid: hinge, glow };
+    return g;
+  }
+
+  // Where the lift is: a green call pad on the floor with an up/down arrow post.
+  private makeLiftPad() {
+    const g = new THREE.Group();
+    const pad = new THREE.Mesh(new THREE.BoxGeometry(3.2, 0.06, 3.2), new THREE.MeshStandardMaterial({ color: 0x1d6b45, emissive: 0x5dff9e, emissiveIntensity: 0.35 }));
+    pad.position.y = 0.03;
+    const post = new THREE.Mesh(new THREE.BoxGeometry(0.3, 1.3, 0.2), new THREE.MeshStandardMaterial({ color: 0x2b2f36, metalness: 0.7, roughness: 0.3 }));
+    post.position.set(1.4, 0.65, -1.4);
+    const btn = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.32, 0.06), new THREE.MeshBasicMaterial({ color: 0x5dff9e }));
+    btn.position.set(1.4, 1.05, -1.28);
+    g.add(pad, post, btn);
+    return g;
+  }
+
   setLocRadius(r: number) {
-    for (const p of this.pads) { p.scale.setScalar(r * S); (p.userData.ring as THREE.Mesh).scale.setScalar(r * S); }
+    for (const p of this.pads) p.scale.setScalar(r * S); // the pick area; the box itself keeps its size
   }
   setMode(m: CameraMode) { this.mode = m; }
   setZoom(z: number) { this.zoom = Math.max(0.45, Math.min(2.4, z)); }
@@ -1020,6 +1042,7 @@ export class WorldScene {
     else this.waypoint.visible = false;
     this.routeTo = st.route ? W(st.route.x, st.route.y) : null;
     if (st.focus) this.focus.copy(W(st.focus.x, st.focus.y));
+    this.hlId = st.highlight || null;
     const hl = st.highlight ? this.locs.get(st.highlight) : null;
     if (hl) { const p = W(hl.x, hl.y, hl.level || 0); this.highlightRing.visible = true; this.highlightRing.position.set(p.x, p.y + 0.4, p.z); }
     else this.highlightRing.visible = false;
@@ -1150,7 +1173,14 @@ export class WorldScene {
         o.target.copy(W(d.x + (d.vx || 0) * age, d.y + (d.vy || 0) * age, d.level || 0));
       }
       // parachuting: drop from the plane's altitude to the ground by the landing time
-      if (d.chute && d.landAt) o.target.y += Math.min(150, Math.max(0, (d.landAt - now) / 1000) * 11);
+      // falling: free fall covers most of the height fast, then the canopy opens and the last part is slow (like Free Fire)
+      let freefall = false;
+      if (d.chute && d.landAt && d.jumpAt && d.landAt > d.jumpAt) {
+        const f = Math.max(0, Math.min(1, (now - d.jumpAt) / (d.landAt - d.jumpAt)));
+        const g = f < 0.45 ? 0.72 * (f / 0.45) : 0.72 + 0.28 * ((f - 0.45) / 0.55);
+        o.target.y += 160 * (1 - g);
+        freefall = f < 0.45;
+      } else if (d.chute && d.landAt) o.target.y += Math.min(150, Math.max(0, (d.landAt - now) / 1000) * 11);
       if (d.hidden) { o.car.visible = false; if (o.parked) o.parked.visible = false; continue; }
       const before = o.car.position.clone();
       // own squad follows the prediction exactly; others glide with a short smoothing
@@ -1167,8 +1197,18 @@ export class WorldScene {
       const foot = !!d.foot || !!d.chute;
       o.veh.visible = !foot;
       o.avatar.visible = foot && !(d.me && this.fpv);
-      o.chute.visible = !!d.chute;
+      // free fall: body flat, arms out, no canopy; then the canopy pops open and the body hangs upright
+      const openK = d.chute && !freefall ? Math.min(1, (o.chute.userData.k ?? 0) + dt * 2.5) : 0;
+      o.chute.userData.k = openK;
+      o.chute.visible = !!d.chute && !freefall;
+      o.chute.scale.set(0.3 + 0.7 * openK, 0.3 + 0.7 * openK, 0.3 + 0.7 * openK);
+      const tilt = freefall ? -Math.PI / 2 * 0.85 : 0;
+      o.avatar.rotation.x += (tilt - o.avatar.rotation.x) * Math.min(1, dt * 6);
+      o.avatar.position.y = freefall ? 0.9 : 0;
       if (foot) animateAvatar(o.avatar, dt, this.reduced || d.chute ? 0 : spd, performance.now() - (o.avatar.userData.aimAt || 0) < 900);
+      if (freefall) { const u = o.avatar.userData; if (u.armL) { u.armL.rotation.z = 1.3; u.armR.rotation.z = -1.3; u.legL.rotation.x = 0.25; u.legR.rotation.x = 0.25; } }
+      else if (d.chute) { const u = o.avatar.userData; if (u.armL) { u.armL.rotation.z = 0.25; u.armR.rotation.z = -0.25; u.armL.rotation.x = -2.6; u.armR.rotation.x = -2.6; } }
+      else if (o.avatar.userData.armL && o.avatar.userData.armL.rotation.z !== 0) { const u = o.avatar.userData; u.armL.rotation.z = 0; u.armR.rotation.z = 0; }
       else animateVehicle(o.veh, t, dt, this.reduced ? 0 : spd, this.reduced ? 0 : turn, !!d.down);
       // the buggy waits where it was parked (or in its parking bay) while the captain walks
       if (d.foot && d.buggy && !d.chute) {
@@ -1244,7 +1284,7 @@ export class WorldScene {
     }
 
     // camera
-    const insideB = this.myLevel > 0 || this.bldgs.some((B) => meObj && this.isInside(B, meObj.car.position));
+    const insideB = this.myLevel > 0 || this.bldgs.some((B) => meObj && !meObj.data.chute && this.isInside(B, meObj.car.position));
     // the drop plane crossing the campus
     const pd = this.planeData;
     if (pd) {
@@ -1302,7 +1342,7 @@ export class WorldScene {
     } else if (this.mode === 'follow') {
       const f = meObj ? meObj.car.position : this.focus;
       const onFoot = !!meObj?.data.foot;
-      const dist = (onFoot ? (insideB ? 7 : 8.5) : insideB ? 13 : 17) * this.zoom; const height = (onFoot ? (insideB ? 5 : 4.2) : insideB ? 12 : 8.5) * this.zoom;
+      const dist = (onFoot ? (insideB ? 7.5 : 8.5) : insideB ? 13 : 17) * this.zoom; const height = (onFoot ? (insideB ? 6.5 : 4.2) : insideB ? 12 : 8.5) * this.zoom;
       const fwd = new THREE.Vector3(Math.sin(this.yaw), 0, -Math.cos(this.yaw));
       const tgt = f.clone().addScaledVector(fwd, 4); tgt.y = f.y + 1.6;
       this.camTarget.lerp(tgt, Math.min(1, k * 3));
@@ -1335,7 +1375,7 @@ export class WorldScene {
       this.ray.set(this.camera.position, dir); this.ray.far = len;
       const hits = new Set(this.ray.intersectObjects(this.bldgs.map((b) => b.body), false).map((h) => h.object));
       for (const B of this.bldgs) {
-        const inside = this.isInside(B, mp) || (this.myLevel > 0 && this.myBldg === B.b.id);
+        const inside = (!meObj.data.chute && this.isInside(B, mp)) || (this.myLevel > 0 && this.myBldg === B.b.id);
         if (inside && !B.interior) this.buildInterior(B);
         const camIn = this.isInside(B, this.camera.position) && this.camera.position.y < B.b.floors * FLOOR_H + 2;
         this.setFade(B, inside ? 0.0 : hits.has(B.body) || camIn ? 0.25 : 1, dt);
@@ -1361,17 +1401,24 @@ export class WorldScene {
     const named = new Set(ranked.filter((r) => r.d > 8 && r.d < 90).slice(0, 4).map((r) => r.lb.id));
     for (const lb of this.labels) {
       const m = lb.sprite.material as THREE.SpriteMaterial;
-      const want = !ref ? (lb.level === 0 && !lb.id.endsWith('_stairs') ? 0.9 : 0) : named.has(lb.id) ? 1 : 0;
+      const want = !ref ? (lb.level === 0 && !lb.inB && !lb.id.endsWith('_stairs') ? 0.9 : 0) : named.has(lb.id) ? 1 : 0; // big map: buildings carry their own sign, so only outdoor places get a tag
       m.opacity += (want - m.opacity) * Math.min(1, dt * 6);
       lb.sprite.visible = m.opacity > 0.03;
     }
     for (const pad of this.pads) {
-      const ring = pad.userData.ring as THREE.Mesh;
+      const box = pad.userData.ring as THREE.Group;
       const floorOk = ref ? onMyFloor(pad.userData.level, pad.userData.bldg) : pad.userData.level === 0 && !String(pad.userData.id).endsWith('_stairs');
       const dd = ref ? Math.hypot(pad.position.x - ref.x, pad.position.z - ref.z) : 0;
-      const op = !floorOk ? 0 : !ref ? 0.6 : Math.max(0, Math.min(0.75, (80 - dd) / 25));
-      (ring.material as THREE.MeshBasicMaterial).opacity = op;
-      ring.visible = pad.visible = op > 0.02;
+      box.visible = pad.visible = floorOk && (!ref || dd < 140);
+      box.scale.setScalar(ref ? 1.4 : 4);
+      // the lid swings open when you walk up to the box (or it is your target)
+      const lid = box.userData.lid as THREE.Object3D | undefined;
+      if (lid && box.visible) {
+        const want = (ref && dd < 7) || this.hlId === pad.userData.id ? 1 : 0;
+        box.userData.k = (box.userData.k || 0) + (want - (box.userData.k || 0)) * Math.min(1, dt * 5);
+        lid.rotation.x = -box.userData.k * 1.9;
+        (box.userData.glow as THREE.Mesh).visible = box.userData.k > 0.2;
+      }
     }
     this.renderer.render(this.scene, this.camera);
   };

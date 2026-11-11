@@ -49,16 +49,24 @@ test('check-in: map number + squad PIN finds the squad; wrong PINs lock the map 
   assert.ok((await call('join_flight', 'FLY26', 1, cards.squads[3].pin, 'Other map ok', true, true, null)).token, 'a lock-out on map 2 does not block map 1');
 });
 
-test('take-off: roles are handed out automatically, one captain per squad, nobody picks', async () => {
+test('roles: players pick them in the plane; whoever has none when the plane is over the campus gets one', async () => {
   await db.query(`update teams set ready = true where arena_id = $1`, [arena]);
   await db.query(`update arenas set phase = 'shuttle', shuttle_arrive_at = now() + interval '40 seconds' where id = $1`, [arena]);
   await db.query('select _tick($1, true)', [arena]);
-  for (const n of [1, 2, 3]) {
-    const roles = (await db.query(`select role from players where team_id = $1 and active order by role`, [sq[n].id])).rows.map((r) => r.role);
-    assert.deepEqual(roles, ['captain', 'decoder', 'scout']);
-  }
+  assert.equal(Number((await one(`select count(*) n from players p join teams t on t.id = p.team_id where t.arena_id = $1 and p.role is not null`, [arena])).n), 0, 'nobody is assigned at take-off');
+  // squad 1: everyone picks; squad 2: only one picks; squad 3: nobody picks
+  await call('claim_role', sq[1].tokens[2], 'captain'); await call('claim_role', sq[1].tokens[0], 'scout'); await call('claim_role', sq[1].tokens[1], 'decoder');
+  await call('claim_role', sq[2].tokens[1], 'captain');
   const ov = (await one(`select overlay from arenas where id = $1`, [arena])).overlay;
   assert.ok(ov.flight?.t0 && ov.flight?.t1, 'the cabin view knows when the plane lands');
+  await db.query(`update arenas set phase = 'roles', roles_deadline = now() where id = $1`, [arena]);
+  await db.query('select _tick($1, true)', [arena]);
+  for (const n of [1, 2, 3]) {
+    const roles = (await db.query(`select role from players where team_id = $1 and active order by role`, [sq[n].id])).rows.map((r) => r.role);
+    assert.deepEqual(roles, ['captain', 'decoder', 'scout'], `squad ${n}`);
+  }
+  assert.equal((await call('player_state', sq[1].tokens[2])).me.role, 'captain', 'a chosen role is kept');
+  assert.equal((await call('player_state', sq[2].tokens[1])).me.role, 'captain');
 });
 
 const captain = async (n) => {
@@ -75,6 +83,7 @@ test('the plane: jump only while it is over the campus and within gliding range;
   await fails(call('captain_steer', c1, 0.5, 0.5, 0, 0), 'JUMP_FIRST');
   // the plane has just entered the sky far outside the campus
   await fails(call('captain_move', c1, 'fountain'), 'NOT_OVER_CAMPUS');
+  await fails(call('captain_jump', c1), 'NOT_OVER_CAMPUS');
   // put it right over the fountain (half-way along a path through it)
   await db.query(`update arenas set plane_ax = 0.47 - 0.6, plane_ay = 0.585, plane_bx = 0.47 + 0.6, plane_by = 0.585,
     plane_t0 = now() - interval '27 seconds', plane_t1 = now() + interval '27 seconds' where id = $1`, [arena]);
@@ -92,7 +101,30 @@ test('the plane: jump only while it is over the campus and within gliding range;
   // squads 2 and 3 never jumped: the plane leaving the campus pushes them out
   await db.query(`update arenas set plane_t0 = now() - interval '50 seconds', plane_t1 = now() + interval '5 seconds' where id = $1`, [arena]);
   await db.query('select _tick($1, true)', [arena]);
-  assert.equal(Number((await one(`select count(*) n from teams where arena_id = $1 and number in (2, 3) and state = 'traveling'`, [arena])).n), 2);
+  assert.equal(Number((await one(`select count(*) n from teams where arena_id = $1 and number in (2, 3) and jump_at is not null`, [arena])).n), 2);
+  assert.equal((await call('player_state', sq[2].tokens[0])).team.parachute, true);
+});
+
+test('Free Fire jump: one tap, steer the fall, land where you come down (roofs drop you at the door)', async () => {
+  const c2 = await captain(2);
+  const t0 = await one(`select pos_x, pos_y, land_at from teams where id = $1`, [sq[2].id]);
+  await fails(call('captain_jump', c2), 'ALREADY_JUMPED');
+  await db.query(`update teams set pos_at = now() - interval '2 seconds' where id = $1`, [sq[2].id]);
+  const r = await call('captain_steer', c2, t0.pos_x - 0.2, t0.pos_y, -0.018, 0);
+  assert.equal(r.air, true);
+  assert.ok(t0.pos_x - r.x > 0.03 && t0.pos_x - r.x < 0.05, `glided ${t0.pos_x - r.x}`);
+  assert.equal((await one(`select dropped from teams where id = $1`, [sq[2].id])).dropped, false, 'still in the air');
+  // touch down on Phase 2's roof → at its front door
+  const b = await one(`select * from buildings where id = 'phase2'`);
+  await db.query(`update teams set pos_x = $2, pos_y = $3, land_at = now() - interval '1 second' where id = $1`, [sq[2].id, (b.x0 + b.x1) / 2, (b.y0 + b.y1) / 2]);
+  await db.query('select _tick($1, true)', [arena]);
+  const t = await one(`select dropped, jump_at, pos_x, pos_y, vehicle, buggy_x, level from teams where id = $1`, [sq[2].id]);
+  assert.equal(t.dropped, true); assert.equal(t.jump_at, null); assert.equal(t.vehicle, 'none'); assert.equal(t.level, 0);
+  assert.ok(Math.abs(t.pos_x - b.door_x) < 1e-6 && Math.abs(t.pos_y - b.door_y) < 1e-6, 'landed at the door');
+  assert.ok(t.buggy_x !== null);
+  assert.ok(Number((await one(`select count(*) n from game_feed where type = 'squad.landed'`)).n) >= 1);
+  await db.query(`update teams set land_at = now() - interval '1 second' where id = $1`, [sq[3].id]);
+  await db.query('select _tick($1, true)', [arena]);
 });
 
 test('on foot vs buggy: walking is slower; get in only next to your buggy; a buggy cannot drive into a building', async () => {
@@ -100,7 +132,7 @@ test('on foot vs buggy: walking is slower; get in only next to your buggy; a bug
   await db.query(`update teams set pos_at = now() - interval '2 seconds' where id = $1`, [sq[1].id]);
   const s0 = await one(`select pos_x, pos_y from teams where id = $1`, [sq[1].id]);
   const r = await call('captain_steer', c1, s0.pos_x + 0.2, s0.pos_y, 0, 0);
-  assert.ok(r.x - s0.pos_x < 0.006 * 2 * 1.3 + 0.004, `on foot: ${r.x - s0.pos_x}`);
+  assert.ok(r.x - s0.pos_x < 0.013 * 2 * 1.3 + 0.004, `on foot: ${r.x - s0.pos_x}`);
   await fails(call('captain_vehicle', c1, true), 'BUGGY_TOO_FAR');
   // walk to the bay (teleported for the test) and get in
   await db.query(`update teams set pos_x = buggy_x + 0.003, pos_y = buggy_y, pos_at = now() where id = $1`, [sq[1].id]);
@@ -172,6 +204,20 @@ test('gunfights: in range and in sight, fire rate, magazine, damage, cover, knoc
   await db.query(`update teams set pos_x = 0.40, pos_y = 0.60 where id = $1`, [sq[1].id]);
   await db.query(`update teams set pos_x = 0.42, pos_y = 0.60 where id = $1`, [sq[3].id]);
   await fails(call('squad_fire', shooter, sq[3].id), 'NO_FIGHTS_YET');
+});
+
+test('lift: pick any floor from the lift; sealed floors block it', async () => {
+  const c1 = await captain(1);
+  const b = await one(`select * from buildings where id = 'phase2'`);
+  await db.query(`update teams set pos_x = $2, pos_y = $3, pos_at = now(), level = 0, bldg = null, state = 'idle', dropped = true, vehicle = 'parked' where id = $1`, [sq[1].id, b.stair_x, b.stair_y]);
+  await db.query(`update mission_instances set status = 'cancelled' where team_id = $1 and status = 'active'`, [sq[1].id]);
+  const r = await call('captain_lift', c1, 4);
+  assert.equal(r.level, 4); assert.equal(r.floors, 4);
+  assert.equal((await one(`select level, bldg from teams where id = $1`, [sq[1].id])).bldg, 'phase2');
+  const g = await call('captain_lift', c1, 0);
+  assert.equal(g.level, 0);
+  await fails(call('captain_lift', c1, 0), 'ALREADY_HERE');
+  await fails(call('captain_lift', c1, 9), 'NO_FLOOR');
 });
 
 test('zone like Free Fire: white circle first, then the wall closes in smoothly; damage grows with the stage', async () => {

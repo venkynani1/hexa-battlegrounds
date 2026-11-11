@@ -112,7 +112,7 @@ test('smooth movement: the joystick velocity reaches teammates and rivals (cappe
   assert.ok(pos.squads.find((x) => x.id === sq[2].id), 'own squad is included (teammates fall back to it)');
   await call('captain_steer', sq[1].cap, 0.3, 0.6, 5, 5); // absurd speed is capped
   const v = (await one(`select vel_x, vel_y from teams where id = $1`, [sq[1].id]));
-  assert.ok(Math.hypot(v.vel_x, v.vel_y) <= 0.016 * 1.1 + 1e-6);
+  assert.ok(Math.hypot(v.vel_x, v.vel_y) <= 0.020 * 1.1 + 1e-6);
 });
 
 test('loot on the ground: drive over a med kit to pick it up', async () => {

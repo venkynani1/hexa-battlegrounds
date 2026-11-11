@@ -77,6 +77,7 @@ async function run(ticks, secs = 3) {
     await db.query(`update teams set pos_at = pos_at - make_interval(secs => $2) where arena_id = $1 and pos_at is not null`, [arena, secs]);
     await db.query(`update bots set think_until = think_until - make_interval(secs => $2), wait_until = wait_until - make_interval(secs => $2) where arena_id = $1`, [arena, secs * 4]);
     await db.query(`update teams set travel_arrive_at = now() where arena_id = $1 and state = 'traveling'`, [arena]);
+    await db.query(`update teams set land_at = land_at - make_interval(secs => $2) where arena_id = $1 and land_at is not null`, [arena, secs * 2]);
     await db.query(`update arenas set last_tick_at = null where id = $1`, [arena]);
     await db.query('select _tick($1, true)', [arena]);
   }
@@ -97,9 +98,9 @@ test('demo: one call creates a match of dummy squads and starts it', async () =>
   await fails(call('demo_view', (await call('host_login', 'CARDA', 'same-password')).token, 1, 'captain'), 'NOT_DEMO');
 });
 
-test('demo: the game hands out roles at take-off, dummies jump from the plane and a host can open any dummy phone', async () => {
+test('demo: dummies pick roles in the plane, jump, steer the fall and a host can open any dummy phone', async () => {
   await db.query(`update arenas set phase = 'shuttle', shuttle_arrive_at = now() + interval '30 seconds' where id = $1`, [arena]);
-  await db.query('select _tick($1, true)', [arena]);
+  for (let i = 0; i < 30; i++) await db.query('select _tick($1, true)', [arena]);
   assert.equal(Number((await one(`select count(*) n from players p join teams t on t.id = p.team_id where t.arena_id = $1 and p.role is not null`, [arena])).n), 24);
   assert.equal(Number((await one(`select count(*) n from players p join teams t on t.id = p.team_id where t.arena_id = $1 and p.role = 'captain'`, [arena])).n), 6);
   await db.query(`update arenas set phase = 'roles', roles_deadline = now() + interval '30 seconds', shuttle_arrive_at = now() where id = $1`, [arena]);
@@ -123,6 +124,7 @@ test('demo: the game hands out roles at take-off, dummies jump from the plane an
   assert.equal(Number((await one(`select count(*) n from teams where arena_id = $1 and dropped`, [arena])).n), 6);
   const landed = await all(`select vehicle, buggy_x from teams where arena_id = $1`, [arena]);
   assert.ok(landed.every((r) => r.buggy_x !== null), 'every squad has a buggy waiting in a parking yard');
+  assert.equal(Number((await one(`select count(*) n from game_feed where arena_id = $1 and type = 'squad.landed'`, [arena])).n), 6);
 });
 
 test('demo: dummies drive, search, solve challenges and score through the normal game rules', async () => {

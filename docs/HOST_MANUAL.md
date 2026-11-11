@@ -51,12 +51,13 @@ After that nothing needs a button: boarding at the gate → take-off and flight 
 - The autopilot runs inside the game's own clock, which every phone, the projector and this console keep ticking. Keep at least the projector or this page open during the match.
 - Reset map turns the autopilot off.
 
-## The start: airport, flight, jump (v6)
+## The start: airport, flight, jump (v7)
 - **Check-in:** players scan the QR (or open `/join`) and check in at "Chennai International Airport" with the **map number** and the **squad PIN** — no squad number to type. Their phone then shows a **boarding pass** (passenger, flight HX 26‹map›, seat, gate).
 - **Roles** are handed out by the game at take-off (one random captain per squad, then scout, decoder, intel). Nobody picks.
 - **Flight:** phones and the big screen show the plane taking off from Chennai and flying along OMR to Siruseri.
-- **Jump:** the plane crosses the campus in a straight line (about 55 s). The captain picks a landing spot inside the dashed **gliding circle** and presses **JUMP**; the squad parachutes down. When the plane is about to leave, everyone still on board is dropped automatically.
-- **On foot:** squads land on foot and walk to the nearest parking yard, where the buggy with their number waits (**GET IN**). Buggies cannot enter buildings — the captain parks at the door and walks in through the front entrance. Inside, the captain sees the building **in first person** (drag to look, joystick to walk, ▲▼ at the stairs); teammates watch the captain from behind.
+- **Roles on board:** during the flight every phone shows the role picker under the cabin view. Players choose their own roles (first tap wins); roles nobody picked are handed out when the plane is over Hexaware.
+- **Jump:** the plane crosses the campus in a straight line. The captain presses **JUMP** — one tap — and the squad free-falls, then the parachute opens by itself. The captain steers the whole way down with the joystick. Squads that have not jumped by 80 % of the run are pushed out automatically.
+- **On foot:** squads land on foot and walk to the nearest parking yard, where the buggy with their number waits (**GET IN**). Buggies cannot enter buildings — the captain parks at the door and walks in through the front entrance. Inside, every floor is an open hall seen from behind the captain. Challenges are **boxes** — walk up and press **OPEN BOX**. To change floor, walk onto the green **🛗 LIFT** pad and tap a floor number. **RUN / WALK** toggles the captain's speed on foot.
 - **Gunfights** start in Phase 1: every squad member has a **FIRE** button when a rival is in range and nothing blocks the shot. Pistol (12 rounds), SMG (fast, short range), Sniper (slow, long range, headshots). At 0 HP a squad is knocked out into Recovery (never eliminated); the squad that knocked it gets points, coins and part of its coins.
 - **Zone (Free Fire style):** the white circle shows the next safe zone, a countdown runs, then the blue gas wall closes in smoothly. Damage outside grows every stage (1 → 8 HP every 2 s).
 - To run the earlier bus start instead (role claims, no plane), set `br_mode` to 0 in Settings.
@@ -84,7 +85,7 @@ Suspense → **Collapsing Campus**:
 - Automatic alarms start in Phase 1 every `lock_interval` seconds (0 = host only). Hexavarsity never seals; finale stage D seals everything else.
 
 ## Floors, stairs and loot (what players see)
-Squads are buggies. Rooms are on different floors; the captain drives onto a green ⇅ STAIRS ring and uses ▲ ▼ to climb. Med kits, shield packs and coin stacks lie around (also upstairs); driving over them picks them up. Wrong answers cost 5 HP, unsolved challenges 20 HP.
+Captains drive buggies outdoors and go on foot indoors. Challenge boxes are on every floor; the captain walks onto the green 🛗 LIFT pad and taps a floor. Med kits, shield packs and coin stacks lie around (also upstairs); driving over them picks them up. Wrong answers cost 5 HP, unsolved challenges 20 HP.
 
 ## Running the game — phases
 Each map card shows the current **match phase** with *◀ / Next phase ▶* and *Hide rankings*. With automatic pacing the phases advance on the timeline shown in Match pacing; the zone contracts by itself toward each phase's target (*Cancel* holds it). Duels are locked until Phase 2. *Hide rankings* seals the leaderboard on the projector and on phones without changing any score.
@@ -92,7 +93,7 @@ Each map card shows the current **match phase** with *◀ / Next phase ▶* and 
 ## Running the game by hand
 Follow the run-sheet in [GAME_DESIGN.md](GAME_DESIGN.md#120-minute-run-sheet-per-map-parallel-maps-run-the-same-sheet). Typical sequence per map (or *All maps*):
 1. **Open boarding** (assigns buses). You can start with any number of complete squads from 1 to 15; incomplete squads stay in the lobby. An empty map is refused.
-2. **DRIVE** → take-off and flight (40 s, roles assigned at take-off) → 6 s approach → the plane crosses the campus, squads jump (anyone still on board is dropped automatically when it leaves).
+2. **DRIVE** → take-off and flight (40 s, players pick their roles on board) → 6 s approach → the plane crosses the campus, squads jump (anyone still on board is dropped automatically when it leaves).
 3. During play: airdrops and **red zones** (Map & zone), **lockdown alarms** and loot top-ups (Suspense → Collapsing Campus), zone warnings (Map & zone or automatic). The safe zone is a shrinking circle; squads outside lose HP over time and are never teleported. Red zones give phones a 20 s warning, then hit squads still inside for 30 HP.
 4. **Begin finale** → set stage and **Launch round** for A, B, C (repeat C as you like), **Final lockdown** for D, launch E.
 5. **Lock results** → **Reveal winner** on each map → **Reveal grand champion**.

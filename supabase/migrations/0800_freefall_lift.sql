@@ -1,0 +1,347 @@
+-- ═══════════════════════════════════════════════════════════════════════════
+-- v7 · Free Fire drop, lifts, running
+--
+--  1. Players pick their own roles during the flight; anyone without a role when the plane is over
+--     the campus gets one automatically.
+--  2. The drop works like Free Fire: one tap on JUMP, then the captain steers the free fall and the
+--     parachute and lands wherever the squad comes down. Nobody on board when the plane leaves the
+--     campus is pushed out automatically.
+--  3. Lifts: the captain stands at the lift and picks any floor (captain_lift).
+--  4. Faster on foot (walk / run) and a faster buggy.
+-- Safe to run more than once.
+-- ═══════════════════════════════════════════════════════════════════════════
+
+alter table teams add column if not exists jump_at timestamptz;
+alter table teams add column if not exists land_at timestamptz;
+
+drop function if exists _defaults_v6();
+alter function _defaults() rename to _defaults_v6;
+create function _defaults() returns jsonb
+language sql immutable as $$
+  select _defaults_v6() || jsonb_build_object(
+    'move_speed', 20,       -- the buggy
+    'foot_speed', 13,       -- running on foot (walking is 60 % of it, chosen on the phone)
+    'fall_seconds', 18,     -- from the jump to touching down
+    'glide_speed', 18)      -- how far a squad can steer while falling (‰ of the campus per second)
+$$;
+
+-- ── roles: chosen by the players in the plane; gaps filled when the plane is over the campus ──
+create or replace function _br_roles_gate(p_arena uuid) returns boolean
+language plpgsql as $$
+begin
+  if (select phase from arenas where id = p_arena) <> 'play' then return false; end if;
+  return _auto_roles(p_arena);
+end $$;
+
+-- ── the jump ────────────────────────────────────────────────────────────────
+create or replace function _jump_now(p_team uuid, p_xy float8[]) returns timestamptz
+language plpgsql as $$
+declare t teams; v_land timestamptz;
+begin
+  select * into t from teams where id = p_team for update;
+  v_land := now() + _secs(_cfg(t.event_id, 'fall_seconds'));
+  update teams set jump_at = now(), land_at = v_land, pos_x = p_xy[1], pos_y = p_xy[2], pos_at = now(), vel_x = 0, vel_y = 0,
+    state = 'idle', travel_to = null, travel_arrive_at = null, vehicle = 'none', buggy_x = null, buggy_y = null, level = 0, bldg = null
+  where id = p_team;
+  perform _feed(t.arena_id, 'squad.jumped', jsonb_build_object('team', t.number));
+  perform _ping_team(p_team, 'move');
+  return v_land;
+end $$;
+
+create or replace function captain_jump(p_token text) returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare p players; t teams; a arenas; pl float8[]; v_land timestamptz;
+begin
+  p := _auth_captain(p_token);
+  select * into t from teams where id = p.team_id;
+  select * into a from arenas where id = t.arena_id;
+  if a.phase <> 'play' then raise exception 'NO_MOVES_NOW'; end if;
+  if t.dropped or t.jump_at is not null then raise exception 'ALREADY_JUMPED'; end if;
+  pl := _plane_xy(a);
+  if pl is null or pl[3] >= 0.99 then raise exception 'PLANE_GONE'; end if;
+  if pl[1] < 0.02 or pl[1] > 0.98 or pl[2] < 0.02 or pl[2] > 0.98 then raise exception 'NOT_OVER_CAMPUS'; end if;
+  v_land := _jump_now(t.id, array[pl[1], pl[2]]);
+  return jsonb_build_object('land_at', v_land, 'x', pl[1], 'y', pl[2]);
+end $$;
+
+-- steering while falling: only the position moves (no places, loot or buildings until touchdown)
+drop function if exists _captain_steer_v6(text, double precision, double precision, double precision, double precision);
+alter function captain_steer(text, double precision, double precision, double precision, double precision) rename to _captain_steer_v6;
+create function captain_steer(p_token text, p_x double precision, p_y double precision, p_vx double precision default 0, p_vy double precision default 0)
+returns jsonb language plpgsql security definer set search_path = public as $$
+declare p players; t teams; a arenas; dt float8; maxd float8; d float8; nx float8; ny float8; v_spd float8; v_vx float8; v_vy float8; v_vm float8;
+begin
+  p := _auth_captain(p_token);
+  select * into t from teams where id = p.team_id for update;
+  if t.dropped or t.jump_at is null then
+    return _captain_steer_v6(p_token, p_x, p_y, p_vx, p_vy);
+  end if;
+  select * into a from arenas where id = t.arena_id;
+  if a.phase <> 'play' then raise exception 'NO_MOVES_NOW'; end if;
+  if p_x is null or p_y is null or p_x = 'NaN'::float8 or p_y = 'NaN'::float8 or abs(p_x) = 'Infinity'::float8 or abs(p_y) = 'Infinity'::float8 then raise exception 'BAD_REQUEST'; end if;
+  v_spd := _cfg(t.event_id, 'glide_speed') / 1000.0;
+  dt := least(4, greatest(0, extract(epoch from now() - coalesce(t.pos_at, now() - interval '1 second'))));
+  maxd := v_spd * dt * 1.25 + 0.003;
+  nx := greatest(0.02, least(0.98, p_x)); ny := greatest(0.02, least(0.98, p_y));
+  d := sqrt((nx - t.pos_x) ^ 2 + (ny - t.pos_y) ^ 2);
+  if d > maxd then nx := t.pos_x + (nx - t.pos_x) * maxd / d; ny := t.pos_y + (ny - t.pos_y) * maxd / d; end if;
+  v_vx := coalesce(p_vx, 0); v_vy := coalesce(p_vy, 0);
+  if v_vx = 'NaN'::float8 or v_vy = 'NaN'::float8 or abs(v_vx) = 'Infinity'::float8 or abs(v_vy) = 'Infinity'::float8 then v_vx := 0; v_vy := 0; end if;
+  v_vm := sqrt(v_vx ^ 2 + v_vy ^ 2);
+  if v_vm > v_spd * 1.1 then v_vx := v_vx * v_spd * 1.1 / v_vm; v_vy := v_vy * v_spd * 1.1 / v_vm; end if;
+  update teams set pos_x = nx, pos_y = ny, pos_at = now(), vel_x = v_vx, vel_y = v_vy where id = t.id;
+  if t.last_steer_ping is null or t.last_steer_ping < now() - interval '2 seconds' then
+    update teams set last_steer_ping = now() where id = t.id;
+    perform _ping_team(t.id, 'move');
+  end if;
+  return jsonb_build_object('x', nx, 'y', ny, 'air', true, 'land_at', t.land_at, 'level', 0, 'clamped', abs(nx - p_x) > 0.0005 or abs(ny - p_y) > 0.0005);
+end $$;
+
+-- touchdown: on the spot (or at the door when it is a building's roof); the buggy waits in a parking yard
+create or replace function _land(p_team uuid) returns void
+language plpgsql as $$
+declare t teams; x float8; y float8; b buildings; xy float8[]; v_loc text;
+begin
+  select * into t from teams where id = p_team for update;
+  x := t.pos_x; y := t.pos_y;
+  select * into b from buildings where x between x0 and x1 and y between y0 and y1 limit 1;
+  if b.id is not null then x := b.door_x; y := b.door_y; end if;
+  xy := _buggy_bay(t.number, x, y);
+  v_loc := _loc_at3(t.arena_id, t.event_id, x, y, 0, null);
+  update teams set dropped = true, jump_at = null, land_at = null, pos_x = x, pos_y = y, pos_at = now(), vel_x = 0, vel_y = 0,
+    level = 0, bldg = null, state = 'idle', location_id = v_loc, vehicle = 'none', buggy_x = xy[1], buggy_y = xy[2], visit_missions = 0,
+    protected_until = greatest(coalesce(protected_until, now()), now() + interval '8 seconds')
+  where id = p_team;
+  perform _feed(t.arena_id, 'squad.landed', jsonb_build_object('team', t.number, 'location', v_loc));
+  perform _ping_team(p_team, 'landed');
+end $$;
+
+-- ── lifts ───────────────────────────────────────────────────────────────────
+create or replace function captain_lift(p_token text, p_level int) returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare p players; t teams; r jsonb; v_dir int; n int := 0;
+begin
+  p := _auth_captain(p_token);
+  select * into t from teams where id = p.team_id;
+  if p_level is null or p_level < 0 or p_level > 20 then raise exception 'NO_FLOOR'; end if;
+  if p_level = t.level then raise exception 'ALREADY_HERE'; end if;
+  v_dir := case when p_level > t.level then 1 else -1 end;
+  -- the lift passes every floor in between (each one checked: sealed floors block the ride)
+  loop
+    r := captain_stairs(p_token, v_dir);
+    n := n + 1;
+    exit when (r ->> 'level')::int = p_level or n > 20;
+  end loop;
+  return r || jsonb_build_object('floors', n);
+end $$;
+
+-- ── state for screens: in the plane / falling / landed ──────────────────────
+create or replace function _team_extra(t teams) returns jsonb
+language sql stable as $$
+  select jsonb_build_object('vehicle', t.vehicle, 'kills', t.kills,
+    'buggy', case when t.buggy_x is not null and t.vehicle <> 'in' then jsonb_build_array(t.buggy_x, t.buggy_y)
+                  when t.dropped and t.vehicle = 'none' then to_jsonb(_buggy_bay(t.number, (_team_xy(t))[1], (_team_xy(t))[2])) end,
+    'in_plane', not t.dropped and t.jump_at is null and t.state <> 'traveling',
+    'parachute', not t.dropped and (t.jump_at is not null or t.state = 'traveling'),
+    'jump_at', t.jump_at,
+    'land_at', case when t.jump_at is not null then t.land_at when not t.dropped and t.state = 'traveling' then t.travel_arrive_at end,
+    'weapon', _weapon(t.id), 'fight_at', t.fight_at)
+$$;
+
+create or replace function arena_positions(p_token text) returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare p players; t teams; v_scan boolean;
+begin
+  p := _auth_player(p_token);
+  select * into t from teams where id = p.team_id;
+  if exists (select 1 from bots where arena_id = t.arena_id) then perform _tick(t.arena_id); end if;
+  v_scan := t.scan_until is not null and t.scan_until > now();
+  return jsonb_build_object('server_now', now(), 'squads', (select coalesce(jsonb_agg(jsonb_build_object(
+      'id', tm.id, 'n', tm.number, 'level', tm.level, 'bldg', tm.bldg, 'state', tm.state,
+      'pos', to_jsonb(_team_xy(tm)),
+      'age', case when tm.state = 'idle' and tm.pos_at is not null then round(extract(epoch from now() - tm.pos_at)::numeric, 2) end,
+      'vel', case when tm.state = 'traveling' and tm.travel_arrive_at > now() and l.id is not null then
+               jsonb_build_array((l.x - coalesce(tm.travel_fx, l.x)) / greatest(0.2, extract(epoch from tm.travel_arrive_at - tm.travel_started_at)),
+                                 (l.y - coalesce(tm.travel_fy, l.y)) / greatest(0.2, extract(epoch from tm.travel_arrive_at - tm.travel_started_at)))
+             when tm.state = 'idle' and tm.pos_at > now() - interval '3 seconds' and (tm.vel_x <> 0 or tm.vel_y <> 0)
+               then jsonb_build_array(tm.vel_x, tm.vel_y) end,
+      'hp', tm.hp, 'shield', tm.shield, 'veh', tm.vehicle,
+      'buggy', case when tm.buggy_x is not null and tm.vehicle = 'parked' then jsonb_build_array(tm.buggy_x, tm.buggy_y) end,
+      'plane', not tm.dropped and tm.jump_at is null and tm.state <> 'traveling',
+      'chute', not tm.dropped and (tm.jump_at is not null or tm.state = 'traveling'),
+      'jump_at', tm.jump_at,
+      'land_at', case when tm.jump_at is not null then tm.land_at when not tm.dropped and tm.state = 'traveling' then tm.travel_arrive_at end,
+      'fight', tm.fight_at > now() - interval '4 seconds')), '[]'::jsonb)
+    from teams tm left join locations l on l.id = tm.travel_to
+    where tm.arena_id = t.arena_id and tm.ready
+      and (tm.id = t.id or v_scan or tm.location_id = t.location_id or tm.jammed_until is null or tm.jammed_until < now()
+           or tm.fight_at > now() - interval '4 seconds'
+           or exists (select 1 from alliances al where al.status = 'active'
+                      and ((al.team_a = t.id and al.team_b = tm.id) or (al.team_b = t.id and al.team_a = tm.id))))));
+end $$;
+
+-- ── the clock: roles at the drop, the plane, touchdowns, auto-jump ──────────
+create or replace function _br_step(p_arena uuid) returns boolean
+language plpgsql as $$
+declare a arenas; r record; pl float8[]; v_changed boolean := false; xy float8[];
+begin
+  select * into a from arenas where id = p_arena;
+  if a.id is null then return false; end if;
+  if a.phase = 'shuttle' and (a.overlay -> 'flight' ->> 't1') is distinct from to_jsonb(a.shuttle_arrive_at) #>> '{}' then
+    update arenas set overlay = overlay || jsonb_build_object('flight', jsonb_build_object(
+      't0', a.shuttle_arrive_at - _secs(_cfg(a.event_id, 'shuttle_seconds')), 't1', a.shuttle_arrive_at)) where id = p_arena;
+    v_changed := true;
+  end if;
+  -- players pick roles in the plane; whoever has none when the plane is over Hexaware gets one
+  if a.phase = 'play' and _auto_roles(p_arena) then v_changed := true; end if;
+  if a.phase in ('lobby', 'boarding') and (a.plane_t0 is not null or a.zone_shrink_until is not null or a.overlay ? 'plane') then
+    update arenas set plane_t0 = null, plane_t1 = null, zone_shrink_from = null, zone_shrink_until = null,
+      overlay = overlay - 'plane' - 'flight' where id = p_arena;
+    update teams set vehicle = 'none', buggy_x = null, buggy_y = null, kills = 0, fight_at = null, jump_at = null, land_at = null where arena_id = p_arena;
+    v_changed := true;
+  end if;
+  if a.phase = 'play' and _cfg(a.event_id, 'br_mode') = 1 and (a.plane_t0 is null or a.plane_t1 < a.play_started_at) then
+    perform _plane_launch(p_arena); v_changed := true;
+    select * into a from arenas where id = p_arena;
+  end if;
+  if a.phase = 'play' then
+    -- touchdowns (Free Fire jump)
+    for r in select id from teams where arena_id = p_arena and not dropped and jump_at is not null and land_at <= now() loop
+      perform _land(r.id); v_changed := true;
+    end loop;
+    -- touchdowns (a jump picked on the map)
+    for r in select t.id, t.number, l.x, l.y from teams t join locations l on l.id = t.travel_to
+             where t.arena_id = p_arena and not t.dropped and t.state = 'traveling' and t.travel_arrive_at <= now() loop
+      xy := _buggy_bay(r.number, r.x, r.y);
+      update teams set pos_x = r.x + ((r.number * 37) % 9 - 4) * 0.0012, pos_y = r.y + ((r.number * 53) % 9 - 4) * 0.0012, pos_at = now(),
+        vel_x = 0, vel_y = 0, vehicle = case when _cfg(a.event_id, 'br_mode') = 1 then 'none' else 'in' end, buggy_x = xy[1], buggy_y = xy[2]
+      where id = r.id;
+    end loop;
+    update teams t set pos_x = l.x, pos_y = l.y, pos_at = now()
+    from locations l where l.id = t.travel_to and t.arena_id = p_arena and t.dropped and t.state = 'traveling' and t.travel_arrive_at <= now();
+    -- the plane is about to leave the campus: everyone still on board is pushed out
+    pl := _plane_xy(a);
+    if pl is not null and pl[3] >= 0.8 then
+      for r in select id from teams where arena_id = p_arena and ready and not dropped and jump_at is null and state = 'idle' loop
+        perform _jump_now(r.id, array[least(0.96, greatest(0.04, pl[1])), least(0.96, greatest(0.04, pl[2]))]);
+        v_changed := true;
+      end loop;
+    end if;
+  end if;
+  if a.zone_shrink_until is not null and a.zone_shrink_until > now() and (a.overlay -> 'zone' ->> 'shrink_until') is null then
+    perform _zone_publish(p_arena); v_changed := true;
+  end if;
+  if a.zone_shrink_until is not null and a.zone_shrink_until <= now() and (a.overlay -> 'zone' ->> 'shrink_until') is not null then
+    perform _zone_publish(p_arena); v_changed := true;
+  end if;
+  return v_changed;
+end $$;
+
+-- ── dummy squads: pick roles in the plane, jump, steer the fall ─────────────
+do $$
+declare d text; n text; i int; j int; k int;
+begin
+  d := pg_get_functiondef('_bot_act(uuid)'::regprocedure);
+  i := position('if not t.dropped then' in d);
+  j := position('update bots set goal = null, done_loc = null, wait_until = null where team_id = t.id;' in d);
+  if i = 0 or j = 0 or j < i then raise exception 'v7: could not find the jump in _bot_act'; end if;
+  k := j + position('end if;' in substr(d, j)) + length('end if;') - 1;
+  n := substr(d, 1, i - 1) || 'if not t.dropped then
+    if t.jump_at is null then
+      pl := _plane_xy(a);
+      if pl is null or pl[1] not between 0.06 and 0.94 or pl[2] not between 0.06 and 0.94 or random() > 0.14 then return; end if;
+      perform captain_jump(tok);
+      c := _zone_circle(a.event_id, a.zone_stage);
+      select l.id into v_goal from locations l
+      where l.enabled and l.kind not in (''start'', ''stairs'') and l.level = 0 and _in_circle(c, l.x, l.y)
+        and sqrt((l.x - pl[1]) ^ 2 + (l.y - pl[2]) ^ 2) < _cfg(t.event_id, ''glide_speed'') / 1000.0 * _cfg(t.event_id, ''fall_seconds'') * 0.8
+      order by random() limit 1;
+      update bots set goal = v_goal, goal_at = now(), done_loc = null, wait_until = null where team_id = t.id;
+      return;
+    end if;
+    select * into g from locations where id = b.goal;
+    if g.id is null then return; end if;
+    spd := _cfg(t.event_id, ''glide_speed'') / 1000.0;
+    dt := least(3.0, greatest(0.3, extract(epoch from now() - coalesce(t.pos_at, now() - interval ''1 second''))));
+    d := sqrt((g.x - cur[1]) ^ 2 + (g.y - cur[2]) ^ 2);
+    if d > 0.002 then
+      stepd := least(d, spd * dt);
+      perform captain_steer(tok, cur[1] + (g.x - cur[1]) * stepd / d, cur[2] + (g.y - cur[2]) * stepd / d, (g.x - cur[1]) / d * spd, (g.y - cur[2]) / d * spd);
+    end if;
+    return;
+  end if;' || substr(d, k + 1);
+  if n = d then raise exception 'v7: could not patch the dummy squads (_bot_act)'; end if;
+  execute n;
+end $$;
+
+create or replace function _bots_claim_roles(p_arena uuid) returns void
+language plpgsql as $$
+declare r record; v_role text;
+begin
+  for r in select p.id, p.team_id, bp.idx from players p join bot_players bp on bp.player_id = p.id
+           join bots b on b.team_id = p.team_id
+           where b.arena_id = p_arena and not b.manual and p.active and p.role is null and random() < 0.3 loop
+    v_role := (array['captain', 'scout', 'decoder', 'intel'])[r.idx];
+    begin
+      update players set role = v_role where id = r.id and role is null
+        and not exists (select 1 from players q where q.team_id = r.team_id and q.active and q.role = v_role);
+      if found then perform _ping_team(r.team_id, 'roles'); end if;
+    exception when others then null;
+    end;
+  end loop;
+end $$;
+
+create or replace function _tick(p_arena uuid, p_force boolean default false) returns boolean
+language plpgsql as $$
+declare v boolean; w boolean; ph text;
+begin
+  w := _br_step(p_arena);
+  v := _tick_core(p_arena, p_force);
+  if _br_step(p_arena) or w then v := true; perform _ping_arena(p_arena, 'tick'); end if;
+  if exists (select 1 from bots where arena_id = p_arena) then
+    select phase into ph from arenas where id = p_arena;
+    if ph = 'shuttle' then perform _bots_claim_roles(p_arena); end if;
+    if _bots_step(p_arena) then v := true; end if;
+  end if;
+  return v;
+end $$;
+
+-- roles can be picked during the whole flight (and the approach)
+do $$
+declare d text; n text;
+begin
+  d := pg_get_functiondef('claim_role(text, text)'::regprocedure);
+  n := replace(d, 'if a.phase <> ''roles'' or now() >= a.roles_deadline then raise exception ''ROLES_CLOSED''; end if;',
+    'if not (a.phase = ''shuttle'' or (a.phase = ''roles'' and now() < a.roles_deadline)) then raise exception ''ROLES_CLOSED''; end if;');
+  if n = d then raise exception 'v7: could not patch claim_role'; end if;
+  execute n;
+end $$;
+
+-- ── permissions ─────────────────────────────────────────────────────────────
+do $$
+declare f record;
+begin
+  for f in
+    select p.oid::regprocedure as sig, p.proname from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+    where n.nspname = 'public' and p.prokind = 'f'
+  loop
+    execute format('revoke all on function %s from public', f.sig);
+    begin
+      execute format('revoke all on function %s from anon, authenticated', f.sig);
+    exception when undefined_object then null;
+    end;
+    if f.proname = any(array['map_data', 'join_team', 'claim_role', 'player_state', 'captain_move', 'captain_explore',
+        'captain_submit', 'captain_hint', 'captain_use_item', 'captain_buy', 'captain_attack', 'captain_claim_airdrop',
+        'captain_chat', 'captain_block', 'captain_report', 'captain_alliance', 'captain_bargain',
+        'host_create_event', 'host_login', 'host_generate_teams', 'host_import_teams', 'host_overview', 'host_command',
+        'host_settings', 'host_missions', 'host_save_mission', 'host_test_answer', 'host_chat_log', 'host_audit',
+        'host_export', 'spectator_state', 'host_roster', 'captain_steer', 'captain_reveal', 'captain_stairs', 'arena_positions',
+        'host_fixed_cards', 'card_event', 'demo_create', 'host_extras', 'demo_view', 'demo_status', 'demo_control',
+        'demo_pulse', 'demo_end', 'captain_vehicle', 'squad_fire', 'join_flight', 'captain_jump', 'captain_lift']) then
+      begin
+        execute format('grant execute on function %s to anon, authenticated', f.sig);
+      exception when undefined_object then null;
+      end;
+    end if;
+  end loop;
+end $$;

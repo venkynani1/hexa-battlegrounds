@@ -176,7 +176,7 @@ function ProjectorWorld({ s, map, zoneWarn }: { s: any; map: MapData; zoneWarn: 
     squads: squads.filter((q: any) => q.pos).map((q: any) => ({ key: String(q.number), number: q.number, x: q.pos[0], y: q.pos[1], ally: false, inBattle: q.in_battle, down: q.state === 'recovery', label: `SQ ${q.number}`,
       vx: q.vel?.[0] || 0, vy: q.vel?.[1] || 0, at: new Date(s.server_now).getTime(), level: q.level || 0, bldg: q.bldg,
       foot: (q.vehicle && q.vehicle !== 'in') || q.parachute, buggy: q.buggy || null, chute: !!q.parachute, hidden: !!q.in_plane,
-      landAt: q.parachute && q.land_at ? new Date(q.land_at).getTime() : undefined })),
+      landAt: q.parachute && q.land_at ? new Date(q.land_at).getTime() : undefined, jumpAt: q.jump_at ? new Date(q.jump_at).getTime() : undefined })),
     plane: s.arena.phase === 'play' ? s.arena.overlay?.plane || null : null,
     pickups: s.pickups || [], lock: s.arena.overlay?.lock || [],
     zone, red, airdrops: (s.airdrops || []).map((a: any, i: number) => ({ key: `${a.location}-${i}`, location: a.location, tier: a.tier })),
