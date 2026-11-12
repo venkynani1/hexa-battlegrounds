@@ -1096,3 +1096,6 @@ html.demo-view.in-game .toasts { top: calc(110px + env(safe-area-inset-top, 0px)
   .hb { width: 34px; height: 34px; }
   .joy-base:not(.live) { width: 100px; height: 100px; }
 }
+/* outside the match the chat button sits bottom-right, clear of the squad card */
+.comms-fab { top: auto; left: auto; right: max(14px, env(safe-area-inset-right, 0px)); bottom: calc(16px + env(safe-area-inset-bottom, 0px)); padding: 10px 14px; font-size: 14px; box-shadow: 0 6px 20px rgba(0, 0, 0, 0.45); }
+.comms-panel:not(.in-game) { top: auto; left: auto; right: max(10px, env(safe-area-inset-right, 0px)); bottom: calc(70px + env(safe-area-inset-bottom, 0px)); max-height: min(560px, calc(100dvh - 100px)); }
