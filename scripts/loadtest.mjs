@@ -40,17 +40,36 @@ async function rpc(fn, args, track = true) {
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const pct = (a, p) => { const s = [...a].sort((x, y) => x - y); return Math.round(s[Math.min(s.length - 1, Math.floor((p / 100) * s.length))] || 0); };
 
-const host = (await rpc('host_create_event', { p_code: EVENT, p_name: 'Load test', p_secret: SECRET, p_arenas: MAPS }, false)).token;
-await rpc('host_settings', { p_token: host, p_settings: { shuttle_seconds: 8, roles_seconds: 3, plane_seconds: 40 } }, false);
+const ONLINE = process.env.ONLINE === '1';
+const PLAYERS = Number(process.env.PLAYERS || 200);
+const host = (await rpc('host_create_event', { p_code: EVENT, p_name: 'Load test', p_secret: SECRET, p_arenas: ONLINE ? 1 : MAPS }, false)).token;
+await rpc('host_settings', { p_token: host, p_settings: { shuttle_seconds: 8, roles_seconds: 3, plane_seconds: 40, ...(ONLINE ? { online: 1, online_max_maps: 8 } : {}) } }, false);
+const squads = [];
+if (ONLINE) {
+  // online edition: everyone checks in with an employee ID and e-mail; a few create squads for friends,
+  // most use matchmaking. Squads of 4 (3 allowed), maps open by themselves.
+  console.log(`Online event ${EVENT}: ${PLAYERS} players checking in…`);
+  const toks = []; const t0 = performance.now();
+  for (let i = 0; i < PLAYERS; i += 10) {
+    toks.push(...await Promise.all(Array.from({ length: Math.min(10, PLAYERS - i) }, (_, k) => {
+      const n = i + k; const friendsCode = n % 20 === 1 ? toks[toks.length - 1]?.code : null;
+      return rpc('online_join', { p_event_code: EVENT, p_emp_id: String(7000000000 + n), p_email: `load${n}@hexaware.com`, p_name: `P${n}`,
+        p_mode: n % 20 === 0 ? 'create' : 'queue', p_code: friendsCode, p_consent: true, p_existing_token: null });
+    })));
+  }
+  console.log(`  ${PLAYERS} check-ins in ${Math.round(performance.now() - t0)} ms`);
+  const by = {}; for (const t of toks) (by[t.team] ||= []).push(t.token);
+  for (const [num, tokens] of Object.entries(by)) squads.push({ number: Number(num), tokens });
+} else {
 const pins = await rpc('host_generate_teams', { p_token: host, p_count: SQUADS }, false);
 console.log(`Event ${EVENT}: ${pins.length} squads on ${MAPS} map(s). Joining ${pins.length * 4} phones…`);
-const squads = [];
 for (let i = 0; i < pins.length; i += 5) {
   squads.push(...await Promise.all(pins.slice(i, i + 5).map(async (p) => {
     const tokens = [];
     for (const n of ['A', 'B', 'C', 'D']) tokens.push((await rpc('join_team', { p_event_code: EVENT, p_team_number: p.number, p_pin: p.pin, p_name: `${n}${p.number}`, p_consent: true, p_rules: true }, false)).token);
     return { ...p, tokens };
   })));
+}
 }
 const ov = await rpc('host_overview', { p_token: host }, false);
 const arenas = ov.arenas.map((a) => a.id);
@@ -71,7 +90,7 @@ const map = await rpc('map_data', {}, false);
 const ground = map.locations.filter((l) => l.enabled !== false && (l.level || 0) === 0 && !['start', 'stairs'].includes(l.kind));
 const end = Date.now() + MINUTES * 60000;
 let solved = 0; let steers = 0; let shots = 0; let knocks = 0;
-console.log(`Playing for ${MINUTES} min with ${squads.length * 4} phones (${REALTIME ? 'Realtime on' : 'Realtime off: fast polling'})…`);
+console.log(`Playing for ${MINUTES} min with ${squads.reduce((n, q) => n + q.tokens.length, 0)} players (${REALTIME ? 'Realtime on' : 'Realtime off: fast polling'})…`);
 
 // answers come from the host view, fetched once every few seconds for everybody (the host console does the same)
 let hostView = null;
@@ -106,6 +125,9 @@ async function phone(token) {
         if (rv) { const r = await rpc('squad_fire', { p_token: token, p_target: rv.q.id }); shots++; if (r.knocked) knocks++; }
       } catch { /* refusals (cover, cooldown, protected) are part of the game */ }
     }
+  })());
+  if (ONLINE) loops.push((async () => {
+    while (Date.now() < end) { await sleep(15000 + Math.random() * 10000); await rpc('squad_chat_send', { p_token: token, p_body: 'clue: ' + Math.random().toString(36).slice(2, 7), p_kind: 'msg' }).catch(() => {}); await rpc('squad_chat', { p_token: token, p_after: 0 }).catch(() => {}); }
   })());
   if (captain) loops.push((async () => {
     while (Date.now() < end) {
@@ -159,7 +181,7 @@ await Promise.all(squads.flatMap((s) => s.tokens.map((t) => phone(t))));
 clearInterval(prog);
 const secs = (Date.now() - t0) / 1000;
 const all = Object.values(lat).flat();
-console.log(`\nPhones: ${squads.length * 4} · calls: ${calls} (${(calls / secs).toFixed(0)} per second) · steering calls: ${steers} · shots: ${shots} · knock-outs: ${knocks} · missions solved: ${solved}`);
+console.log(`\nPlayers: ${squads.reduce((n, q) => n + q.tokens.length, 0)} · maps: ${arenas.length} · calls: ${calls} (${(calls / secs).toFixed(0)} per second) · steering calls: ${steers} · shots: ${shots} · knock-outs: ${knocks} · missions solved: ${solved}`);
 console.log(`All calls, ms: p50 ${pct(all, 50)} · p95 ${pct(all, 95)} · p99 ${pct(all, 99)} · max ${Math.round(Math.max(...all))}`);
 for (const [fn, a] of Object.entries(lat).sort((x, y) => y[1].length - x[1].length)) console.log(`  ${fn.padEnd(22)} ${String(a.length).padStart(6)} calls · p50 ${String(pct(a, 50)).padStart(4)} · p95 ${String(pct(a, 95)).padStart(5)} · max ${Math.round(Math.max(...a))}`);
 console.log(`Server errors / dropped requests (should be 0): ${failed}`);

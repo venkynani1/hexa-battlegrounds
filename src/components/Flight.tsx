@@ -110,7 +110,7 @@ export function Lounge({ s }: { s: any }) {
               <span className={`chip ${p.online ? 'good' : ''}`}>{p.online ? 'checked in' : 'away'}</span>
             </div>
           ))}
-          {(s.roster || []).length < 4 && <span className="muted" style={{ fontSize: 13 }}>{4 - (s.roster || []).length} seat{4 - (s.roster || []).length > 1 ? 's' : ''} still empty — teammates check in with the same map number and PIN.</span>}
+          {(s.roster || []).length < 4 && <span className="muted" style={{ fontSize: 13 }}>{4 - (s.roster || []).length} seat{4 - (s.roster || []).length > 1 ? 's' : ''} still empty — {s.online ? 'share your squad code' : 'teammates check in with the same map number and PIN'}.</span>}
         </div>
       </div>
     </div>

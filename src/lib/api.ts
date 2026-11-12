@@ -11,6 +11,15 @@ export class GameError extends Error {
 }
 
 const MESSAGES: Record<string, string> = {
+  BAD_EMP_ID: 'Your employee ID must be exactly 10 digits.',
+  BAD_EMAIL: 'Enter your company e-mail address (the one you use in Teams).',
+  EMAIL_DOMAIN: 'Use your company e-mail address — other e-mail addresses are not accepted for this event.',
+  EMP_ID_TAKEN: 'This employee ID is already checked in with a different e-mail. Use the same e-mail as before, or ask the organiser.',
+  EMAIL_TAKEN: 'This e-mail is already checked in with a different employee ID. Use the same ID as before.',
+  NOT_REGISTERED: 'No check-in found for this employee ID and e-mail. Check in as a new player.',
+  BAD_SQUAD_CODE: 'No squad has this code. Check the 4 letters with your friend.',
+  SQUAD_GONE: 'That squad has already taken off. Find a new squad instead.',
+  NOT_ONLINE_EVENT: 'This event code is for the in-person game. Use the online event code from the Teams call.',
   AUTH: 'Your session ended. Rejoin with your squad number and PIN.',
   HOST_AUTH: 'Host login failed. Check the event code and host password.',
   SPECTATOR_AUTH: 'This projector link is invalid or was revoked by the host.',
@@ -95,7 +104,7 @@ const MESSAGES: Record<string, string> = {
   NOT_DEMO: 'That only works inside a demo match.',
   WEAK_SECRET: 'Host password must be at least 6 characters.',
   BAD_CODE: 'Event code: 3–12 letters or digits.',
-  ALL_MAPS_FULL: 'All maps are full (15 squads each). Create the event with more maps.',
+  ALL_MAPS_FULL: 'All maps are full (15 squads each). Ask the organiser to open another map.',
   NETWORK: 'Connection problem — retrying…',
   DUELS_LOCKED: 'Duels are locked until Phase 2 — First Contact.',
   NO_READY_SQUADS: 'No complete squad (4/4) on this map yet. Any number from 1 to 15 squads can play.',

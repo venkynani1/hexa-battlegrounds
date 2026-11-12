@@ -301,6 +301,36 @@ export default function WorldTab({ s, token, map, refresh, openMission, openSqua
   const serverPos = travelPos(s, map);
   const me = useRef<Live>({ x: serverPos?.[0] ?? 0.47, y: serverPos?.[1] ?? 0.93, moving: false, yaw: 0, level, bldg });
   const vec = useRef({ x: 0, y: 0 });
+  // laptop controls (online players): WASD / arrows move, R walk/run, Space or E = the big button, hold F = fire
+  const keys = useRef(new Set<string>());
+  const primaryRef = useRef<null | { onClick: () => void; disabled?: boolean }>(null);
+  const fireKeys = useRef<{ start: () => void; stop: () => void; run: () => void }>({ start: () => {}, stop: () => {}, run: () => {} });
+  useEffect(() => {
+    const typing = (e: KeyboardEvent) => { const t = e.target as HTMLElement | null; return !!t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable); };
+    const apply = () => {
+      const k = keys.current;
+      const x = (k.has('d') || k.has('arrowright') ? 1 : 0) - (k.has('a') || k.has('arrowleft') ? 1 : 0);
+      const y = (k.has('s') || k.has('arrowdown') ? 1 : 0) - (k.has('w') || k.has('arrowup') ? 1 : 0);
+      const m = Math.hypot(x, y) || 1;
+      vec.current = { x: x / m, y: y / m };
+    };
+    const down = (e: KeyboardEvent) => {
+      if (typing(e) || e.metaKey || e.ctrlKey || e.altKey) return;
+      const k = e.key.toLowerCase();
+      if (['w', 'a', 's', 'd', 'arrowup', 'arrowdown', 'arrowleft', 'arrowright'].includes(k)) { keys.current.add(k); apply(); e.preventDefault(); }
+      else if ((k === ' ' || k === 'e') && !e.repeat) { const p = primaryRef.current; if (p && !p.disabled) { buzz(15); p.onClick(); } e.preventDefault(); }
+      else if (k === 'f' && !e.repeat) fireKeys.current.start();
+      else if (k === 'r' && !e.repeat) fireKeys.current.run();
+    };
+    const up = (e: KeyboardEvent) => {
+      const k = e.key.toLowerCase();
+      if (keys.current.delete(k)) apply();
+      if (k === 'f') fireKeys.current.stop();
+    };
+    const blur = () => { keys.current.clear(); vec.current = { x: 0, y: 0 }; fireKeys.current.stop(); };
+    window.addEventListener('keydown', down); window.addEventListener('keyup', up); window.addEventListener('blur', blur);
+    return () => { window.removeEventListener('keydown', down); window.removeEventListener('keyup', up); window.removeEventListener('blur', blur); };
+  }, []);
   const steering = useRef(false);
   const lastSend = useRef(0);
   const inflight = useRef(false);
@@ -640,6 +670,11 @@ export default function WorldTab({ s, token, map, refresh, openMission, openSqua
     : onFoot && s.team.vehicle === 'none' && level === 0 && !inB && buggy && s.arena.phase === 'play' ? { tone: 'info', text: <>🚙 Walk to the parking yard — buggy {s.team.number} waits · {Math.round(buggyDist * METERS)} m</>, arrow: Math.atan2(buggy[0] - myXY[0], -(buggy[1] - myXY[1])) - (me.current.yaw || 0) }
     : null;
   const travelDest = s.team.state === 'traveling' && s.team.travel_to ? map?.locations.find((l) => l.id === s.team.travel_to) : null;
+  primaryRef.current = primary;
+  fireKeys.current = {
+    start: () => { if (canFight && target) startFire(); }, stop: stopFire,
+    run: () => { if (isCaptain && onFoot) { const v = !runRef.current; setRunning(v); store.set('hb_run', v ? '1' : '0'); sfx.tap(); } },
+  };
   const fpv = false; // open floors are shown from behind the captain (third person), like Free Fire
   const world3d: WorldState = { ...state, zone: zoneRaw, plane: s.arena.phase === 'play' ? plane : null, fpv, target: target?.id || null,
     waypoint: marker ? { x: marker[0], y: marker[1] } : null, route: travelDest && s.team.dropped ? { x: travelDest.x, y: travelDest.y } : null };
@@ -766,6 +801,8 @@ export default function WorldTab({ s, token, map, refresh, openMission, openSqua
             ? <>🤖 Demo: this dummy captain drives by itself. Tap <b>Take control</b> to drive.</>
             : <>{ROLES[s.me.role as Role]?.icon} You are {ROLES[s.me.role as Role]?.name}. <b>{s.roles?.captain || 'The captain'}</b> {onFoot ? 'leads the squad on foot' : 'drives the squad'}{canFight ? ' — hold FIRE when a rival is in range' : ''}.</>}</div>}
 
+      {isCaptain && s.arena.phase === 'play' && <div className="kbd-hint" aria-hidden><kbd>W A S D</kbd> move · <kbd>R</kbd> run · <kbd>Space</kbd> {primary?.label?.toLowerCase() || 'action'} · <kbd>F</kbd> fire</div>}
+      {!isCaptain && canFight && <div className="kbd-hint" aria-hidden>Hold <kbd>F</kbd> to fire</div>}
       {/* bottom-right: actions */}
       <div className="hud-actions">
         {canFight && (

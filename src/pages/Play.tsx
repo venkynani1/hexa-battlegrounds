@@ -1,3 +1,4 @@
+import { OnlineSquad, SquadComms } from '../components/Online';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { demoTab, friendly, GameError, newKey, rpc, store } from '../lib/api';
@@ -133,13 +134,14 @@ export default function Play() {
       )}
       {!inGame && (
         <main className="content">
-          {phase === 'lobby' && <Lobby s={s} />}
-          {phase === 'boarding' && <Lounge s={s} />}
+          {phase === 'lobby' && <Lobby s={s} token={token} refresh={live.refresh} />}
+          {phase === 'boarding' && <>{s.online && <OnlineSquad s={s} token={token} refresh={live.refresh} />}<Lounge s={s} /></>}
           {phase === 'shuttle' && <><Cabin s={s} /><Roles s={s} token={token} refresh={live.refresh} /></>}
           {phase === 'roles' && (s.arena.overlay?.flight ? <><Approach s={s} /><Roles s={s} token={token} refresh={live.refresh} /></> : <Roles s={s} token={token} refresh={live.refresh} />)}
           {(phase === 'results' || phase === 'ended') && <Results s={s} />}
         </main>
       )}
+      {s.online && <SquadComms s={s} token={token} />}
       <SettingsSheet open={settings} onClose={() => setSettings(false)} />
     </div>
   );
@@ -242,9 +244,10 @@ function TopBar({ s, onSettings, connected }: { s: any; onSettings: () => void; 
 }
 
 // ── Pre-game phases ─────────────────────────────────────────────────────
-function Lobby({ s }: { s: any }) {
+function Lobby({ s, token, refresh }: { s: any; token: string; refresh: () => void }) {
   return (
     <>
+      {s.online && <OnlineSquad s={s} token={token} refresh={refresh} />}
       <Lounge s={s} />
       <HowToPlay />
     </>
@@ -536,20 +539,13 @@ function ActivityCard({ a, s, token, refresh, battle = false }: { a: any; s: any
 
       {!isCaptain && clue && (
         <div className="col" style={{ gap: 6 }}>
-          <div className="row between">
-            <span className="up" style={{ color: ROLES[s.me.role as Role].color, fontSize: 13 }}>{ROLES[s.me.role as Role].icon} {clue.title}</span>
-            {revealLeft !== null && <span className="chip bad">Vanishes in {revealLeft}s</span>}
-          </div>
-          {clue.game?.type === 'fruit' && !clue.expired && <FruitSlash fruits={clue.game.fruits} bomb={clue.game.bomb} />}
-          {clue.game?.type === 'bottle' && !clue.expired && <BottleShoot bottles={clue.game.bottles} ammo={clue.game.ammo} />}
-          {clue.game?.type === 'cards' && !clue.expired && <MemoryCards deck={clue.game.deck} />}
-          {clue.game?.type === 'bomb' && !clue.expired && <Bomb wires={clue.game.wires} serial={clue.game.serial} led={clue.game.led} />}
-          {clue.game?.type === 'signal' && !clue.expired && <SignalLights seq={clue.game.seq} replays={clue.game.replays} />}
-          {clue.game?.type === 'pattern' && !clue.expired && <PatternLock path={clue.game.path} />}
-          {clue.cards && <PlayingCards cards={clue.cards} />}
-          {clue.grid?.rows && <SudokuGrid rows={clue.grid.rows} />}
-          {!(clue.grid?.rows) && !clue.cards && <div className={`clue ${clue.mono ? 'mono' : ''} ${clue.expired ? 'expired' : ''} ${(clue.reveal_seconds && !clue.expired) || clue.big ? 'big' : ''}`}>{clue.body}</div>}
-          {a.relay_backup && <div className="panel good"><div className="panel-title">Backup codeword</div><div className="clue big mono">{a.relay_backup}</div></div>}
+          <ClueView c={clue} role={s.me.role as Role} left={revealLeft} backup={a.relay_backup} />
+          {a.clue2 && s.me.role2 && (
+            <div className="clue2" aria-label="Your second clue">
+              <div className="up muted" style={{ fontSize: 12, margin: '6px 0 2px' }}>Squad of 3 · you also hold the {ROLES[s.me.role2 as Role].name} clue</div>
+              <ClueView c={a.clue2} role={s.me.role2 as Role} left={null} backup={null} />
+            </div>
+          )}
           <p className="muted" style={{ margin: 0, fontSize: 13 }}>Tell your captain what you see. Only the captain can submit.</p>
         </div>
       )}
@@ -821,3 +817,24 @@ function Results({ s }: { s: any }) {
 }
 
 export { fmtClock };
+
+function ClueView({ c, role, left, backup }: { c: any; role: Role; left: number | null; backup: string | null }) {
+  return (
+    <>
+          <div className="row between">
+            <span className="up" style={{ color: ROLES[role].color, fontSize: 13 }}>{ROLES[role].icon} {c.title}</span>
+            {left !== null && <span className="chip bad">Vanishes in {left}s</span>}
+          </div>
+          {c.game?.type === 'fruit' && !c.expired && <FruitSlash fruits={c.game.fruits} bomb={c.game.bomb} />}
+          {c.game?.type === 'bottle' && !c.expired && <BottleShoot bottles={c.game.bottles} ammo={c.game.ammo} />}
+          {c.game?.type === 'cards' && !c.expired && <MemoryCards deck={c.game.deck} />}
+          {c.game?.type === 'bomb' && !c.expired && <Bomb wires={c.game.wires} serial={c.game.serial} led={c.game.led} />}
+          {c.game?.type === 'signal' && !c.expired && <SignalLights seq={c.game.seq} replays={c.game.replays} />}
+          {c.game?.type === 'pattern' && !c.expired && <PatternLock path={c.game.path} />}
+          {c.cards && <PlayingCards cards={c.cards} />}
+          {c.grid?.rows && <SudokuGrid rows={c.grid.rows} />}
+          {!(c.grid?.rows) && !c.cards && <div className={`clue ${c.mono ? 'mono' : ''} ${c.expired ? 'expired' : ''} ${(c.reveal_seconds && !c.expired) || c.big ? 'big' : ''}`}>{c.body}</div>}
+          {backup && <div className="panel good"><div className="panel-title">Backup codeword</div><div className="clue big mono">{backup}</div></div>}
+    </>
+  );
+}

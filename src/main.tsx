@@ -5,6 +5,8 @@ import './styles.css';
 import { Loading, Toasts } from './components/ui';
 import { applyPrefs } from './lib/game';
 import Home from './pages/Home';
+import OnlineJoin from './pages/OnlineJoin';
+import { ONLINE } from './lib/edition';
 import Join from './pages/Join';
 
 const Play = lazy(() => import('./pages/Play'));
@@ -21,7 +23,7 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
       <Suspense fallback={<Loading text="Loading…" />}>
         <Routes>
           <Route path="/" element={<Home />} />
-          <Route path="/join" element={<Join />} />
+          <Route path="/join" element={ONLINE ? <OnlineJoin /> : <Join />} />
           <Route path="/play" element={<Play />} />
           <Route path="/host" element={<Host />} />
           <Route path="/demo" element={<Demo />} />

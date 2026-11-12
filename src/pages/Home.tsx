@@ -2,6 +2,7 @@ import { lazy, Suspense, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { configured } from '../lib/supabase';
 import { store } from '../lib/api';
+import { ONLINE } from '../lib/edition';
 import { ROLE_ORDER, ROLES } from '../lib/game';
 import { sfx, unlockAudio } from '../lib/sound';
 
@@ -55,7 +56,7 @@ export default function Home() {
           <div className="lobby-warn">Server not set up yet. Add the Supabase integration in Vercel (Storage → Supabase), then redeploy.</div>
         )}
         <div className="lobby-mode">
-          <div className="lm-head"><b>Squad battle royale</b><span>4 players a squad, 15 squads a map</span></div>
+          <div className="lm-head"><b>{ONLINE ? 'Online squad battle royale' : 'Squad battle royale'}</b><span>{ONLINE ? 'Play from your laptop · squads talk on Teams' : '4 players a squad, 15 squads a map'}</span></div>
           {!resume && (
             <label className="lm-code">
               <span>Event code</span>
@@ -67,7 +68,7 @@ export default function Home() {
         </div>
         <button className="lobby-start" onClick={start}>
           <b>{resume ? 'Resume' : 'Start'}</b>
-          <span>{resume ? 'Back to my squad' : 'Join my squad'}</span>
+          <span>{resume ? 'Back to my squad' : ONLINE ? 'Check in online' : 'Join my squad'}</span>
         </button>
         {resume && <Link to="/join" className="lobby-alt">Join a different squad</Link>}
       </section>

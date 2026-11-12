@@ -1,3 +1,4 @@
+import { ONLINE } from '../lib/edition';
 import { FormEvent, useCallback, useEffect, useMemo, useState } from 'react';
 import { friendly, GameError, rpc, store } from '../lib/api';
 import { useLive } from '../lib/live';
@@ -22,8 +23,8 @@ function HostLogin({ onLogin }: { onLogin: (t: string) => void }) {
   const [code, setCode] = useState(store.get('hb_host_code') || '');
   const [name, setName] = useState('Hexaware Battlegrounds × Operation Siruseri');
   const [secret, setSecret] = useState('');
-  const [maps, setMaps] = useState(3);
-  const [fixed, setFixed] = useState(true);
+  const [maps, setMaps] = useState(ONLINE ? 1 : 3);
+  const [fixed, setFixed] = useState(!ONLINE);
   const [err, setErr] = useState('');
   const [busy, setBusy] = useState(false);
   async function submit(e: FormEvent) {
@@ -34,6 +35,7 @@ function HostLogin({ onLogin }: { onLogin: (t: string) => void }) {
         ? await rpc('host_login', { p_code: code, p_secret: secret })
         : await rpc('host_create_event', { p_code: code, p_name: name, p_secret: secret, p_arenas: maps });
       store.set('hb_host_code', r.code);
+      if (mode === 'create' && ONLINE) await rpc('host_settings', { p_token: r.token, p_settings: { online: 1 } });
       if (mode === 'create' && fixed) {
         // create the squads with this host's fixed PINs straight away (same cards every time)
         try { const c = await rpc<any>('host_fixed_cards', { p_token: r.token, p_secret: secret }); rememberPins(c.squads || []); } catch { /* can be done later in Links & PINs */ }
@@ -56,17 +58,17 @@ function HostLogin({ onLogin }: { onLogin: (t: string) => void }) {
             <input id="c" className="input mono" value={code} onChange={(e) => setCode(e.target.value.toUpperCase())} placeholder="HEXA26" required /></div>
           {mode !== 'login' && <>
             <div className="field"><label htmlFor="n">Event name</label><input id="n" className="input" value={name} onChange={(e) => setName(e.target.value)} /></div>
-            <div className="field"><label htmlFor="m">Parallel maps (max 15 squads = 60 players each)</label>
+            {ONLINE ? <p className="notice" style={{ margin: 0 }}>Online edition: maps open by themselves as squads check in (15 squads = 60 players per map). Players sign in with their employee ID and company e-mail.</p> : <div className="field"><label htmlFor="m">Parallel maps (max 15 squads = 60 players each)</label>
               <select id="m" className="input" value={maps} onChange={(e) => setMaps(Number(e.target.value))}>
                 {[1, 2, 3, 4].map((n) => <option key={n} value={n}>{n} map{n > 1 ? 's' : ''} · up to {n * 60} players</option>)}
-              </select></div>
+              </select></div>}
           </>}
           <div className="field"><label htmlFor="s">Host password</label>
             <input id="s" className="input" type="password" value={secret} onChange={(e) => setSecret(e.target.value)} minLength={6} required autoComplete="current-password" /></div>
           {err && <div className="chip bad" style={{ whiteSpace: 'normal', padding: 10 }}>{err}</div>}
           <button className="btn primary big" disabled={busy}>{mode === 'login' ? 'Enter control room' : 'Create event'}</button>
           <a href="/demo" className="btn ghost">No players yet? Watch a demo match with dummy squads</a>
-          {mode === 'create' && (
+          {mode === 'create' && !ONLINE && (
             <label className="check"><input type="checkbox" checked={fixed} onChange={(e) => setFixed(e.target.checked)} />
               <span>Create the squads with my <b>fixed squad cards</b>: the same PINs and QR codes every time I use this host password.</span></label>
           )}
@@ -118,7 +120,7 @@ function Dashboard({ token, onLogout }: { token: string; onLogout: () => void })
   const selArena = arenas.find((a: any) => a.id === arena) || null;
   const teams = d.teams.filter((t: any) => arena === 'all' || t.arena_id === arena);
   const nav: [Section, string][] = [['control', 'Game control'], ['squads', 'Squads'], ['map', 'Map & zone'], ['missions', 'Missions'],
-    ['production', 'Suspense'], ['finale', 'Finale & results'], ['links', 'Links & PINs'], ['settings', 'Settings'], ['log', 'Logs']];
+    ['production', 'Suspense'], ['finale', 'Finale & results'], [ 'links', ONLINE ? 'Players & attendance' : 'Links & PINs'], ['settings', 'Settings'], ['log', 'Logs']];
 
   return (
     <div className="host">
@@ -151,7 +153,7 @@ function Dashboard({ token, onLogout }: { token: string; onLogout: () => void })
         {section === 'missions' && <Missions token={token} />}
         {section === 'production' && <Production arena={arena === 'all' ? null : arena} cmd={cmd} />}
         {section === 'finale' && <Finale d={d} arenas={arenas} arena={arena} cmd={cmd} />}
-        {section === 'links' && <Links d={d} token={token} refresh={live.refresh} cmd={cmd} />}
+        {section === 'links' && (ONLINE ? <OnlinePanel d={d} token={token} /> : <Links d={d} token={token} refresh={live.refresh} cmd={cmd} />)}
         {section === 'settings' && <Settings d={d} token={token} refresh={live.refresh} />}
         {section === 'log' && <Logs d={d} token={token} arenas={arenas} cmd={cmd} map={map} />}
       </main>
@@ -843,6 +845,64 @@ function Logs({ d, token, arenas, cmd, map }: { d: any; token: string; arenas: a
           <table className="tbl"><thead><tr><th>Time</th><th>Action</th><th>Args</th><th>Reason</th><th>Result</th></tr></thead>
             <tbody>{(log?.audit || []).map((a: any) => <tr key={a.id}><td>{new Date(a.at).toLocaleTimeString()}</td><td>{a.action}</td><td className="mono" style={{ fontSize: 11 }}>{a.args ? JSON.stringify(a.args).slice(0, 80) : ''}</td><td>{a.reason}</td><td>{a.ok ? '✔' : <span style={{ color: 'var(--red)' }}>✖ {a.error}</span>}</td></tr>)}</tbody></table>
         </div>
+      </div>
+    </>
+  );
+}
+
+// ── Online edition: join link, maps that open by themselves, attendance export ──
+function OnlinePanel({ d, token }: { d: any; token: string }) {
+  const joinUrl = `${window.location.origin}/join?e=${d.event.code}`;
+  const [sum, setSum] = useState<any>(null);
+  const [maxMaps, setMaxMaps] = useState<string>(String(d.event.settings.online_max_maps ?? 8));
+  const [domain, setDomain] = useState<string>(String(d.event.settings.email_domain ?? ''));
+  const load = useCallback(() => { rpc('host_online_summary', { p_token: token }).then(setSum).catch(() => {}); }, [token]);
+  useEffect(() => { load(); const t = setInterval(load, 5000); return () => clearInterval(t); }, [load]);
+  async function save() {
+    try { await rpc('host_settings', { p_token: token, p_settings: { online_max_maps: Math.max(1, Math.min(12, Number(maxMaps) || 1)), email_domain: domain.trim().toLowerCase() } }); toast('Saved', 'good'); }
+    catch (e) { toast(friendly(e), 'bad'); }
+  }
+  async function attendance() {
+    try {
+      const rows = await rpc<any[]>('host_attendance', { p_token: token });
+      const cols = ['emp_id', 'name', 'email', 'map', 'squad', 'squad_name', 'squad_code', 'size', 'role', 'points', 'joined_at', 'last_seen_at'];
+      const esc = (v: any) => { const t = v == null ? '' : String(v); return /[",\n]/.test(t) ? `"${t.replace(/"/g, '""')}"` : t; };
+      // employee IDs keep their leading zeros in Excel
+      const csv = [cols.join(','), ...rows.map((r) => cols.map((c) => (c === 'emp_id' ? `="${r[c]}"` : esc(r[c]))).join(','))].join('\r\n');
+      const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob(['\ufeff' + csv], { type: 'text/csv' }));
+      a.download = `${d.event.code}-attendance.csv`; a.click();
+      toast(`${rows.length} players exported`, 'good');
+    } catch (e) { toast(friendly(e), 'bad'); }
+  }
+  return (
+    <>
+      <div className="grid2">
+        <div className="panel col" style={{ alignItems: 'center' }}>
+          <div className="panel-title" style={{ alignSelf: 'flex-start' }}>Online join link — paste it in the Teams call chat</div>
+          <QR value={joinUrl} size={180} />
+          <code className="mono">{joinUrl}</code>
+          <div className="row"><button className="btn sm" onClick={() => { navigator.clipboard?.writeText(joinUrl); toast('Copied', 'good'); }}>Copy link</button>
+            <button className="btn sm gold" onClick={attendance}>⬇ Attendance (CSV)</button></div>
+          <p className="muted" style={{ fontSize: 13, margin: 0 }}>Event code <b className="mono">{d.event.code}</b>. Players sign in with their 10-digit employee ID and company e-mail.</p>
+        </div>
+        <div className="panel col">
+          <div className="panel-title">Check-in rules</div>
+          <div className="field"><label htmlFor="mm">Most maps that may open by themselves (60 players each)</label>
+            <input id="mm" className="input" inputMode="numeric" value={maxMaps} onChange={(e) => setMaxMaps(e.target.value.replace(/\D/g, ''))} /></div>
+          <div className="field"><label htmlFor="dm">Allowed e-mail domains (comma-separated, empty = any)</label>
+            <input id="dm" className="input" value={domain} onChange={(e) => setDomain(e.target.value)} placeholder="hexaware.com" /></div>
+          <button className="btn primary sm" onClick={save}>Save</button>
+          <p className="muted" style={{ fontSize: 13, margin: 0 }}>Squads of 3 are ready to play; squads of 4 are full. When you press Take-off on a map, squads of 1–2 are merged with others automatically.</p>
+        </div>
+      </div>
+      <div className="panel">
+        <div className="row between"><div className="panel-title">Online maps · {sum?.players ?? '…'} players checked in</div><button className="btn sm" onClick={load}>Refresh</button></div>
+        <table className="tbl"><thead><tr><th>Map</th><th>Phase</th><th>Players</th><th>Squads</th><th>Full (4)</th><th>Ready (3+)</th><th>Short (1–2)</th><th>Projector</th></tr></thead>
+          <tbody>{(sum?.maps || []).map((m: any) => {
+            const a = d.arenas.find((x: any) => x.id === m.id);
+            return <tr key={m.id}><td>Map {m.number}</td><td>{m.phase}</td><td>{m.players}</td><td>{m.squads}</td><td>{m.full}</td><td>{m.ready}</td><td>{m.short ? <span className="chip warn">{m.short}</span> : 0}</td>
+              <td>{a && <button className="btn xs" onClick={() => window.open(`${window.location.origin}/screen/${a.spectator_token}`, '_blank')}>Open</button>}</td></tr>;
+          })}</tbody></table>
       </div>
     </>
   );
