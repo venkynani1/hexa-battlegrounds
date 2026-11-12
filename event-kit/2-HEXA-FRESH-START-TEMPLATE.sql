@@ -16,7 +16,7 @@ insert into app_secrets(key, value) values ('card_pepper', 'PUT-CARD-SECRET-HERE
 do $$
 declare t text; c jsonb;
 begin
-  t := host_create_event('HEXAOFFLINE', 'Hexaoffline', 'PUT-OFFLINE-HOST-PASSWORD-HERE', 2) ->> 'token';
+  t := host_create_event('HEXAOFFLINE', 'Hexaoffline', 'HexaSummit-3379', 2) ->> 'token';
   c := host_fixed_cards(t, 'HexaSummit-3379');
   if jsonb_array_length(c -> 'squads') <> 30 then raise exception 'expected 30 squad cards, got %', jsonb_array_length(c -> 'squads'); end if;
   t := host_create_event('HEXAONLINE', 'Hexa Online', 'HexaRaptor-7913', 1) ->> 'token';
