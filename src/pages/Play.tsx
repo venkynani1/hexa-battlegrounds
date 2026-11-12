@@ -27,8 +27,8 @@ export default function Play() {
   const [topics, setTopics] = useState<string[]>([]);
   const live = useLive<any>(fetcher, {
     topics,
-    pollMs: 8000,
-    pollFastMs: 3500,
+    pollMs: 10000,
+    pollFastMs: 6000,
     enabled: !!token,
     deadlines: (s) => [s?.mission?.deadline, s?.battle?.deadline, s?.team?.travel_arrive_at, s?.team?.recovery_deadline,
       s?.arena?.shuttle_arrive_at, s?.arena?.roles_deadline, s?.arena?.zone_next_at, s?.mission?.relay?.fallback_at,

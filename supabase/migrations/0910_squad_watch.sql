@@ -144,10 +144,17 @@ end $$;
 
 drop function if exists _tick_v9(uuid, boolean);
 alter function _tick(uuid, boolean) rename to _tick_v9;
+-- The clock runs at most every 0.8 s per map, and only one request at a time runs it. Every other
+-- request returns at once without touching a shared row, so hundreds of phones never queue behind
+-- each other (on a real Postgres server, concurrent ticks used to wait on the map's row lock).
 create function _tick(p_arena uuid, p_force boolean default false) returns boolean
 language plpgsql as $$
 declare v boolean;
 begin
+  if not p_force and exists (select 1 from arenas where id = p_arena and last_tick_at > now() - interval '800 milliseconds') then
+    return false;
+  end if;
+  if not pg_try_advisory_xact_lock(hashtext('tick-gate' || p_arena::text)) then return false; end if;
   v := _tick_v9(p_arena, p_force);
   if _squad_watch(p_arena) then v := true; end if;
   return v;

@@ -61,7 +61,7 @@ export function useLive<T = any>(fetcher: () => Promise<T>, opts: Options) {
   // ping → jittered refresh (spreads 60 phones over ~300 ms instead of a spike)
   const onPing = useCallback(() => {
     clearTimeout(debounce.current);
-    debounce.current = setTimeout(() => refresh(), 80 + Math.random() * 320);
+    debounce.current = setTimeout(() => refresh(), 150 + Math.random() * 1850); // spread a map's phones over ~2 s
   }, [refresh]);
 
   useEffect(() => {

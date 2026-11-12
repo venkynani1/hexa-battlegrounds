@@ -65,7 +65,7 @@ export function useSquadLink(teamId: string | null | undefined, isCaptain: boole
 }
 
 /** Rival squads' positions + velocity, refreshed every ~2 s while `enabled`. */
-export function useRivals(token: string | null, enabled: boolean) {
+export function useRivals(token: string | null, enabled: boolean, fast = false) {
   const rivals = useRef(new Map<string, Motion>());
   useEffect(() => {
     if (!token || !enabled) return;
@@ -87,11 +87,12 @@ export function useRivals(token: string | null, enabled: boolean) {
           rivals.current = next;
         } catch { /* the full state refresh still covers positions */ }
       }
-      timer = setTimeout(poll, 1800 + Math.random() * 500);
+      // the captain steers and fights: every ~2.5 s; teammates watch: every ~4.5 s (positions are extrapolated in between)
+      timer = setTimeout(poll, fast ? 2300 + Math.random() * 500 : 4200 + Math.random() * 800);
     };
     poll();
     return () => { stop = true; clearTimeout(timer); };
-  }, [token, enabled]);
+  }, [token, enabled, fast]);
   return rivals;
 }
 

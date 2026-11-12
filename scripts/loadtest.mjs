@@ -14,12 +14,34 @@ const MAPS = Math.max(1, Math.min(4, Number(process.env.MAPS || 3)));
 const SQUADS = Number(process.env.SQUADS || MAPS * 15);
 const MINUTES = Number(process.env.MINUTES || 3);
 const REALTIME = process.env.REALTIME === '1';
-const STATE_MS = Number(process.env.STATE_MS || (REALTIME ? 8000 : 3500));
+const STATE_MS = Number(process.env.STATE_MS || (REALTIME ? 10000 : 6000));
 const EVENT = process.env.EVENT || `LOAD${Math.random().toString(36).slice(2, 6).toUpperCase()}`;
 const SECRET = process.env.SECRET || 'loadtest-secret';
 
 const lat = {}; let errors = 0; let calls = 0; const errs = {}; let failed = 0;
+// PG_URL=postgres://… talks to Postgres directly through a small pool, like Supabase's API server does
+// (used to test lock contention on a real Postgres server without going through the internet).
+let pool = null;
+if (process.env.PG_URL) { const { default: pg } = await import('pg'); pool = new pg.Pool({ connectionString: process.env.PG_URL, max: Number(process.env.PG_POOL || 15) }); }
+async function rpcPg(fn, args, track) {
+  const t0 = performance.now(); calls++;
+  const keys = Object.keys(args);
+  const sql = `select ${fn}(${keys.map((k, i) => `${k} => $${i + 1}`).join(', ')}) as r`;
+  try {
+    const r = await pool.query(sql, keys.map((k) => (args[k] !== null && typeof args[k] === 'object' ? JSON.stringify(args[k]) : args[k])));
+    if (track) (lat[fn] ||= []).push(performance.now() - t0);
+    const v = r.rows[0].r;
+    if (v && typeof v === 'object' && !Array.isArray(v) && v.error) { errors++; errs[v.error] = (errs[v.error] || 0) + 1; throw new Error(v.error); }
+    return v;
+  } catch (e) {
+    if (track && !(lat[fn] || []).length) (lat[fn] ||= []).push(performance.now() - t0);
+    const m = String(e.message).split(':')[0];
+    if (!/^[A-Z_]+$/.test(m)) failed++; else errors++;
+    errs[m] = (errs[m] || 0) + 1; throw new Error(m);
+  }
+}
 async function rpc(fn, args, track = true) {
+  if (pool) return rpcPg(fn, args, track);
   const t0 = performance.now();
   calls++;
   let r; let body = null;
@@ -103,7 +125,7 @@ let hostView = null;
 
 async function phone(token) {
   await sleep(Math.random() * STATE_MS);
-  let st = null; let pos = null; let goal = null; let captain = false; let speed = 0.016;
+  let st = null; let pos = null; let goal = null; let captain = false; let speed = 0.016; let lastPos = null;
   const state = async () => {
     try {
       st = await rpc('player_state', { p_token: token });
@@ -113,7 +135,7 @@ async function phone(token) {
   };
   const loops = [
     (async () => { while (Date.now() < end) { await state(); await sleep(STATE_MS * (0.85 + Math.random() * 0.3)); } })(),
-    (async () => { while (Date.now() < end) { await sleep(1800 + Math.random() * 500); await rpc('arena_positions', { p_token: token }).catch(() => {}); } })(),
+    (async () => { while (Date.now() < end) { await sleep(st?.me?.role === 'captain' ? 2300 + Math.random() * 500 : 4200 + Math.random() * 800); lastPos = await rpc('arena_positions', { p_token: token }).catch(() => lastPos); } })(),
   ];
   await sleep(STATE_MS + 500);
   // every phone shoots at the nearest rival in range (like holding FIRE), from phase 1
@@ -122,7 +144,8 @@ async function phone(token) {
       await sleep(700 + Math.random() * 200);
       if (!st || st.arena.phase !== 'play' || (st.arena.overlay?.match?.phase ?? 0) < 1 || !st.team.dropped) continue;
       try {
-        const ps = await rpc('arena_positions', { p_token: token });
+        const ps = lastPos;
+        if (!ps) continue;
         const me = ps.squads.find((q) => q.id === st.team.id);
         if (!me?.pos) continue;
         const rv = ps.squads.filter((q) => q.id !== me.id && q.pos && !q.plane && !q.chute && q.state !== 'recovery' && q.level === me.level)
@@ -164,12 +187,12 @@ async function phone(token) {
             await rpc('captain_explore', { p_token: token }).catch(() => {});
             await state();
           } else {
-            const step = Math.min(d, speed * 0.3); const vx = (goal.x - pos[0]) / d; const vy = (goal.y - pos[1]) / d;
+            const step = Math.min(d, speed * 0.5); const vx = (goal.x - pos[0]) / d; const vy = (goal.y - pos[1]) / d;
             pos = [pos[0] + vx * step, pos[1] + vy * step];
             const r = await rpc('captain_steer', { p_token: token, p_x: pos[0], p_y: pos[1], p_vx: vx * speed, p_vy: vy * speed }); steers++;
             if (r.clamped) pos = [r.x, r.y];
             if (r.wall) goal = null;
-            await sleep(300);
+            await sleep(500);
           }
         } else await sleep(500);
       } catch { await sleep(700); await state(); }
@@ -179,6 +202,7 @@ async function phone(token) {
 }
 const t0 = Date.now();
 const prog = setInterval(() => {
+  if (process.env.QUIET) return;
   const all = Object.values(lat).flat();
   console.log(`  ${Math.round((Date.now() - t0) / 1000)}s · ${calls} calls · p95 ${pct(all, 95)} ms · steer p95 ${pct(lat.captain_steer || [0], 95)} ms · server errors ${failed}`);
 }, 30000);
@@ -192,3 +216,4 @@ for (const [fn, a] of Object.entries(lat).sort((x, y) => y[1].length - x[1].leng
 console.log(`Server errors / dropped requests (should be 0): ${failed}`);
 console.log('Game-rule refusals (normal: cooldowns, areas searched out, rounds closed):', errs);
 console.log('Target on venue Wi-Fi: p95 under 500 ms and no server errors.');
+if (pool) await pool.end();
