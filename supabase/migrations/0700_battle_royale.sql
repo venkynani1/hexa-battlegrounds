@@ -448,6 +448,9 @@ begin
   if a.phase <> 'play' or a.paused then raise exception 'NO_FIGHTS_NOW'; end if;
   if coalesce(a.match_phase, 0) < _cfg(t.event_id, 'fire_from_phase') then raise exception 'NO_FIGHTS_YET'; end if;
   if not t.dropped or t.state in ('recovery', 'traveling') then raise exception 'BUSY'; end if;
+  -- lock both squads in a fixed order, so two squads shooting each other never deadlock
+  perform 1 from teams where id in (t.id, p_target) order by id for no key update;
+  select * into t from teams where id = t.id;
   select * into d from teams where id = p_target;
   if d.id is null or d.arena_id <> t.arena_id or d.id = t.id or not d.ready then raise exception 'BAD_TARGET'; end if;
   if not d.dropped or d.state in ('recovery', 'traveling') then raise exception 'TARGET_DOWN'; end if;

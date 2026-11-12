@@ -1,13 +1,13 @@
 -- ════════════════════════════════════════════════════════════════════════════
--- HEXA BATTLEGROUNDS × OPERATION SIRUSERI — ONE-FILE DATABASE UPGRADE (v11)
+-- HEXA BATTLEGROUNDS × OPERATION SIRUSERI — ONE-FILE DATABASE UPGRADE (v12)
 --
 -- Supabase → SQL Editor → New query → paste this whole file → Run. That's all.
 --   • Works on a brand-new project and on every earlier version (setup, upgrade 1/2/3, half-run upgrades).
 --   • Keeps every event, squad, PIN and score. Everything runs in ONE transaction: all or nothing.
---   • It downloads the full script (1199 KB, too big to paste) from GitHub, checks its
+--   • It downloads the full script (1202 KB, too big to paste) from GitHub, checks its
 --     SHA-256 fingerprint so nothing else can run, then executes it.
--- Expected result: "Success. No rows returned" and a notice: Hexa Battlegrounds database is up to date (v11).
--- If your project blocks outbound HTTP, run supabase/full/hexa-battlegrounds-v11.sql instead
+-- Expected result: "Success. No rows returned" and a notice: Hexa Battlegrounds database is up to date (v12).
+-- If your project blocks outbound HTTP, run supabase/full/hexa-battlegrounds-v12.sql instead
 -- (psql, or: DATABASE_URL="<POSTGRES_URL_NON_POOLING>" npm run db:setup).
 -- ════════════════════════════════════════════════════════════════════════════
 create extension if not exists http with schema extensions;
@@ -15,8 +15,8 @@ create extension if not exists pgcrypto with schema extensions;
 
 do $hexa$
 declare
-  v_url text := 'https://raw.githubusercontent.com/venkynani1/hexa-battlegrounds/6e591a5815c57afee96808b0ee25a6193a0a8202/supabase/full/hexa-battlegrounds-v11.sql';
-  v_sha text := '92535623e1d83fd4dd3679b16389da65fa616ee4f03dfa6152f835b4a96ad263';
+  v_url text := 'https://raw.githubusercontent.com/venkynani1/hexa-battlegrounds/main/supabase/full/hexa-battlegrounds-v12.sql';
+  v_sha text := 'a61b259fd626527fdb38de54870f0a5a687d859f504f2f90bd225d202139bc1f';
   v_status int;
   v_sql text;
 begin
@@ -29,6 +29,6 @@ begin
     raise exception 'The downloaded file does not match the expected fingerprint. Get the latest RUN-ME-IN-SUPABASE.sql from GitHub and try again.';
   end if;
   execute v_sql;
-  raise notice 'Hexa Battlegrounds database is up to date (v11).';
+  raise notice 'Hexa Battlegrounds database is up to date (v12).';
 end
 $hexa$;
