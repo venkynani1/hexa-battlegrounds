@@ -17,9 +17,9 @@ do $$
 declare t text; c jsonb;
 begin
   t := host_create_event('HEXAOFFLINE', 'Hexaoffline', 'PUT-OFFLINE-HOST-PASSWORD-HERE', 2) ->> 'token';
-  c := host_fixed_cards(t, 'PUT-OFFLINE-HOST-PASSWORD-HERE');
+  c := host_fixed_cards(t, 'HexaSummit-3379');
   if jsonb_array_length(c -> 'squads') <> 30 then raise exception 'expected 30 squad cards, got %', jsonb_array_length(c -> 'squads'); end if;
-  t := host_create_event('HEXAONLINE', 'Hexa Online', 'PUT-ONLINE-HOST-PASSWORD-HERE', 1) ->> 'token';
+  t := host_create_event('HEXAONLINE', 'Hexa Online', 'HexaRaptor-7913', 1) ->> 'token';
   perform host_settings(t, '{"online": 1, "online_max_maps": 8, "email_domain": "hexaware.com"}'::jsonb);
   raise notice 'Done: HEXAOFFLINE (2 maps, 30 squads) and HEXAONLINE are ready.';
 end $$;
