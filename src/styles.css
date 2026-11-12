@@ -1099,3 +1099,11 @@ html.demo-view.in-game .toasts { top: calc(110px + env(safe-area-inset-top, 0px)
 /* outside the match the chat button sits bottom-right, clear of the squad card */
 .comms-fab { top: auto; left: auto; right: max(14px, env(safe-area-inset-right, 0px)); bottom: calc(16px + env(safe-area-inset-bottom, 0px)); padding: 10px 14px; font-size: 14px; box-shadow: 0 6px 20px rgba(0, 0, 0, 0.45); }
 .comms-panel:not(.in-game) { top: auto; left: auto; right: max(10px, env(safe-area-inset-right, 0px)); bottom: calc(70px + env(safe-area-inset-bottom, 0px)); max-height: min(560px, calc(100dvh - 100px)); }
+/* host: start the online game */
+.online-start { border-color: rgba(93, 255, 158, 0.45); }
+.os-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)); gap: 8px; margin: 8px 0 4px; }
+.os-stats > div { display: flex; flex-direction: column; gap: 2px; padding: 10px; border-radius: 10px; background: rgba(255, 255, 255, 0.05); border: 1px solid rgba(255, 255, 255, 0.1); }
+.os-stats b { font: 700 26px var(--font-head); font-variant-numeric: tabular-nums; }
+.os-stats small { font-size: 11.5px; opacity: 0.75; }
+.os-stats .warn { border-color: rgba(255, 194, 61, 0.6); }
+.os-stats .warn b { color: #ffc23d; }

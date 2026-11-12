@@ -214,7 +214,7 @@ function TopBar({ s, onSettings, connected }: { s: any; onSettings: () => void; 
       <div className="row between" style={{ gap: 8 }}>
         <div className="row" style={{ gap: 8, minWidth: 0 }}>
           <span className="up" style={{ fontSize: 18 }}>SQ {s.team.number}</span>
-          <span className="muted" style={{ fontSize: 13, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{s.team.name} · {s.arena.name}</span>
+          <span className="muted" style={{ fontSize: 13, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{s.team.name} · {s.online && !s.online.started ? 'Lobby' : s.arena.name}</span>
         </div>
         <div className="row" style={{ gap: 6 }}>
           {role && <span className="role-badge" style={{ color: ROLES[role].color }}>{ROLES[role].icon} {ROLES[role].name}</span>}

@@ -150,12 +150,13 @@ create or replace function online_join(p_event_code text, p_emp_id text, p_email
   p_code text default null, p_consent boolean default false, p_existing_token text default null)
 returns jsonb language plpgsql security definer set search_path = public as $$
 declare e events; m online_members; p players; t teams; v_token text; v_email text; v_emp text; v_name text;
-  v_domains text; v_ok boolean; d text; v_phase text;
+  v_domains text; v_ok boolean; d text; v_phase text; v_started boolean;
 begin
   select * into e from events where code = upper(trim(coalesce(p_event_code, '')));
   if e.id is null then raise exception 'NO_EVENT'; end if;
   if _cfg(e.id, 'online') <> 1 then raise exception 'NOT_ONLINE_EVENT'; end if;
   perform pg_advisory_xact_lock(hashtext('online:' || e.id::text));
+  v_started := coalesce(_cfg(e.id, 'online_started'), 0) = 1;   -- the host pressed Start (v10)
 
   v_emp := regexp_replace(coalesce(p_emp_id, ''), '\s', '', 'g');
   v_email := lower(trim(coalesce(p_email, '')));
@@ -191,7 +192,7 @@ begin
     select phase into v_phase from arenas where id = t.arena_id;
     if p_existing_token is not null and p.session_hash = _hash(p_existing_token) then v_token := p_existing_token;
     else v_token := _new_token(); update players set session_hash = _hash(v_token) where id = p.id; end if;
-    if coalesce(p_mode, 'rejoin') <> 'rejoin' and v_phase in ('lobby', 'boarding') then
+    if coalesce(p_mode, 'rejoin') <> 'rejoin' and v_phase in ('lobby', 'boarding') and not v_started then
       if p_mode = 'join' then
         select * into t from teams where event_id = e.id and squad_code = upper(trim(coalesce(p_code, '')));
         if t.id is null then insert into pin_failures(event_id, team_number) values (e.id, -1000); return jsonb_build_object('error', 'BAD_SQUAD_CODE', 'token', v_token); end if;
@@ -224,8 +225,16 @@ begin
       insert into pin_failures(event_id, team_number) values (e.id, -1000);
       return jsonb_build_object('error', 'BAD_SQUAD_CODE');
     end if;
-    if (select phase from arenas where id = t.arena_id) not in ('lobby', 'boarding') then return jsonb_build_object('error', 'SQUAD_GONE'); end if;
+    if (v_started and not _online_open(t.id)) or (not v_started and (select phase from arenas where id = t.arena_id) not in ('lobby', 'boarding')) then
+      return jsonb_build_object('error', 'SQUAD_GONE');
+    end if;
     if _online_size(t.id) >= 4 then return jsonb_build_object('error', 'TEAM_FULL'); end if;
+  elsif v_started and p_mode = 'create' then
+    raise exception 'GAME_STARTED';
+  elsif v_started and p_mode = 'queue' then
+    -- late player: the fullest squad with a seat that has not landed yet
+    select * into t from teams where id = _online_late_team(e.id);
+    if t.id is null then raise exception 'NO_OPEN_SEATS'; end if;
   elsif p_mode = 'create' then
     t := _online_new_team(e.id, false);
   elsif p_mode = 'queue' then
@@ -252,6 +261,14 @@ begin
   end if;
   insert into squad_chat(team_id, name, kind, body) values (t.id, 'Hexa Air', 'system', v_name || ' checked in');
   perform _feed(t.arena_id, 'player.joined', jsonb_build_object('team', t.number, 'count', _online_size(t.id)));
+  if v_started then
+    -- a late player takes over a role the squad was covering with a second clue
+    update players set role2 = null, role2_bot = false where team_id = t.id and role2 is not null;
+    update teams set ready = true, roster_locked = _online_size(t.id) >= 4 where id = t.id;
+    insert into squad_chat(team_id, name, kind, body) values (t.id, 'Hexa Air', 'system', '🪂 ' || v_name || ' joined late — welcome!');
+    perform _ping_team(t.id, 'roster');
+    return jsonb_build_object('token', v_token, 'team', t.number, 'code', t.squad_code, 'rejoined', false, 'late', true);
+  end if;
   perform _online_refresh(t.id);
   return jsonb_build_object('token', v_token, 'team', t.number, 'code', t.squad_code, 'rejoined', false);
 end $$;

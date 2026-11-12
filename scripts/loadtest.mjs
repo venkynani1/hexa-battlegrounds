@@ -71,11 +71,16 @@ for (let i = 0; i < pins.length; i += 5) {
   })));
 }
 }
+if (ONLINE) {
+  // the host presses Start: small squads merge, squads are dealt over the maps, every map takes off
+  const st = await rpc('host_online_start', { p_token: host, p_length: 'quick' }, false);
+  console.log(`  Start: ${st.squads} squads on ${st.maps} maps (${st.merged} players merged, ${st.left_out} left out)`);
+}
 const ov = await rpc('host_overview', { p_token: host }, false);
 const arenas = ov.arenas.map((a) => a.id);
-for (const a of arenas) await rpc('host_command', { p_token: host, p_arena: a, p_cmd: 'zone_cancel', p_args: {} }, false).catch(() => {});
-for (const a of arenas) await rpc('host_command', { p_token: host, p_arena: a, p_cmd: 'open_boarding', p_args: {} }, false);
-for (const a of arenas) await rpc('host_command', { p_token: host, p_arena: a, p_cmd: 'drive', p_args: {} }, false);
+if (!ONLINE) for (const a of arenas) await rpc('host_command', { p_token: host, p_arena: a, p_cmd: 'zone_cancel', p_args: {} }, false).catch(() => {});
+if (!ONLINE) for (const a of arenas) await rpc('host_command', { p_token: host, p_arena: a, p_cmd: 'open_boarding', p_args: {} }, false);
+if (!ONLINE) for (const a of arenas) await rpc('host_command', { p_token: host, p_arena: a, p_cmd: 'drive', p_args: {} }, false);
 const shuttle = 8000;
 console.log(`Bus ride (${shuttle / 1000}s)…`);
 await sleep(shuttle + 1500);

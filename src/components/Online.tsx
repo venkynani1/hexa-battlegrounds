@@ -66,10 +66,11 @@ export function OnlineSquad({ s, token, refresh }: { s: any; token: string; refr
       </div>
       <TeamsButtons s={s} />
       <p className="muted" style={{ fontSize: 13, margin: 0 }}>
+        {o.started ? 'The game is on — your map is on your boarding pass. ' : 'Maps are assigned when the host starts the game. '}
         {o.size >= 3 ? 'Your squad is ready. Start the Teams call now — you will need to talk: everyone sees a different clue.'
-          : 'A squad needs at least 3 players. At take-off squads of 1–2 are merged with others, so nobody is left out.'}
+          : 'If your squad is still short when the host starts, you are merged with other players, so nobody is left out.'}
       </p>
-      <details className="sq-switch">
+      {!o.started && <details className="sq-switch">
         <summary>Change squad</summary>
         <div className="row wrap" style={{ gap: 6, marginTop: 8 }}>
           <input className="input mono" style={{ width: 110 }} value={code} onChange={(e) => setCode(e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 4))} placeholder="CODE" aria-label="Squad code" />
@@ -77,7 +78,7 @@ export function OnlineSquad({ s, token, refresh }: { s: any; token: string; refr
           {!o.open && <button className="btn sm ghost" disabled={busy} onClick={() => switchTo('queue')}>Find me a squad</button>}
           <button className="btn sm ghost" disabled={busy} onClick={() => switchTo('create')}>New squad</button>
         </div>
-      </details>
+      </details>}
     </div>
   );
 }

@@ -60,6 +60,7 @@ function Barcode({ seed }: { seed: string }) {
 }
 
 export function BoardingPass({ s }: { s: any }) {
+  const pre = !!s.online && !s.online.started;   // online: the map is assigned when the host starts
   const map = s.arena.number || 1;
   const role = s.me.role as Role | null;
   const boarding = s.arena.phase === 'boarding';
@@ -76,10 +77,10 @@ export function BoardingPass({ s }: { s: any }) {
       </div>
       <div className="bp-grid">
         <div><small>Passenger</small><b>{s.me.name}</b></div>
-        <div><small>Flight</small><b className="mono">HX 26{map}</b></div>
+        <div><small>Flight</small><b className="mono">{pre ? 'TBA' : `HX 26${map}`}</b></div>
         <div><small>Squad</small><b>{s.team.number}</b></div>
         <div><small>Seat</small><b className="mono">{s.me.seat || `${String(s.team.number).padStart(2, '0')}A`}</b></div>
-        <div><small>Gate</small><b>{map}</b></div>
+        <div><small>Gate</small><b>{pre ? 'At start' : map}</b></div>
         <div><small>Boarding</small><b className={boarding ? 'now' : ''}>{boarding ? 'NOW' : 'Soon'}</b></div>
       </div>
       <div className="bp-role">
@@ -97,8 +98,8 @@ export function Lounge({ s }: { s: any }) {
   return (
     <div className="lounge">
       <div className={`gate-sign ${boarding ? 'go' : ''}`}>
-        <span>Gate {s.arena.number || 1}</span>
-        <b>{boarding ? 'Now boarding — take your seat' : 'Waiting for boarding'}</b>
+        <span>{s.online && !s.online.started ? 'Lobby' : `Gate ${s.arena.number || 1}`}</span>
+        <b>{boarding ? 'Now boarding — take your seat' : s.online && !s.online.started ? 'Waiting for the host to start' : 'Waiting for boarding'}</b>
       </div>
       <BoardingPass s={s} />
       <div className="panel">

@@ -68,44 +68,17 @@ test('the same employee ID needs the same e-mail; rejoining moves the session to
   assert.equal((await call('online_join', 'ONL26', '2222222222', 'new@hexaware.com', 'X', 'rejoin', null, true, null)).error, 'NOT_REGISTERED');
 });
 
-test('matchmaking fills squads of 4; a full map opens the next map by itself', async () => {
+test('before the start everyone waits in one lobby; matchmaking fills squads of 4', async () => {
   const q = []; for (let i = 0; i < 6; i++) q.push(await join('queue'));
-  assert.deepEqual(await sizes(arena1), [4, 4, 2]);
   assert.equal(q[0].team, q[3].team); assert.notEqual(q[3].team, q[4].team);
-  const solo = await join('create');  // 4th squad on map 1 (arena_size 4)
-  assert.deepEqual(await sizes(arena1), [4, 4, 2, 1]);
-  const next = await join('create');
-  const a2 = (await one(`select arena_id from teams where event_id = $1 and number = $2`, [ev, next.team])).arena_id;
-  assert.notEqual(a2, arena1);
-  assert.equal((await one(`select count(*)::int n from arenas where event_id = $1`, [ev])).n, 2);
-  // matchmaking tops up the half-full open squad on map 1 first, then opens squads on map 2
+  globalThis.solo = await join('create');
   for (let i = 0; i < 8; i++) await join('queue');
-  assert.deepEqual(await sizes(arena1), [4, 4, 4, 1]);
-  assert.deepEqual(await sizes(a2), [4, 2, 1]);
-  globalThis.a2 = a2; globalThis.solo = solo;
-});
-
-test('at take-off small squads are merged: a single borrows from squads of 4 (4,4,4,1 → 4,3,3,3) and 2 + 1 → 3', async () => {
-  const r1 = await call('_online_seal', arena1);
-  assert.deepEqual(await sizes(arena1), [4, 3, 3, 3]);
-  assert.equal(r1.left_out, 0);
-  const r2 = await call('_online_seal', globalThis.a2);
-  assert.deepEqual(await sizes(globalThis.a2), [4, 3]);
-  assert.equal(r2.left_out, 0);
-  assert.equal((await one(`select count(*)::int n from teams t where t.event_id = $1 and not t.ready`, [ev])).n, 0, 'every squad left is ready');
-  // the merged player was told in squad chat
+  await join('create'); await join('create');           // two lone players in their own squads
+  // 4 (A) + 4 + 4 + 4 (the 6+8 queued) + 2 queued + 1 + 1 + 1, all on Map 1, no other map yet
+  assert.deepEqual(await sizes(arena1), [4, 4, 4, 4, 2, 1, 1, 1]);
+  assert.equal((await one(`select count(*)::int n from arenas where event_id = $1`, [ev])).n, 1);
   const st = await call('player_state', globalThis.solo.token);
-  const chat = await call('squad_chat', globalThis.solo.token, 0);
-  assert.ok(chat.some((c) => c.kind === 'system'));
-  assert.equal(st.online.size, 3);
-});
-
-test('a full event refuses new squads once every map is full and the map limit is reached', async () => {
-  await call('host_settings', host, { online_max_maps: 2 });
-  let made = 0; let err = '';
-  for (let i = 0; i < 6 && !err; i++) { try { await join('create'); made++; } catch (e) { err = String(e.message); } }
-  assert.match(err, /ALL_MAPS_FULL/); assert.ok(made <= 2, `made ${made}`);
-  await call('host_settings', host, { online_max_maps: 3 });
+  assert.equal(st.online.started, false);
 });
 
 test('squad chat: messages and pings stay inside the squad; e-mails only go to teammates', async () => {
@@ -125,22 +98,6 @@ test('squad chat: messages and pings stay inside the squad; e-mails only go to t
   await fails(call('squad_chat_send', A.token, 'too fast', 'msg'), 'SLOW_DOWN');
 });
 
-test('a squad of 3: the missing role goes to one player as a second role', async () => {
-  const a2 = globalThis.a2;
-  await db.query(`update arenas set phase = 'play' where id = $1`, [a2]);
-  await db.query(`select _auto_roles($1)`, [a2]);
-  const rows = await all(`select p.team_id, p.role, p.role2 from players p join teams t on t.id = p.team_id where t.arena_id = $1 and t.ready and p.active`, [a2]);
-  const byTeam = {}; for (const r of rows) (byTeam[r.team_id] ||= []).push(r);
-  for (const ps of Object.values(byTeam).filter((ps) => ps.length === 3)) {
-    const covered = new Set(ps.flatMap((p) => [p.role, p.role2]).filter(Boolean));
-    assert.equal(covered.size, 4, 'all four roles are covered');
-    assert.equal(ps.filter((p) => p.role2).length, 1);
-    assert.ok(!ps.some((p) => p.role === 'captain' && p.role2), 'the captain is not given a second role');
-  }
-  const holder = await one(`select p.id from players p join teams t on t.id = p.team_id where t.arena_id = $1 and p.role2 is not null limit 1`, [a2]);
-  assert.ok(holder);
-});
-
 test('switching squads at the gate: from matchmaking to a friend’s code', async () => {
   const friend = await join('create', null, 'Friend');
   const me = await join('queue', null, 'Mover');
@@ -149,16 +106,75 @@ test('switching squads at the gate: from matchmaking to a friend’s code', asyn
   assert.equal((await call('player_state', me.token)).online.size, 2);
 });
 
+test('nothing starts until the host presses Start; then small squads merge and maps are dealt out evenly', async () => {
+  const before = await call('host_online_summary', host);
+  assert.equal(before.started, false); assert.ok(before.short >= 3);
+  const r = await call('host_online_start', host, 'quick');
+  assert.equal(r.left_out, 0);
+  const rows = await all(`select a.number map, (select count(*)::int from players p where p.team_id = t.id and p.active) n, t.ready
+    from teams t join arenas a on a.id = t.arena_id where t.event_id = $1`, [ev]);
+  assert.ok(rows.every((x) => x.n >= 2 && x.n <= 4 && x.ready), JSON.stringify(rows));
+  assert.ok(rows.filter((x) => x.n === 2).length <= 1, 'at most one squad of 2 (last resort)');
+  const per = {}; for (const x of rows) per[x.map] = (per[x.map] || 0) + 1;
+  const counts = Object.values(per);
+  assert.equal(counts.length, r.maps);
+  assert.ok(Math.max(...counts) - Math.min(...counts) <= 1, 'maps are balanced: ' + JSON.stringify(per));
+  assert.ok(counts.every((c) => c <= 4), 'arena_size 4');
+  const phases = await all(`select phase, autopilot from arenas where event_id = $1 and number <= $2`, [ev, r.maps]);
+  assert.ok(phases.every((a) => a.autopilot), 'every map runs the automatic match');
+  await fails(call('host_online_start', host, 'quick'), 'ALREADY_STARTED');
+  const st = await call('player_state', A.token);
+  assert.equal(st.online.started, true);
+});
+
+test('after the start: no new squads; late players fill an open seat in a squad that has not landed', async () => {
+  await fails(join('create'), 'GAME_STARTED');
+  const late = await join('queue', null, 'Late');
+  assert.equal(late.late, true);
+  const st = await call('player_state', late.token);
+  assert.ok(st.online.size >= 3 && st.online.size <= 4);
+  // a returning player cannot switch squads any more
+  const back = await call('online_join', 'ONL26', A.emp, `p${A.emp}@hexaware.com`, 'Asha', 'queue', null, true, A.token);
+  assert.equal(back.code, A.code);
+  // once every squad has landed there are no seats left
+  await db.query(`update teams set dropped = true where event_id = $1`, [ev]);
+  await db.query(`update arenas set phase = 'play' where event_id = $1`, [ev]);
+  await fails(join('queue'), 'NO_OPEN_SEATS');
+});
+
+test('squads of 3 and 2: every missing role goes to someone as a second clue', async () => {
+  const arenas = (await all(`select id from arenas where event_id = $1`, [ev])).map((x) => x.id);
+  for (const a of arenas) await db.query(`select _auto_roles($1)`, [a]);
+  const rows = await all(`select p.team_id, p.role, p.role2 from players p join teams t on t.id = p.team_id where t.event_id = $1 and t.ready and p.active`, [ev]);
+  const byTeam = {}; for (const r of rows) (byTeam[r.team_id] ||= []).push(r);
+  for (const ps of Object.values(byTeam)) {
+    const covered = new Set(ps.flatMap((p) => [p.role, p.role2]).filter(Boolean));
+    assert.equal(covered.size, 4, 'all four roles are covered: ' + JSON.stringify(ps));
+    if (ps.length === 3) assert.ok(!ps.some((p) => p.role === 'captain' && p.role2), 'in a squad of 3 the captain keeps one role');
+  }
+});
+
 test('host: attendance export and online summary', async () => {
   const att = await call('host_attendance', host);
   assert.ok(att.length >= 20, String(att.length));
   assert.ok(att.every((r) => /^[0-9]{10}$/.test(r.emp_id) && r.email && r.map));
   const sum = await call('host_online_summary', host);
   assert.equal(sum.players, att.length);
-  assert.ok(sum.maps.length >= 2);
-  // take-off through the host command seals the map first (map 1 now has the 2-player switch squad)
-  await call('host_command', host, arena1, 'open_boarding', {}, null);
-  await call('host_command', host, arena1, 'drive', {}, null);
-  const s1 = await sizes(arena1);
-  assert.ok(s1.every((x) => x >= 3), JSON.stringify(s1));
+  assert.equal(sum.started, true);
+});
+
+test('awkward head-counts: 5 players play as 3 + 2; 2 players play as a pair; 1 player alone cannot start', async () => {
+  const mk = async (code, n) => {
+    const h = (await call('host_create_event', code, code, 'awkwardpass', 1)).token;
+    await call('host_settings', h, { online: 1 });
+    for (let i = 0; i < n; i++) await call('online_join', code, String(6100000000 + n * 100 + i), `${code.toLowerCase()}${i}@x.com`, 'P' + i, 'queue', null, true, null);
+    return h;
+  };
+  const h5 = await mk('AWK5', 5);
+  const r5 = await call('host_online_start', h5, 'quick');
+  assert.equal(r5.squads, 2); assert.equal(r5.left_out, 0);
+  const h2 = await mk('AWK2', 2);
+  assert.equal((await call('host_online_start', h2, 'quick')).squads, 1);
+  const h1 = await mk('AWK1', 1);
+  await fails(call('host_online_start', h1, 'quick'), 'NO_READY_SQUADS');
 });

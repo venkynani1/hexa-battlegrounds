@@ -14,18 +14,20 @@ The same game, played from laptops by people on a Microsoft Teams call. It runs 
    An employee ID can be checked in only once per event, with one e-mail.
 4. Before take-off a player can **Change squad** (join a code, matchmaking, or a new squad).
 
-## Squad size
-- A squad of **4** is full. A squad of **3** is ready to play.
-- When the host presses **Take-off** on a map, squads of 1–2 are merged automatically:
-  pairs and singles are combined into 3s and 4s; whoever is still alone tops up a squad of 3; if needed one
-  player is borrowed from a squad of 4 (matchmade squads first). Everyone moved sees a note in squad chat.
-- In a squad of 3 one player (never the captain) also holds the missing role and sees **both clues**.
+## Squad size and the start (v10)
+- Before the start everyone waits in the **lobby** with their squad. Nothing moves until the host presses
+  **Start online game** (Host console → Players & attendance).
+- A squad of **4** is full; a squad of **3** is ready. At Start, squads of 1–2 are merged across the whole event:
+  pairs and singles become 3s and 4s; a lone player tops up a squad of 3 or borrows from a squad of 4. As a last
+  resort one squad of 2 plays and the bot covers its two missing roles. Only a single player alone in the whole
+  event cannot play. Everyone moved sees a note in squad chat.
+- In squads of 2 and 3 the missing roles go to players as a second clue (never to the captain in a squad of 3).
 
 ## Maps
-- The event starts with one map. When every open map has 15 squads, the next map opens by itself, up to
-  **Most maps** (default 8, set in **Players & attendance**). About 200 players fill 4 maps.
-- Each map is started by the host as usual (or with the automatic match). A map that has taken off accepts no
-  new squads; late players go to the next map.
+- At Start the squads are dealt out evenly over as many maps as needed (15 squads = 60 players a map, up to
+  **Most maps**), and every map takes off together with the automatic match (Quick, Standard or Full).
+- **Late players** (after Start) choose *Find me a squad* and fill an open seat in a squad that has not landed yet.
+  New squads cannot be created after Start. Returning players (Rejoin with your ID) always get their squad back.
 - Projector links for each map are in **Players & attendance** — share your screen into the Teams call.
 
 ## Talking

@@ -862,6 +862,18 @@ function OnlinePanel({ d, token }: { d: any; token: string }) {
     try { await rpc('host_settings', { p_token: token, p_settings: { online_max_maps: Math.max(1, Math.min(12, Number(maxMaps) || 1)), email_domain: domain.trim().toLowerCase() } }); toast('Saved', 'good'); }
     catch (e) { toast(friendly(e), 'bad'); }
   }
+  const [length, setLength] = useState<'quick' | 'standard' | 'full'>('standard');
+  const [starting, setStarting] = useState(false);
+  async function startGame() {
+    if (!sum) return;
+    if (!confirm(`Start the online game now?\n\n${sum.players} players · ${sum.squads} squads (${sum.short} still short).\nSmall squads are merged, squads are spread over the maps and every map takes off together. Nobody can create a new squad after this; late players fill open seats.`)) return;
+    setStarting(true);
+    try {
+      const r = await rpc<any>('host_online_start', { p_token: token, p_length: length });
+      toast(`Started: ${r.squads} squads on ${r.maps} map${r.maps > 1 ? 's' : ''}${r.merged ? ` · ${r.merged} players moved into fuller squads` : ''}${r.left_out ? ` · ${r.left_out} player could not be placed` : ''}`, 'good');
+      load();
+    } catch (e) { toast(friendly(e), 'bad'); } finally { setStarting(false); }
+  }
   async function attendance() {
     try {
       const rows = await rpc<any[]>('host_attendance', { p_token: token });
@@ -887,16 +899,38 @@ function OnlinePanel({ d, token }: { d: any; token: string }) {
         </div>
         <div className="panel col">
           <div className="panel-title">Check-in rules</div>
-          <div className="field"><label htmlFor="mm">Most maps that may open by themselves (60 players each)</label>
+          <div className="field"><label htmlFor="mm">Most maps the game may use (60 players each)</label>
             <input id="mm" className="input" inputMode="numeric" value={maxMaps} onChange={(e) => setMaxMaps(e.target.value.replace(/\D/g, ''))} /></div>
           <div className="field"><label htmlFor="dm">Allowed e-mail domains (comma-separated, empty = any)</label>
             <input id="dm" className="input" value={domain} onChange={(e) => setDomain(e.target.value)} placeholder="hexaware.com" /></div>
           <button className="btn primary sm" onClick={save}>Save</button>
-          <p className="muted" style={{ fontSize: 13, margin: 0 }}>Squads of 3 are ready to play; squads of 4 are full. When you press Take-off on a map, squads of 1–2 are merged with others automatically.</p>
+          <p className="muted" style={{ fontSize: 13, margin: 0 }}>Squads of 3 are ready to play; squads of 4 are full. Nothing starts until you press Start online game below.</p>
         </div>
       </div>
+      {sum && !sum.started && (
+        <div className="panel online-start">
+          <div className="panel-title">Start the online game</div>
+          <div className="os-stats">
+            <div><b>{sum.players}</b><small>players checked in</small></div>
+            <div><b>{sum.squads}</b><small>squads</small></div>
+            <div><b>{sum.full}</b><small>full (4)</small></div>
+            <div><b>{sum.three}</b><small>ready (3)</small></div>
+            <div className={sum.short ? 'warn' : ''}><b>{sum.short}</b><small>short (1–2) — merged at start</small></div>
+            <div><b>{Math.min(sum.maps_needed, sum.max_maps)}</b><small>map{sum.maps_needed > 1 ? 's' : ''} at start</small></div>
+          </div>
+          <div className="auto-lengths">
+            {(['quick', 'standard', 'full'] as const).map((l) => (
+              <button key={l} className={length === l ? 'on' : ''} onClick={() => setLength(l)}>
+                <b>{l === 'quick' ? 'Quick' : l === 'standard' ? 'Standard' : 'Full event'}</b><span>{l === 'quick' ? 'about 10 minutes' : l === 'standard' ? 'about 30 minutes' : '60–90 minutes'}</span>
+              </button>
+            ))}
+          </div>
+          <button className="btn primary big auto-start" disabled={starting || sum.squads === 0} onClick={startGame}>{starting ? 'Starting…' : '▶ Start online game'}</button>
+          <p className="muted" style={{ fontSize: 13, margin: 0 }}>Until you press Start, everyone waits in the lobby with their squad and nothing moves. At Start: squads of 1–2 are merged (a last squad of 2 plays with the bot covering), squads are spread evenly over the maps, and every map takes off together. Late players can still fill an open seat until their squad lands.</p>
+        </div>
+      )}
       <div className="panel">
-        <div className="row between"><div className="panel-title">Online maps · {sum?.players ?? '…'} players checked in</div><button className="btn sm" onClick={load}>Refresh</button></div>
+        <div className="row between"><div className="panel-title">{sum?.started ? 'Online maps' : 'Lobby'} · {sum?.players ?? '…'} players checked in</div><button className="btn sm" onClick={load}>Refresh</button></div>
         <table className="tbl"><thead><tr><th>Map</th><th>Phase</th><th>Players</th><th>Squads</th><th>Full (4)</th><th>Ready (3+)</th><th>Short (1–2)</th><th>Projector</th></tr></thead>
           <tbody>{(sum?.maps || []).map((m: any) => {
             const a = d.arenas.find((x: any) => x.id === m.id);
