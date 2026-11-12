@@ -141,7 +141,7 @@ export default function Play() {
           {(phase === 'results' || phase === 'ended') && <Results s={s} />}
         </main>
       )}
-      {s.online && <SquadComms s={s} token={token} />}
+      {(s.online || inGame) && <SquadComms s={s} token={token} inGame={inGame} />}
       <SettingsSheet open={settings} onClose={() => setSettings(false)} />
     </div>
   );
@@ -542,7 +542,7 @@ function ActivityCard({ a, s, token, refresh, battle = false }: { a: any; s: any
           <ClueView c={clue} role={s.me.role as Role} left={revealLeft} backup={a.relay_backup} />
           {a.clue2 && s.me.role2 && (
             <div className="clue2" aria-label="Your second clue">
-              <div className="up muted" style={{ fontSize: 12, margin: '6px 0 2px' }}>Squad of 3 · you also hold the {ROLES[s.me.role2 as Role].name} clue</div>
+              <div className="up muted" style={{ fontSize: 12, margin: '6px 0 2px' }}>{s.me.role2_bot ? `🤖 Bot relays the ${ROLES[s.me.role2 as Role].name} clue (teammate offline)` : `Squad of 3 · you also hold the ${ROLES[s.me.role2 as Role].name} clue`}</div>
               <ClueView c={a.clue2} role={s.me.role2 as Role} left={null} backup={null} />
             </div>
           )}
@@ -550,6 +550,12 @@ function ActivityCard({ a, s, token, refresh, battle = false }: { a: any; s: any
         </div>
       )}
 
+      {isCaptain && a.clue2 && s.me.role2 && (
+        <div className="clue2" aria-label="A clue you hold for your squad">
+          <div className="up muted" style={{ fontSize: 12, margin: '0 0 4px' }}>{s.me.role2_bot ? '🤖 Bot relays the' : 'You also hold the'} {ROLES[s.me.role2 as Role].name} clue</div>
+          <ClueView c={a.clue2} role={s.me.role2 as Role} left={null} backup={null} />
+        </div>
+      )}
       {isCaptain && (
         <div className="col" style={{ gap: 8 }}>
           <p className="muted" style={{ margin: 0, fontSize: 13 }}>Your Scout, Decoder and Intel Officer each hold a different piece. Ask them!</p>
@@ -795,24 +801,20 @@ function Results({ s }: { s: any }) {
       </div>
     );
   }
+  // only the winner is announced — no runner-up, no ranking
+  const win = s.results[0];
   const mine = s.results.find((r: any) => r.number === s.team.number);
+  const champs = win && win.number === s.team.number;
   return (
-    <>
-      <div className={`panel center ${mine?.rank === 1 ? 'good' : ''}`}>
-        <div className="kind-tag">Final placement</div>
-        <div className="mega" style={{ fontSize: 72, color: mine?.rank === 1 ? 'var(--gold)' : undefined }}>#{mine?.rank ?? '—'}</div>
-        <div>{mine?.points} points · {mine?.missions} missions · {mine?.battles} battle wins</div>
-        {mine?.rank === 1 && <div className="mega gold" style={{ fontSize: 28, marginTop: 10, whiteSpace: 'normal', overflowWrap: 'anywhere' }}>Champions of Siruseri!</div>}
-      </div>
-      <div className="panel">
-        <div className="panel-title">Top squads</div>
-        <div className="list">
-          {s.results.slice(0, 5).map((r: any) => (
-            <div key={r.number} className="list-item"><b style={{ width: 26 }}>{r.rank}</b><span className="grow">Squad {r.number} · {r.name}</span><b>{r.points}</b></div>
-          ))}
-        </div>
-      </div>
-    </>
+    <div className={`panel center win-card ${champs ? 'good' : ''}`}>
+      <div className="kind-tag">{s.arena.name} · Winner</div>
+      <div className="win-trophy" aria-hidden>🏆</div>
+      <div className="mega gold" style={{ fontSize: 'clamp(34px, 10vw, 64px)' }}>Squad {win?.number}</div>
+      <div style={{ fontSize: 18 }}>{win?.name}</div>
+      {champs
+        ? <div className="mega" style={{ fontSize: 26, marginTop: 12, whiteSpace: 'normal' }}>You are the Champions of Siruseri!</div>
+        : <p className="muted" style={{ marginTop: 12 }}>GG! Your squad finished with {mine?.points ?? 0} points, {mine?.missions ?? 0} missions and {mine?.battles ?? 0} fights won.</p>}
+    </div>
   );
 }
 

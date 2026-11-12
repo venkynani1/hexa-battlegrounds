@@ -1025,3 +1025,74 @@ html.demo-view.in-game .toasts { top: calc(110px + env(safe-area-inset-top, 0px)
 .comms-input { display: flex; gap: 6px; }
 .comms-input .input { flex: 1; min-height: 38px; }
 .clue2 { border-top: 1px dashed rgba(255,255,255,0.2); padding-top: 4px; }
+
+/* ═══════════ v9 · Free Fire squad list, landscape HUD, winner only ═══════════ */
+.ff-squad { appearance: none; border: 0; padding: 0; background: none; color: #fff; display: flex; flex-direction: column; gap: 2px; align-items: stretch; text-align: left; cursor: pointer; touch-action: manipulation; width: 128px; }
+.ff-mate { display: flex; align-items: center; gap: 4px; height: 20px; padding: 0 5px 0 0; border-radius: 4px; background: linear-gradient(90deg, rgba(8, 14, 26, 0.72), rgba(8, 14, 26, 0.35)); font: 600 11px var(--font-body); }
+.ff-num { flex: none; width: 18px; height: 20px; border-radius: 4px 0 0 4px; display: grid; place-items: center; font: 800 11px var(--font-head); font-style: normal; color: #0b1220; }
+.ff-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-shadow: 0 1px 2px rgba(0, 0, 0, 0.7); }
+.ff-mate.me .ff-name { color: #ffd23d; }
+.ff-role { flex: none; font-size: 11px; }
+.ff-role em { font-style: normal; margin-left: 1px; font-size: 10px; }
+.ff-tag { flex: none; font: 800 9px var(--font-head); letter-spacing: 0.08em; padding: 1px 4px; border-radius: 3px; }
+.ff-tag.bot { background: #8a93a3; color: #0b1220; }
+.ff-tag.weak { font-size: 10px; animation: ffBlink 1s steps(2) infinite; }
+.ff-mate.away { opacity: 0.75; }
+.ff-mate.away .ff-name { color: rgba(255, 255, 255, 0.55); text-decoration: line-through; }
+.ff-mate.weak .ff-name { color: #ffe08a; }
+@keyframes ffBlink { 50% { opacity: 0.3; } }
+.ff-chat { display: flex; align-items: center; gap: 4px; margin-top: 1px; height: 20px; padding: 0 6px; border-radius: 4px; background: rgba(91, 95, 199, 0.75); font: 700 10.5px var(--font-head); letter-spacing: 0.06em; width: max-content; }
+.ff-chat em { font-style: normal; background: #ff4d5e; border-radius: 999px; padding: 0 5px; font-size: 10px; }
+.hud-squad { display: none; }
+.comms-panel.in-game { top: calc(8px + env(safe-area-inset-top, 0px)); left: auto; right: 60px; max-height: calc(100dvh - 120px); }
+@media (orientation: portrait) { .comms-panel.in-game { left: 8px; right: 8px; width: auto; top: calc(150px + env(safe-area-inset-top, 0px)); max-height: 46dvh; } }
+.clue2 { margin-top: 6px; }
+.win-card { padding: 26px 16px; }
+.win-trophy { font-size: 64px; line-height: 1; margin: 6px 0; filter: drop-shadow(0 6px 20px rgba(255, 194, 61, 0.55)); }
+.win-trophy.big { font-size: clamp(90px, 14vw, 200px); }
+.win-reveal { display: flex; flex-direction: column; align-items: center; gap: 8px; margin: 2vh 0; animation: kf-in 600ms var(--ease-out); }
+.squad-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.sq-chip { min-width: 46px; text-align: center; padding: 6px 8px; border-radius: 8px; background: rgba(255, 255, 255, 0.07); border: 1px solid rgba(255, 255, 255, 0.14); font: 700 18px var(--font-head); }
+.sq-chip.down { opacity: 0.5; }
+.sq-chip.fight { border-color: var(--red); color: #ffb3bb; }
+
+/* landscape phones: everything at the edges, the middle stays clear (like Free Fire) */
+@media (orientation: landscape) and (max-height: 520px) {
+  .demo-bar { top: auto !important; bottom: calc(2px + env(safe-area-inset-bottom, 0px)); transform: translateX(-50%) scale(0.82); transform-origin: bottom center; }
+  .hud-bc { bottom: calc(30px + env(safe-area-inset-bottom, 0px)); width: min(30vw, 280px); }
+  .hud-tl { gap: 4px; }
+  .hud-tl .minimap { width: 86px; }
+  .ff-squad { width: 120px; }
+  .ff-mate { height: 18px; font-size: 10.5px; }
+  .ff-num { height: 18px; }
+  .hud-mission { max-width: 150px; min-height: 30px; font-size: 11px; }
+  .hud-top { gap: 2px; }
+  .compass { width: min(30vw, 200px); height: 20px; }
+  .hud-info { font-size: 10px; padding: 1px 8px; }
+  .hud-info b { font-size: 12.5px; }
+  .hud-banner { max-width: min(40vw, 360px); font-size: 11.5px; padding: 4px 10px; }
+  .hud-tr { gap: 6px; }
+  .hb { width: 38px; height: 38px; }
+  .killfeed { width: min(28vw, 230px); }
+  .kf { font-size: 10.5px; }
+  .hud-actions { bottom: calc(14px + env(safe-area-inset-bottom, 0px)); right: max(16px, env(safe-area-inset-right, 0px)); gap: 8px; }
+  .act.fire { width: 92px; height: 92px; }
+  .act.md { width: 50px; height: 50px; }
+  .act.lg { width: 78px; height: 78px; }
+  .joy-base:not(.live) { left: max(36px, env(safe-area-inset-left, 0px)); bottom: calc(18px + env(safe-area-inset-bottom, 0px)); width: 112px; height: 112px; }
+  .hud-bl-hint { display: none; }
+  .hud-floors { top: 50%; transform: translateY(-50%); }
+  html.in-game .toasts { top: calc(52px + env(safe-area-inset-top, 0px)); width: min(46vw, 360px); }
+}
+/* very short screens (small phones in landscape) */
+@media (orientation: landscape) and (max-height: 380px) {
+  .hud-tl .minimap { width: 72px; }
+  .ff-mate { height: 16px; font-size: 10px; }
+  .ff-num { height: 16px; width: 16px; }
+  .ff-chat { height: 16px; font-size: 9.5px; }
+  .act.fire { width: 80px; height: 80px; }
+  .act.lg { width: 70px; height: 70px; font-size: 13px; }
+  .act.md { width: 44px; height: 44px; }
+  .hb { width: 34px; height: 34px; }
+  .joy-base:not(.live) { width: 100px; height: 100px; }
+}

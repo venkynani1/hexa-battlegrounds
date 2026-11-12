@@ -131,7 +131,7 @@ function Coach({ isCaptain }: { isCaptain: boolean }) {
 }
 
 // ── Icons (simple line icons, original) ─────────────────────────────────
-type IconName = 'search' | 'crate' | 'target' | 'puzzle' | 'med' | 'bag' | 'plus' | 'minus' | 'map' | 'chat' | 'gear' | 'car' | 'chute' | 'run' | 'box';
+type IconName = 'search' | 'crate' | 'target' | 'puzzle' | 'med' | 'bag' | 'plus' | 'minus' | 'map' | 'chat' | 'gear' | 'car' | 'chute' | 'run' | 'box' | 'pistol';
 const ICONS: Record<IconName, string> = {
   search: 'M10.5 4a6.5 6.5 0 1 1 0 13 6.5 6.5 0 0 1 0-13Zm4.8 11.3L20 20',
   crate: 'M4 8l8-4 8 4v8l-8 4-8-4V8Zm0 0l8 4 8-4M12 12v8',
@@ -140,6 +140,7 @@ const ICONS: Record<IconName, string> = {
   chute: 'M3 11a9 7 0 0 1 18 0M3 11l9 9 9-9M8 11l4 9 4-9M12 11v9',
   run: 'M13 4a2 2 0 1 1 0 .01M9 21l3-6 3 2v5M6 12l4-4 4 2 3 3 3-1M10 8l-2 5 4 2',
   box: 'M3 8l9-5 9 5v8l-9 5-9-5V8Zm0 0l9 5 9-5M12 13v8',
+  pistol: 'M3 7h15l1-1h2v4h-3l-1 1h-4l-1 2h-1l-1 5H6l1-5H5L3 11V7Z',
   puzzle: 'M9 4h3a2 2 0 1 1 4 0h3v5a2 2 0 1 1 0 4v6h-5a2 2 0 1 0-4 0H5v-5a2 2 0 1 0 0-4V4h4Z',
   med: 'M10 4h4v6h6v4h-6v6h-4v-6H4v-4h6V4Z',
   bag: 'M8 7V5a4 4 0 0 1 8 0v2M5 7h14l-1 13H6L5 7Zm4 5h6',
@@ -149,10 +150,24 @@ const ICONS: Record<IconName, string> = {
   chat: 'M4 5h16v11H9l-5 4V5Z',
   gear: 'M12 8.5a3.5 3.5 0 1 1 0 7 3.5 3.5 0 0 1 0-7ZM12 2v3m0 14v3M2 12h3m14 0h3M4.9 4.9l2.1 2.1m10 10 2.1 2.1M4.9 19.1 7 17m10-10 2.1-2.1',
 };
+// filled silhouettes (Free Fire style) for the buttons people press most
+const SOLID: Partial<Record<IconName, string>> = {
+  med: 'M9 3.5h6v2h4.2A1.8 1.8 0 0 1 21 7.3v11.4a1.8 1.8 0 0 1-1.8 1.8H4.8A1.8 1.8 0 0 1 3 18.7V7.3a1.8 1.8 0 0 1 1.8-1.8H9v-2Zm1.6 2h2.8V5h-2.8v.5ZM10.8 9v3.1H7.7v2.6h3.1v3.1h2.4v-3.1h3.1v-2.6h-3.1V9h-2.4Z',
+  bag: 'M9 2.5h6v2.2h.8A4.2 4.2 0 0 1 20 8.9V19a2.5 2.5 0 0 1-2.5 2.5h-11A2.5 2.5 0 0 1 4 19V8.9a4.2 4.2 0 0 1 4.2-4.2H9V2.5Zm1.6 2.2h2.8V4h-2.8v.7ZM7.5 12.2v6.3h9v-6.3h-9Zm2.5 1.4h4v1.6h-4v-1.6Z',
+  map: 'M2.5 6.2 8.6 4l6.8 2.6 6.1-2.2v14.4l-6.1 2.2-6.8-2.6-6.1 2.2V6.2Zm7.3.3v11.2l4.4 1.7V8.2L9.8 6.5Z',
+  run: 'M14.6 1.8a2.2 2.2 0 1 1 0 4.4 2.2 2.2 0 0 1 0-4.4ZM9.6 7.3l4.6-.9 2.4 2.6 3.1-.7.5 2-4.3 1-1.4-1.5-1.5 3.6 2.9 2.6V22h-2.2v-5.1l-3.1-2.6-1.5 3.4-5.5.9-.4-2.1 4.3-.7 2.8-6.6-1.7.4-1.5 2.7-1.9-1 2-3.7Z',
+  pistol: 'M2.5 7h15.2l.9-1H21v4.4h-2.6l-1 1H13l-.9 1.9h-1.3l-1.1 4.9H5.9l1.2-5.1H5.3L2.5 10.8V7Zm8.6 4.4.5-1h-2l-.2 1h1.7Z',
+  gear: 'M10.3 2h3.4l.5 2.6 1.6.7 2.2-1.5 2.4 2.4-1.5 2.2.7 1.6 2.6.5v3.4l-2.6.5-.7 1.6 1.5 2.2-2.4 2.4-2.2-1.5-1.6.7-.5 2.6h-3.4l-.5-2.6-1.6-.7-2.2 1.5-2.4-2.4 1.5-2.2-.7-1.6L2 13.7v-3.4l2.6-.5.7-1.6-1.5-2.2 2.4-2.4 2.2 1.5 1.6-.7.5-2.6Zm1.7 6.6a3.4 3.4 0 1 0 0 6.8 3.4 3.4 0 0 0 0-6.8Z',
+  chat: 'M4 4h16a1.5 1.5 0 0 1 1.5 1.5v10A1.5 1.5 0 0 1 20 17H10l-5 4v-4H4a1.5 1.5 0 0 1-1.5-1.5v-10A1.5 1.5 0 0 1 4 4Zm3 5v2h2V9H7Zm4 0v2h2V9h-2Zm4 0v2h2V9h-2Z',
+  car: 'M6.2 6h11.6l2.2 5.2H21a1 1 0 0 1 1 1V17h-2a2.5 2.5 0 0 1-5 0H9a2.5 2.5 0 0 1-5 0H2v-4.8a1 1 0 0 1 1-1h1l2.2-5.2Zm1.4 2-1.4 3.2h11.6L16.4 8H7.6Z',
+  box: 'M12 2.5 21 7v10l-9 4.5L3 17V7l9-4.5Zm0 2.3L6.1 7.7 12 10.6l5.9-2.9L12 4.8Zm-7 4.5v6.5l6 3v-6.5l-6-3Zm14 0-6 3v6.5l6-3V9.3Z',
+};
 function Icon({ name }: { name: IconName }) {
+  const solid = SOLID[name];
   return (
     <svg className="ico" viewBox="0 0 24 24" aria-hidden width="26" height="26">
-      <path d={ICONS[name]} fill={name === 'med' ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth={name === 'med' ? 0 : 2.2} strokeLinecap="round" strokeLinejoin="round" />
+      {solid ? <path d={solid} fill="currentColor" fillRule="evenodd" />
+        : <path d={ICONS[name]} fill="none" stroke="currentColor" strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round" />}
     </svg>
   );
 }
@@ -230,6 +245,48 @@ function MiniMap({ map, me, yaw, squads, zone, red, drops, marker, onClick, over
 }
 
 // ── Kill feed ──────────────────────────────────────────────────────────
+// Free Fire-style squad list: numbered teammates with their role, and who is online, reconnecting
+// or covered by the bot. Tapping it opens squad chat.
+const MATE_COLORS = ['#ffd23d', '#3ef0ff', '#b07cff', '#5dff9e'];
+function SquadStrip({ s }: { s: any }) {
+  const list: any[] = s.squad || (s.roster || []).map((r: any) => ({ ...r, status: r.online ? 'on' : 'weak' }));
+  const [unread, setUnread] = useState(0);
+  useEffect(() => {
+    const f = (e: Event) => setUnread((e as CustomEvent).detail || 0);
+    window.addEventListener('hb:unread', f);
+    return () => window.removeEventListener('hb:unread', f);
+  }, []);
+  // tell the squad when someone drops or comes back
+  const prev = useRef<Record<string, string>>({});
+  useEffect(() => {
+    const p = prev.current; const next: Record<string, string> = {};
+    for (const m of list) {
+      next[m.name] = m.status;
+      if (m.me || !p[m.name] || p[m.name] === m.status) continue;
+      if (m.status === 'away') { toast(`🤖 ${m.name} is offline — a bot covers ${m.role ? ROLES[m.role as Role].name : 'their role'}`, 'warn'); buzz([30, 40, 30]); }
+      else if (m.status === 'weak' && p[m.name] === 'on') toast(`📶 ${m.name} is reconnecting…`, 'info');
+      else if (m.status === 'on' && p[m.name] === 'away') { toast(`✅ ${m.name} is back`, 'good'); }
+    }
+    prev.current = next;
+  }, [list.map((m) => m.name + m.status).join()]);
+  return (
+    <button className="ff-squad" onClick={() => window.dispatchEvent(new Event('hb:chat'))} aria-label={`Your squad${unread ? `, ${unread} new messages` : ''} — open squad chat`}>
+      {list.map((m, i) => {
+        const r = m.role as Role | null;
+        return (
+          <span key={i} className={`ff-mate ${m.status} ${m.me ? 'me' : ''}`}>
+            <i className="ff-num" style={{ background: MATE_COLORS[i % 4] }}>{i + 1}</i>
+            <span className="ff-name">{m.me ? 'You' : m.name}</span>
+            {r && <span className="ff-role" style={{ color: ROLES[r].color }} title={ROLES[r].name}>{ROLES[r].icon}{m.role2 ? <em style={{ color: ROLES[m.role2 as Role].color }}>{ROLES[m.role2 as Role].icon}</em> : null}</span>}
+            {m.status === 'away' ? <b className="ff-tag bot">BOT</b> : m.status === 'weak' ? <b className="ff-tag weak" aria-label="weak connection">📶</b> : null}
+          </span>
+        );
+      })}
+      <span className="ff-chat">💬 Squad chat{unread > 0 && <em>{unread}</em>}</span>
+    </button>
+  );
+}
+
 function KillFeed({ feed, map }: { feed: any[]; map: MapData | null }) {
   useNow(1000);
   const now = serverTime();
@@ -712,12 +769,7 @@ export default function WorldTab({ s, token, map, refresh, openMission, openSqua
           drops={s.airdrops || []} marker={marker} overview={false} lock={lock} level={level}
           tag={zoneWarn ? <>☢ <Countdown to={zone.next_at} /></> : <>Zone {zone?.stage ?? s.arena.zone_stage}/5</>} warn={zoneWarn}
           onClick={() => { sfx.tap(); setMapOpen(true); }} />}
-        <div className="hud-squad" aria-label="Your squad">
-          {ROLE_ORDER.map((r: Role) => {
-            const p = s.roster.find((x: any) => x.role === r);
-            return <span key={r} className={`sq-dot ${p?.online ? 'on' : ''} ${p?.me ? 'me' : ''}`} style={{ background: ROLES[r].color }} title={`${ROLES[r].name}: ${p?.name || '—'}`}>{ROLES[r].icon}</span>;
-          })}
-        </div>
+        <SquadStrip s={s} />
         {(s.mission || s.battle) && (
           <button className={`hud-mission ${s.battle ? 'battle' : ''}`} onClick={openMission}>
             <span>{s.battle ? `⚔ Duel vs SQ ${s.battle.we_attacked ? s.battle.defender : s.battle.attacker}` : s.mission.title}</span>
@@ -810,7 +862,7 @@ export default function WorldTab({ s, token, map, refresh, openMission, openSqua
             onPointerDown={(e) => { e.preventDefault(); (e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId); startFire(); }}
             onPointerUp={stopFire} onPointerCancel={stopFire} onPointerLeave={stopFire} onContextMenu={(e) => e.preventDefault()}
             aria-label={target ? `Fire at squad ${target.number}` : 'No target in range'}>
-            <Icon name="target" /><span>{reloading ? 'RELOAD' : 'FIRE'}</span><small>{weapon.name} · {ammoLeft}/{weapon.mag}</small>
+            <Icon name="pistol" /><span>{reloading ? 'RELOAD' : 'FIRE'}</span><small>{weapon.name} · {ammoLeft}/{weapon.mag}</small>
           </button>
         )}
         {isCaptain && onFoot && !inAir && canMove && (

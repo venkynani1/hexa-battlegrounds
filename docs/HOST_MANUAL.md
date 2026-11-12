@@ -135,3 +135,10 @@ Follow the run-sheet in [GAME_DESIGN.md](GAME_DESIGN.md#120-minute-run-sheet-per
 - **Trading** items between squads is negotiated in chat but not yet an in-app transaction (host can transfer with an audited adjustment).
 - **Alliances** are pairwise.
 - Backlog ideas: drag-and-drop map editor, item trading, multi-squad battles, per-map mission pools, CSV export of standings, PWA install prompt, i18n (Tamil/Telugu/Hindi copy).
+
+## Disconnected players, bots, and no leaderboard (v9)
+- **Squad list (top left on every phone):** teammates 1–4 with their role. A player silent for 15 s shows 📶 (reconnecting); after **60 s** (setting `away_seconds`) they show **BOT**.
+- **The bot:** an online teammate receives the missing player's clue as a second clue ("🤖 Bot relays the Intel clue"), so the squad can still solve every box. If the **captain** drops, the first online teammate becomes captain. When the player comes back, the bot leaves and every role — including the captaincy — goes back. Every change is announced in squad chat and as a toast.
+- **Squad chat:** on every phone (tap the squad list). Messages and one-tap pings. Online players also get Teams call / chat buttons.
+- **No rankings during the match:** phones and the projector show no leaderboard and no scores of other squads; each squad sees only its own points. At the end only the **winner** is revealed (no runner-up, no podium).
+- **Landscape:** the HUD is laid out for phones held sideways (minimap + squad list left, buttons right, the middle clear) and for portrait.

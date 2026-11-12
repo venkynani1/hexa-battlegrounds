@@ -196,7 +196,7 @@ function ProjectorWorld({ s, map, zoneWarn }: { s: any; map: MapData; zoneWarn: 
 
 function PlayScreen({ s, map }: { s: any; map: MapData }) {
   const zoneWarn = !!s.arena.zone_next_at && msUntil(s.arena.zone_next_at) > 0;
-  const board = [...s.squads].filter((q: any) => q.ready).sort((a: any, b: any) => (b.points ?? 0) - (a.points ?? 0) || a.number - b.number);
+  const board = [...s.squads].filter((q: any) => q.ready).sort((a: any, b: any) => a.number - b.number);
   return (
     <div className="screen">
       <Head s={s} right={<div className="row" style={{ gap: 10 }}>
@@ -213,21 +213,15 @@ function PlayScreen({ s, map }: { s: any; map: MapData }) {
           <div style={{ marginTop: 8 }}><ThreatMeter lock={s.arena.overlay?.lock || []} /></div>
         </div>
         <div className="panel" style={{ minHeight: 0, flex: '1 1 50%', overflow: 'hidden' }}>
-          <div className="panel-title">Leaderboard</div>
-          {s.arena.overlay?.hide_rankings ? (
-            <div className="center col" style={{ gap: 10, padding: '30px 0' }}>
-              <div className="mega" style={{ fontSize: 40 }}>Rankings sealed</div>
-              <div className="muted">The host will reveal the standings.</div>
-            </div>
-          ) : <div className="col" style={{ gap: 6 }}>
-            {board.slice(0, 10).map((q: any, i: number) => (
-              <div key={q.number} className={`leader-row top${i + 1}`}>
-                <span className="rk">{i + 1}</span>
-                <span>Squad {q.number} {q.name !== `Squad ${q.number}` && <span className="muted" style={{ fontSize: 13 }}>{q.name}</span>}{q.state === 'recovery' && ' ✚'}{q.in_battle && ' ⚔'}</span>
-                <b className="mono">{q.points ?? 0}</b>
-              </div>
+          <div className="panel-title">Squads in the fight</div>
+          <div className="squad-chips">
+            {board.map((q: any) => (
+              <span key={q.number} className={`sq-chip ${q.state === 'recovery' ? 'down' : ''} ${q.in_battle ? 'fight' : ''}`}>
+                <b>{q.number}</b>{q.state === 'recovery' ? ' ✚' : q.in_battle ? ' ⚔' : ''}
+              </span>
             ))}
-          </div>}
+          </div>
+          <div className="muted" style={{ fontSize: 13, marginTop: 10 }}>Scores stay secret until the end — only the winner is revealed.</div>
         </div>
         <div className="panel" style={{ flex: '1 1 40%', minHeight: 0, overflow: 'hidden' }}>
           <div className="panel-title">Live feed</div>
@@ -325,21 +319,18 @@ function ResultsScreen({ s }: { s: any }) {
       </div>
     );
   }
-  const [first, second, third] = list;
+  const first = list[0];
   const tie = first?.tie;
   return (
     <div className="screen-full">
       {step >= 6 && <Confetti />}
       <div className="up" style={{ fontSize: 26, color: 'var(--orange)' }}>{grand ? 'Grand champion · all maps' : `${s.arena.name} champion`}</div>
       {step >= 1 && step <= 3 && <div className="huge-timer">{4 - step}</div>}
-      {step >= 4 && (
-        <div className="podium" style={{ marginTop: 10 }}>
-          <div>{step >= 5 && second && <><b className="up" style={{ fontSize: 30 }}>Squad {second.number}</b><span className="muted">{second.name}{grand ? ` · Map ${second.arena}` : ''} · {second.points}</span></>}
-            <div className="block" style={{ height: '22vh', background: 'linear-gradient(180deg,#d6e2f0,#7f8ea3)', color: '#0b1220' }}>2</div></div>
-          <div>{step >= 6 && first && <><b className="mega gold" style={{ fontSize: 'clamp(30px,4vw,64px)' }}>Squad {first.number}</b><span style={{ fontSize: 20 }}>{first.name}{grand ? ` · Map ${first.arena}` : ''} · {first.points} pts</span></>}
-            <div className="block" style={{ height: '32vh', background: 'linear-gradient(180deg,#ffd76b,#d49513)', color: '#1a1200' }}>1</div></div>
-          <div>{third && <><b className="up" style={{ fontSize: 26 }}>Squad {third.number}</b><span className="muted">{third.name}{grand ? ` · Map ${third.arena}` : ''} · {third.points}</span></>}
-            <div className="block" style={{ height: '15vh', background: 'linear-gradient(180deg,#e9a873,#9b5a2a)', color: '#1a0b00' }}>3</div></div>
+      {step >= 4 && first && (
+        <div className="win-reveal">
+          <div className="win-trophy big" aria-hidden>🏆</div>
+          {step >= 5 && <b className="mega gold" style={{ fontSize: 'clamp(44px,7vw,120px)' }}>Squad {first.number}</b>}
+          {step >= 6 && <span style={{ fontSize: 'clamp(20px,2.4vw,36px)' }}>{first.name}{grand ? ` · Map ${first.arena}` : ''}</span>}
         </div>
       )}
       {step >= 6 && (tie

@@ -83,14 +83,14 @@ export function OnlineSquad({ s, token, refresh }: { s: any; token: string; refr
 }
 
 /** Floating squad comms: chat + pings + Teams buttons. Works on every screen of the online edition. */
-export function SquadComms({ s, token }: { s: any; token: string }) {
+export function SquadComms({ s, token, inGame = false }: { s: any; token: string; inGame?: boolean }) {
   const [open, setOpen] = useState(false);
   const [msgs, setMsgs] = useState<any[]>([]);
   const [text, setText] = useState('');
   const seenKey = `hb_chat_seen_${s.team.id}`;
   const [seen, setSeen] = useState<number>(() => Number(store.get(seenKey) || 0));
-  const last = Number(s.online?.chat_last || 0);
   const lastId = useRef(0);
+  const last = Number(s.online?.chat_last || s.chat_last || 0);
   const box = useRef<HTMLDivElement>(null);
 
   const inflight = useRef(false);
@@ -119,6 +119,12 @@ export function SquadComms({ s, token }: { s: any; token: string }) {
     box.current?.scrollTo({ top: 1e6 });
   }, [open, msgs.length]);
   const unread = msgs.filter((m) => m.id > seen && !m.me && m.kind !== 'system').length;
+  useEffect(() => { window.dispatchEvent(new CustomEvent('hb:unread', { detail: unread })); }, [unread]);
+  useEffect(() => {
+    const f = () => setOpen((o) => !o);
+    window.addEventListener('hb:chat', f);
+    return () => window.removeEventListener('hb:chat', f);
+  }, []);
 
   async function send(body: string, kind: 'msg' | 'ping' = 'msg', e?: FormEvent) {
     e?.preventDefault();
@@ -129,23 +135,23 @@ export function SquadComms({ s, token }: { s: any; token: string }) {
 
   return (
     <>
-      <button className={`comms-fab ${unread ? 'new' : ''}`} onClick={() => setOpen((o) => !o)} aria-expanded={open} aria-label={`Squad chat${unread ? `, ${unread} new` : ''}`}>
+      {!inGame && <button className={`comms-fab ${unread ? 'new' : ''}`} onClick={() => setOpen((o) => !o)} aria-expanded={open} aria-label={`Squad chat${unread ? `, ${unread} new` : ''}`}>
         💬<span>Squad</span>{unread > 0 && <em>{unread}</em>}
-      </button>
+      </button>}
       {open && (
-        <aside className="comms-panel" aria-label="Squad chat">
+        <aside className={`comms-panel ${inGame ? 'in-game' : ''}`} aria-label="Squad chat">
           <header>
-            <b>Squad {s.team.number} · {s.online.size} players</b>
+            <b>Squad {s.team.number} · {(s.squad || s.roster || []).length} players</b>
             <button className="gd-close" onClick={() => setOpen(false)} aria-label="Close squad chat">✕</button>
           </header>
           <div className="comms-mates">
-            {(s.online.squad || []).map((m: any, i: number) => (
-              <span key={i} className={`mate ${m.online ? 'on' : ''}`} title={m.email}>
-                {m.role ? ROLES[m.role as Role].icon : '•'}{m.role2 ? ROLES[m.role2 as Role].icon : ''} {m.me ? 'You' : m.name}
+            {(s.squad || s.online?.squad || []).map((m: any, i: number) => (
+              <span key={i} className={`mate ${m.status === 'on' || m.online ? 'on' : ''} ${m.status === 'away' ? 'away' : ''}`}>
+                {m.role ? ROLES[m.role as Role].icon : '•'}{m.role2 ? ROLES[m.role2 as Role].icon : ''} {m.me ? 'You' : m.name}{m.status === 'away' ? ' · 🤖 bot' : ''}
               </span>
             ))}
           </div>
-          <TeamsButtons s={s} compact />
+          {s.online && <TeamsButtons s={s} compact />}
           <div className="comms-msgs" ref={box}>
             {msgs.length === 0 && <p className="muted" style={{ fontSize: 13 }}>Say hi! Clues stay on your own screen — read them out or type them here for your captain.</p>}
             {msgs.map((m) => (

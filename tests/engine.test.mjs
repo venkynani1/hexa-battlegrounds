@@ -404,7 +404,7 @@ test('finale: synchronized rounds for all squads, deterministic results, gated r
   const spec = (await one(`select spectator_token from arenas where id = $1`, [arena1])).spectator_token;
   let sv = await call('spectator_state', spec);
   assert.equal(sv.sync.total, 3);
-  assert.equal(sv.squads[0].points, null);
+  assert.ok(sv.squads[0].points == null, "points are hidden during the finale");
   const capByTeam = Object.fromEntries(Object.values(squads).filter((s) => s.byRole).map((s) => [s.id, s.byRole.captain]));
   for (const i of insts.slice(0, 2)) {
     const res = await call('captain_submit', capByTeam[i.team_id], i.id, await answersFor(i.id), idem());
