@@ -3,6 +3,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { demoTab, friendly, GameError, newKey, rpc, store } from '../lib/api';
 import { useLive } from '../lib/live';
+import { API_MODE } from '../lib/supabase';
 import { msUntil, progress, secondsLeft, useNow, fmtClock, serverTime } from '../lib/time';
 import { FINALE_STAGES, MATCH_PHASES, KIND_LABEL, locName, MapData, ROLE_ORDER, ROLES, Role, TIER_COLOR, useMapData } from '../lib/game';
 import { buzz, sfx, unlockAudio } from '../lib/sound';
@@ -28,7 +29,7 @@ export default function Play() {
   const live = useLive<any>(fetcher, {
     topics,
     pollMs: 15000,
-    pollFastMs: 9000,
+    pollFastMs: API_MODE ? 7000 : 9000,
     enabled: !!token,
     deadlines: (s) => [s?.mission?.deadline, s?.battle?.deadline, s?.team?.travel_arrive_at, s?.team?.recovery_deadline,
       s?.arena?.shuttle_arrive_at, s?.arena?.roles_deadline, s?.arena?.zone_next_at, s?.mission?.relay?.fallback_at,

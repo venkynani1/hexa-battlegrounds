@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { supabase } from './supabase';
+import { API_MODE, supabase } from './supabase';
 import { syncClock, msUntil } from './time';
 
 type Options = {
@@ -86,7 +86,8 @@ export function useLive<T = any>(fetcher: () => Promise<T>, opts: Options) {
 
   useEffect(() => {
     if (!enabled) return;
-    const ms = connected ? opts.pollMs ?? 8000 : opts.pollFastMs ?? 3000;
+    // with the Vercel + Neon backend the database cannot push pings, so always use the faster poll
+    const ms = connected && !API_MODE ? opts.pollMs ?? 8000 : opts.pollFastMs ?? 3000;
     const id = setInterval(() => { if (document.visibilityState === 'visible') refresh(); }, ms);
     return () => clearInterval(id);
   }, [connected, enabled, opts.pollMs, opts.pollFastMs, refresh]);

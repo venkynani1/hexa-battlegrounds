@@ -1,4 +1,4 @@
-import { supabase } from './supabase';
+import { API_MODE, supabase } from './supabase';
 
 export class GameError extends Error {
   code: string;
@@ -133,9 +133,23 @@ function parseCode(message: string): string {
   return message;
 }
 
+async function apiRpc(fn: string, args: Record<string, unknown>): Promise<{ data: any; error: { message: string } | null }> {
+  let r: Response;
+  try {
+    r = await fetch(`/rest/v1/rpc/${fn}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(args) });
+  } catch (e) {
+    return { data: null, error: { message: 'NETWORK: ' + String((e as any)?.message || e) } };
+  }
+  const text = await r.text();
+  let body: any = null;
+  try { body = text ? JSON.parse(text) : null; } catch { body = null; }
+  if (!r.ok) return { data: null, error: { message: String(body?.message || (r.status >= 500 ? 'NETWORK: server busy (' + r.status + ')' : 'HTTP ' + r.status)) } };
+  return { data: body, error: null };
+}
+
 export async function rpc<T = any>(fn: string, args: Record<string, unknown> = {}): Promise<T> {
-  if (!supabase) throw new GameError('NOT_CONFIGURED');
-  const { data, error } = await supabase.rpc(fn, args);
+  if (!API_MODE && !supabase) throw new GameError('NOT_CONFIGURED');
+  const { data, error } = API_MODE ? await apiRpc(fn, args) : await supabase!.rpc(fn, args);
   if (error) throw new GameError(parseCode(error.message), error.message);
   if (data && typeof data === 'object' && (data as any).error && (data as any).ok === undefined) {
     throw new GameError(parseCode((data as any).error), (data as any).error);
