@@ -66,8 +66,9 @@ export function OnlineSquad({ s, token, refresh }: { s: any; token: string; refr
       </div>
       <TeamsButtons s={s} />
       <p className="muted" style={{ fontSize: 13, margin: 0 }}>
-        {o.started ? 'The game is on — your map is on your boarding pass. ' : 'Maps are assigned when the host starts the game. '}
+        {o.started ? 'The game is on — your map is on your boarding pass. ' : o.auto ? `You are on Map ${o.fill?.map ?? s.arena.number}. It takes off by itself when it is full or when its countdown ends. ` : 'Maps are assigned when the host starts the game. '}
         {o.size >= 3 ? 'Your squad is ready. Start the Teams call now — you will need to talk: everyone sees a different clue.'
+          : o.auto ? 'If your squad is still short at take-off, you are merged with other players, so nobody is left out.'
           : 'If your squad is still short when the host starts, you are merged with other players, so nobody is left out.'}
       </p>
       {!o.started && <details className="sq-switch">

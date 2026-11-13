@@ -874,6 +874,19 @@ function OnlinePanel({ d, token }: { d: any; token: string }) {
       load();
     } catch (e) { toast(friendly(e), 'bad'); } finally { setStarting(false); }
   }
+  const [autoBusy, setAutoBusy] = useState(false);
+  async function startAuto(on: boolean) {
+    if (on && !confirm(`Start the online game in automatic mode?\n\nPlayers keep checking in and forming squads. Each map takes off by itself when it has ${sum?.map_size ?? 15} complete squads, or ${Math.round((sum?.fill_seconds ?? 180) / 60)} minutes after its first 4 players arrive. The next map then starts filling. Every match runs on its own.`)) return;
+    setAutoBusy(true);
+    try { setSum(await rpc<any>('host_online_auto', { p_token: token, p_length: length, p_on: on })); toast(on ? 'Automatic maps are on — maps take off by themselves' : 'Automatic starts paused', 'good'); }
+    catch (e) { toast(friendly(e), 'bad'); } finally { setAutoBusy(false); }
+  }
+  async function launchNow() {
+    if (!confirm('Launch the filling map now with the squads that are there?')) return;
+    try { const r = await rpc<any>('host_online_launch', { p_token: token }); toast(`Map ${r.map} took off with ${r.squads} squads`, 'good'); load(); }
+    catch (e) { toast(friendly(e), 'bad'); }
+  }
+  const fillMap = (sum?.maps || []).find((m: any) => !m.launched && m.players > 0);
   async function attendance() {
     try {
       const rows = await rpc<any[]>('host_attendance', { p_token: token });
@@ -907,7 +920,24 @@ function OnlinePanel({ d, token }: { d: any; token: string }) {
           <p className="muted" style={{ fontSize: 13, margin: 0 }}>Squads of 3 are ready to play; squads of 4 are full. Nothing starts until you press Start online game below.</p>
         </div>
       </div>
-      {sum && !sum.started && (
+      {sum && !sum.started && sum.auto && (
+        <div className="panel online-start">
+          <div className="row between"><div className="panel-title" style={{ margin: 0 }}>Automatic maps are ON</div><span className="chip good">● Running</span></div>
+          <div className="os-stats">
+            <div><b>{sum.players}</b><small>players checked in</small></div>
+            <div><b>{(sum.maps || []).filter((m: any) => m.launched).length}</b><small>maps playing</small></div>
+            <div><b>{fillMap ? `Map ${fillMap.number}` : '—'}</b><small>filling now</small></div>
+            <div><b>{fillMap ? `${fillMap.squads}/${sum.map_size}` : '0'}</b><small>squads on it</small></div>
+            <div><b>{fillMap?.fill_deadline ? <Countdown to={fillMap.fill_deadline} /> : fillMap ? 'waits for 4 players' : '—'}</b><small>takes off in</small></div>
+          </div>
+          <div className="row wrap" style={{ gap: 8 }}>
+            <button className="btn primary" disabled={!fillMap} onClick={launchNow}>🛫 Launch {fillMap ? `Map ${fillMap.number}` : 'the filling map'} now</button>
+            <button className="btn ghost" disabled={autoBusy} onClick={() => startAuto(false)}>⏸ Pause automatic starts</button>
+          </div>
+          <p className="muted" style={{ fontSize: 13, margin: 0 }}>Nothing else to press. A map takes off when it has {sum.map_size} complete squads, or {Math.round((sum.fill_seconds ?? 180) / 60)} minutes after its first 4 players arrive (45 seconds once all its squads are there). Small squads on that map are merged at take-off; extra players go to the next map, which starts filling at once. Keep this page open.</p>
+        </div>
+      )}
+      {sum && !sum.started && !sum.auto && (
         <div className="panel online-start">
           <div className="panel-title">Start the online game</div>
           <div className="os-stats">
@@ -925,16 +955,20 @@ function OnlinePanel({ d, token }: { d: any; token: string }) {
               </button>
             ))}
           </div>
-          <button className="btn primary big auto-start" disabled={starting || sum.squads === 0} onClick={startGame}>{starting ? 'Starting…' : '▶ Start online game'}</button>
+          <button className="btn primary big auto-start" disabled={autoBusy} onClick={() => startAuto(true)}>{autoBusy ? 'Starting…' : '▶ Start — automatic maps'}</button>
+          <p className="muted" style={{ fontSize: 13, margin: 0 }}><b>Recommended.</b> Press once: players keep joining, each map fills up and takes off by itself, and every match runs on its own.</p>
+          <details><summary className="muted" style={{ cursor: 'pointer' }}>Or start everyone at once</summary>
+          <button className="btn big" style={{ marginTop: 8 }} disabled={starting || sum.squads === 0} onClick={startGame}>{starting ? 'Starting…' : '▶ Start all squads now (one wave)'}</button>
           <p className="muted" style={{ fontSize: 13, margin: 0 }}>Until you press Start, everyone waits in the lobby with their squad and nothing moves. At Start: squads of 1–2 are merged (a last squad of 2 plays with the bot covering), squads are spread evenly over the maps, and every map takes off together. Late players can still fill an open seat until their squad lands.</p>
+          </details>
         </div>
       )}
       <div className="panel">
         <div className="row between"><div className="panel-title">{sum?.started ? 'Online maps' : 'Lobby'} · {sum?.players ?? '…'} players checked in</div><button className="btn sm" onClick={load}>Refresh</button></div>
-        <table className="tbl"><thead><tr><th>Map</th><th>Phase</th><th>Players</th><th>Squads</th><th>Full (4)</th><th>Ready (3+)</th><th>Short (1–2)</th><th>Projector</th></tr></thead>
+        <table className="tbl"><thead><tr><th>Map</th><th>Phase</th><th>Takes off</th><th>Players</th><th>Squads</th><th>Full (4)</th><th>Ready (3+)</th><th>Short (1–2)</th><th>Projector</th></tr></thead>
           <tbody>{(sum?.maps || []).map((m: any) => {
             const a = d.arenas.find((x: any) => x.id === m.id);
-            return <tr key={m.id}><td>Map {m.number}</td><td>{m.phase}</td><td>{m.players}</td><td>{m.squads}</td><td>{m.full}</td><td>{m.ready}</td><td>{m.short ? <span className="chip warn">{m.short}</span> : 0}</td>
+            return <tr key={m.id}><td>Map {m.number}</td><td>{m.phase}</td><td>{m.launched ? '✓ playing' : m.fill_deadline ? <Countdown to={m.fill_deadline} /> : sum?.auto ? 'filling' : '—'}</td><td>{m.players}</td><td>{m.squads}</td><td>{m.full}</td><td>{m.ready}</td><td>{m.short ? <span className="chip warn">{m.short}</span> : 0}</td>
               <td>{a && <button className="btn xs" onClick={() => window.open(`${window.location.origin}/screen/${a.spectator_token}`, '_blank')}>Open</button>}</td></tr>;
           })}</tbody></table>
       </div>

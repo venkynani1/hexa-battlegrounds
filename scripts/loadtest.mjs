@@ -64,10 +64,18 @@ const pct = (a, p) => { const s = [...a].sort((x, y) => x - y); return Math.roun
 
 const ONLINE = process.env.ONLINE === '1';
 const PLAYERS = Number(process.env.PLAYERS || 200);
+// AUTO=1 (online): the host presses Start once (automatic maps); players arrive over JOIN_SECONDS
+// and every map fills and takes off by itself. FILL_SECONDS = countdown once a map has 2 ready squads.
+const AUTO = ONLINE && process.env.AUTO === '1';
+const JOIN_SECONDS = Number(process.env.JOIN_SECONDS || 120);
 const host = (await rpc('host_create_event', { p_code: EVENT, p_name: 'Load test', p_secret: SECRET, p_arenas: ONLINE ? 1 : MAPS }, false)).token;
 await rpc('host_settings', { p_token: host, p_settings: { shuttle_seconds: 8, roles_seconds: 3, plane_seconds: 40, ...(ONLINE ? { online: 1, online_max_maps: 8 } : {}) } }, false);
 const squads = [];
-if (ONLINE) {
+if (AUTO) {
+  await rpc('host_settings', { p_token: host, p_settings: { online_fill_seconds: Number(process.env.FILL_SECONDS || 60) } }, false);
+  await rpc('host_online_auto', { p_token: host, p_length: 'quick', p_on: true }, false);
+  console.log(`Online event ${EVENT}: automatic maps ON; ${PLAYERS} players will arrive over ${JOIN_SECONDS}s`);
+} else if (ONLINE) {
   // online edition: everyone checks in with an employee ID and e-mail; a few create squads for friends,
   // most use matchmaking. Squads of 4 (3 allowed), maps open by themselves.
   console.log(`Online event ${EVENT}: ${PLAYERS} players checking in…`);
@@ -93,13 +101,14 @@ for (let i = 0; i < pins.length; i += 5) {
   })));
 }
 }
-if (ONLINE) {
+if (ONLINE && !AUTO) {
   // the host presses Start: small squads merge, squads are dealt over the maps, every map takes off
   const st = await rpc('host_online_start', { p_token: host, p_length: 'quick' }, false);
   console.log(`  Start: ${st.squads} squads on ${st.maps} maps (${st.merged} players merged, ${st.left_out} left out)`);
 }
 const ov = await rpc('host_overview', { p_token: host }, false);
-const arenas = ov.arenas.map((a) => a.id);
+let arenas = ov.arenas.map((a) => a.id);
+if (!AUTO) {
 if (!ONLINE) for (const a of arenas) await rpc('host_command', { p_token: host, p_arena: a, p_cmd: 'zone_cancel', p_args: {} }, false).catch(() => {});
 if (!ONLINE) for (const a of arenas) await rpc('host_command', { p_token: host, p_arena: a, p_cmd: 'open_boarding', p_args: {} }, false);
 if (!ONLINE) for (const a of arenas) await rpc('host_command', { p_token: host, p_arena: a, p_cmd: 'drive', p_args: {} }, false);
@@ -113,9 +122,10 @@ await sleep(1200);
 for (const a of arenas) await rpc('host_command', { p_token: host, p_arena: a, p_cmd: 'finalize_roles', p_args: {} }, false).catch(() => {});
 await sleep(1000);
 for (const a of arenas) await rpc('host_command', { p_token: host, p_arena: a, p_cmd: 'set_phase', p_args: { phase: 1 } }, false).catch(() => {}); // gunfights on
+}
 const map = await rpc('map_data', {}, false);
 const ground = map.locations.filter((l) => l.enabled !== false && (l.level || 0) === 0 && !['start', 'stairs'].includes(l.kind));
-const end = Date.now() + MINUTES * 60000;
+const end = Date.now() + (AUTO ? JOIN_SECONDS * 1000 : 0) + MINUTES * 60000;
 let solved = 0; let steers = 0; let shots = 0; let knocks = 0;
 console.log(`Playing for ${MINUTES} min with ${squads.reduce((n, q) => n + q.tokens.length, 0)} players (${REALTIME ? 'Realtime on' : 'Realtime off: fast polling'})…`);
 
@@ -157,9 +167,9 @@ async function phone(token) {
   if (ONLINE) loops.push((async () => {
     while (Date.now() < end) { await sleep(15000 + Math.random() * 10000); await rpc('squad_chat_send', { p_token: token, p_body: 'clue: ' + Math.random().toString(36).slice(2, 7), p_kind: 'msg' }).catch(() => {}); await rpc('squad_chat', { p_token: token, p_after: 0 }).catch(() => {}); }
   })());
-  if (captain) loops.push((async () => {
+  loops.push((async () => {
     while (Date.now() < end) {
-      if (!st || st.arena.phase !== 'play') { await sleep(1000); continue; }
+      if (!captain || !st || st.arena.phase !== 'play') { await sleep(1000); continue; }
       try {
         if (st.mission || st.battle) {
           // think for a while, then answer (right two times out of three)
@@ -206,7 +216,26 @@ const prog = setInterval(() => {
   const all = Object.values(lat).flat();
   console.log(`  ${Math.round((Date.now() - t0) / 1000)}s · ${calls} calls · p95 ${pct(all, 95)} ms · steer p95 ${pct(lat.captain_steer || [0], 95)} ms · server errors ${failed}`);
 }, 30000);
-await Promise.all(squads.flatMap((s) => s.tokens.map((t) => phone(t))));
+if (AUTO) {
+  // the host console stays open (it runs the automatic starter every 5 s); players arrive one by one
+  const hostLoop = (async () => { while (Date.now() < end) { await rpc('host_online_summary', { p_token: host }).catch(() => {}); await sleep(5000); } })();
+  const phones = []; const toks = [];
+  for (let n = 0; n < PLAYERS; n++) {
+    await sleep((JOIN_SECONDS * 1000) / PLAYERS);
+    const friendsCode = n % 20 >= 1 && n % 20 <= 3 ? toks[toks.length - (n % 20)]?.code : null;
+    const r = await rpc('online_join', { p_event_code: EVENT, p_emp_id: String(7000000000 + n), p_email: `load${n}@hexaware.com`, p_name: `P${n}`,
+      p_mode: n % 20 === 0 ? 'create' : friendsCode ? 'join' : 'queue', p_code: friendsCode, p_consent: true, p_existing_token: null }).catch(() => null);
+    if (!r?.token) continue;
+    toks.push(r); phones.push(phone(r.token));
+  }
+  squads.push({ tokens: toks.map((t) => t.token) });
+  await Promise.all([...phones, hostLoop]);
+  const sum = await rpc('host_online_summary', { p_token: host }, false);
+  arenas = sum.maps.map((m) => m.id);
+  console.log('\nMaps:'); for (const m of sum.maps) console.log(`  Map ${m.number}: ${m.phase}${m.launched ? '' : ' (not launched)'} · ${m.players} players · ${m.squads} squads`);
+  const stuck = sum.maps.filter((m) => !m.launched).reduce((n, m) => n + m.players, 0);
+  console.log(`Players still in a lobby at the end: ${stuck}`);
+} else await Promise.all(squads.flatMap((s) => s.tokens.map((t) => phone(t))));
 clearInterval(prog);
 const secs = (Date.now() - t0) / 1000;
 const all = Object.values(lat).flat();

@@ -2,7 +2,8 @@
 // Siruseri (3D), and the approach where the game hands out roles. Phones and the big screen.
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { ROLES, Role } from '../lib/game';
-import { serverTime, useNow } from '../lib/time';
+import { secondsLeft, serverTime, useNow } from '../lib/time';
+import { Countdown } from './ui';
 
 /** Boarding group label for a squad's bus/group number (host roster). */
 export const busCode = (n?: number | null) => (n ? `Group ${String.fromCharCode(64 + Math.min(26, n))}` : '—');
@@ -60,7 +61,7 @@ function Barcode({ seed }: { seed: string }) {
 }
 
 export function BoardingPass({ s }: { s: any }) {
-  const pre = !!s.online && !s.online.started;   // online: the map is assigned when the host starts
+  const pre = !!s.online && !s.online.started && !s.online.auto;   // online (one-wave start): the map is assigned at the start
   const map = s.arena.number || 1;
   const role = s.me.role as Role | null;
   const boarding = s.arena.phase === 'boarding';
@@ -98,8 +99,12 @@ export function Lounge({ s }: { s: any }) {
   return (
     <div className="lounge">
       <div className={`gate-sign ${boarding ? 'go' : ''}`}>
-        <span>{s.online && !s.online.started ? 'Lobby' : `Gate ${s.arena.number || 1}`}</span>
-        <b>{boarding ? 'Now boarding — take your seat' : s.online && !s.online.started ? 'Waiting for the host to start' : 'Waiting for boarding'}</b>
+        <span>{s.online && !s.online.started && !s.online.auto ? 'Lobby' : `Gate ${s.arena.number || 1}`}</span>
+        <b>{boarding ? 'Now boarding — take your seat'
+          : s.online?.fill ? (s.online.fill.deadline && secondsLeft(s.online.fill.deadline) > 0
+            ? <>Map {s.online.fill.map} takes off in <Countdown to={s.online.fill.deadline} /> · {s.online.fill.squads}/{s.online.fill.size} squads</>
+            : `Map ${s.online.fill.map} is filling · ${s.online.fill.squads}/${s.online.fill.size} squads — takes off when full, or a few minutes after 4 players are here`)
+          : s.online && !s.online.started ? 'Waiting for the host to start' : 'Waiting for boarding'}</b>
       </div>
       <BoardingPass s={s} />
       <div className="panel">

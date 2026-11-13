@@ -31,7 +31,7 @@ export default function Play() {
     pollMs: 15000,
     pollFastMs: API_MODE ? 7000 : 9000,
     enabled: !!token,
-    deadlines: (s) => [s?.mission?.deadline, s?.battle?.deadline, s?.team?.travel_arrive_at, s?.team?.recovery_deadline,
+    deadlines: (s) => [s?.online?.fill?.deadline, s?.mission?.deadline, s?.battle?.deadline, s?.team?.travel_arrive_at, s?.team?.recovery_deadline,
       s?.arena?.shuttle_arrive_at, s?.arena?.roles_deadline, s?.arena?.zone_next_at, s?.mission?.relay?.fallback_at,
       s?.mission?.clue?.reveal_seconds ? new Date(new Date(s.mission.started_at).getTime() + s.mission.clue.reveal_seconds * 1000).toISOString() : null],
   });
