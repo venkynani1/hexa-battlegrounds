@@ -108,7 +108,13 @@ if (ONLINE && !AUTO) {
 }
 const ov = await rpc('host_overview', { p_token: host }, false);
 let arenas = ov.arenas.map((a) => a.id);
-if (!AUTO) {
+// START=1 (in-person): the host presses "Start match" (automatic quick match) like on the day
+const START = !ONLINE && process.env.START === '1';
+if (START) {
+  await rpc('host_command', { p_token: host, p_arena: null, p_cmd: 'start_match', p_args: { length: process.env.LENGTH || 'quick' }, p_reason: null }, false);
+  console.log('Host pressed Start match (automatic, ' + (process.env.LENGTH || 'quick') + ')');
+}
+if (!AUTO && !START) {
 if (!ONLINE) for (const a of arenas) await rpc('host_command', { p_token: host, p_arena: a, p_cmd: 'zone_cancel', p_args: {} }, false).catch(() => {});
 if (!ONLINE) for (const a of arenas) await rpc('host_command', { p_token: host, p_arena: a, p_cmd: 'open_boarding', p_args: {} }, false);
 if (!ONLINE) for (const a of arenas) await rpc('host_command', { p_token: host, p_arena: a, p_cmd: 'drive', p_args: {} }, false);
@@ -243,6 +249,21 @@ console.log(`\nPlayers: ${squads.reduce((n, q) => n + q.tokens.length, 0)} · ma
 console.log(`All calls, ms: p50 ${pct(all, 50)} · p95 ${pct(all, 95)} · p99 ${pct(all, 99)} · max ${Math.round(Math.max(...all))}`);
 for (const [fn, a] of Object.entries(lat).sort((x, y) => y[1].length - x[1].length)) console.log(`  ${fn.padEnd(22)} ${String(a.length).padStart(6)} calls · p50 ${String(pct(a, 50)).padStart(4)} · p95 ${String(pct(a, 95)).padStart(5)} · max ${Math.round(Math.max(...a))}`);
 console.log(`Server errors / dropped requests (should be 0): ${failed}`);
+if (process.env.TO_RESULTS === '1') {
+  // keep the host console open until every map that took off has its results
+  const until = Date.now() + 8 * 60000; let ovr = null;
+  while (Date.now() < until) {
+    ovr = await rpc('host_overview', { p_token: host }, false).catch(() => ovr);
+    const live = (ovr?.arenas || []).filter((a) => a.autopilot);
+    if (live.length && live.every((a) => ['results', 'ended'].includes(a.phase))) break;
+    await sleep(10000);
+  }
+  console.log('Final state of every map:');
+  for (const a of ovr?.arenas || []) {
+    const w = (a.results || [])[0];
+    console.log(`  Map ${a.number}: ${a.phase}${a.autopilot ? '' : ' (never took off)'}${w ? ` · winner Squad ${w.number}${w.name ? ' ' + w.name : ''}${w.points != null ? ' (' + w.points + ' pts)' : ''}` : ''}`);
+  }
+}
 console.log('Game-rule refusals (normal: cooldowns, areas searched out, rounds closed):', errs);
 console.log('Target on venue Wi-Fi: p95 under 500 ms and no server errors.');
 if (pool) await pool.end();
