@@ -927,7 +927,7 @@ function OnlinePanel({ d, token }: { d: any; token: string }) {
           <div className="field"><label htmlFor="dm">Allowed e-mail domains (comma-separated, empty = any)</label>
             <input id="dm" className="input" value={domain} onChange={(e) => setDomain(e.target.value)} placeholder="hexaware.com" /></div>
           <button className="btn primary sm" onClick={save}>Save</button>
-          <p className="muted" style={{ fontSize: 13, margin: 0 }}>Squads of 3 are ready to play; squads of 4 are full. Nothing starts until you press Start online game below.</p>
+          <p className="muted" style={{ fontSize: 13, margin: 0 }}>Squads of 3 are ready to play; squads of 4 are full. Nothing takes off until you press Start below — then maps fill and take off by themselves.</p>
         </div>
       </div>
       {sum && !sum.started && sum.auto && (
