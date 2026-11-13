@@ -14,7 +14,7 @@ const MAPS = Math.max(1, Math.min(4, Number(process.env.MAPS || 3)));
 const SQUADS = Number(process.env.SQUADS || MAPS * 15);
 const MINUTES = Number(process.env.MINUTES || 3);
 const REALTIME = process.env.REALTIME === '1';
-const STATE_MS = Number(process.env.STATE_MS || (REALTIME ? 10000 : 6000));
+const STATE_MS = Number(process.env.STATE_MS || (REALTIME ? 15000 : 9000));
 const EVENT = process.env.EVENT || `LOAD${Math.random().toString(36).slice(2, 6).toUpperCase()}`;
 const SECRET = process.env.SECRET || 'loadtest-secret';
 
@@ -135,7 +135,7 @@ async function phone(token) {
   };
   const loops = [
     (async () => { while (Date.now() < end) { await state(); await sleep(STATE_MS * (0.85 + Math.random() * 0.3)); } })(),
-    (async () => { while (Date.now() < end) { await sleep(st?.me?.role === 'captain' ? 2300 + Math.random() * 500 : 4200 + Math.random() * 800); lastPos = await rpc('arena_positions', { p_token: token }).catch(() => lastPos); } })(),
+    (async () => { while (Date.now() < end) { await sleep(st?.me?.role === 'captain' ? 3500 + Math.random() * 700 : 6800 + Math.random() * 1400); lastPos = await rpc('arena_positions', { p_token: token }).catch(() => lastPos); } })(),
   ];
   await sleep(STATE_MS + 500);
   // every phone shoots at the nearest rival in range (like holding FIRE), from phase 1

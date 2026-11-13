@@ -13,7 +13,7 @@ export type Motion = { x: number; y: number; vx: number; vy: number; l: number; 
 
 const MAX_EXTRAPOLATE = 1.2; // seconds: never run on past a lost message for long
 /** Positions that come from the ~2 s poll are carried a little longer so squads do not stop between polls. */
-export const POLL_EXTRAPOLATE = 3.4;
+export const POLL_EXTRAPOLATE = 4.5;
 
 /** Where a moving thing is now, given its last known position and velocity. */
 export function predict(m: Motion, now = serverTime(), max = MAX_EXTRAPOLATE) {
@@ -87,8 +87,8 @@ export function useRivals(token: string | null, enabled: boolean, fast = false) 
           rivals.current = next;
         } catch { /* the full state refresh still covers positions */ }
       }
-      // the captain steers and fights: every ~2.5 s; teammates watch: every ~4.5 s (positions are extrapolated in between)
-      timer = setTimeout(poll, fast ? 2300 + Math.random() * 500 : 4200 + Math.random() * 800);
+      // the captain steers and fights: every ~3.8 s; teammates watch: every ~7.5 s (positions are extrapolated in between)
+      timer = setTimeout(poll, fast ? 3500 + Math.random() * 700 : 6800 + Math.random() * 1400);
     };
     poll();
     return () => { stop = true; clearTimeout(timer); };

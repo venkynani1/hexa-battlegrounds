@@ -504,7 +504,7 @@ export default function WorldTab({ s, token, map, refresh, openMission, openSqua
         } else {
           // no live feed (realtime blocked): glide along the positions poll, else the last full state
           const own = rivals.current.get(s.team.id);
-          if (own && serverTime() - own.t < 6000) { target = predict(own, undefined, POLL_EXTRAPOLATE); moving = Math.hypot(own.vx, own.vy) > 1e-5; }
+          if (own && serverTime() - own.t < 9000) { target = predict(own, undefined, POLL_EXTRAPOLATE); moving = Math.hypot(own.vx, own.vy) > 1e-5; }
           else if (serverPos) target = { x: serverPos[0], y: serverPos[1] };
         }
         if (target) {
@@ -537,7 +537,7 @@ export default function WorldTab({ s, token, map, refresh, openMission, openSqua
   const targets = !canFight ? [] : squads.filter((x: any) => x.id !== s.team.id && !x.allied && x.state !== 'recovery' && !x.protected)
     .map((x: any) => {
       const rv = rivals.current.get(x.id);
-      const fresh = rv && serverTime() - rv.t < 6000;
+      const fresh = rv && serverTime() - rv.t < 9000;
       if (fresh && (rv!.q?.plane || rv!.q?.chute)) return null;
       const p = fresh ? predict(rv!, undefined, POLL_EXTRAPOLATE) : x.pos ? { x: x.pos[0], y: x.pos[1] } : null;
       const lv = fresh ? rv!.l : x.level || 0; const bd = fresh ? rv!.b : x.bldg;
