@@ -12,7 +12,8 @@ if (pool && !globalThis.__hexaPoolErr) { globalThis.__hexaPoolErr = true; pool.o
 
 let allowed = null; let allowedAt = 0;
 async function isAllowed(fn) {
-  if (!allowed || Date.now() - allowedAt > 300000) {
+  // refresh every 5 minutes, or at once (at most every 10 s) for a name not seen yet — right after a database upgrade
+  if (!allowed || Date.now() - allowedAt > 300000 || (!allowed.has(fn) && Date.now() - allowedAt > 10000)) {
     const r = await pool.query(`select p.proname from pg_proc p
       where p.pronamespace = 'public'::regnamespace and has_function_privilege('anon', p.oid, 'execute')`);
     allowed = new Set(r.rows.map((x) => x.proname)); allowedAt = Date.now();
