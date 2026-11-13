@@ -146,7 +146,7 @@ function Dashboard({ token, onLogout }: { token: string; onLogout: () => void })
             {d.metrics.host_errors > 0 && <span className="chip bad">{d.metrics.host_errors} refused cmds</span>}
           </div>
         </div>
-        {section === 'control' && <Control d={d} arenas={arenas} arena={arena} cmd={cmd} map={map}
+        {section === 'control' && <Control d={d} arenas={arenas} arena={arena} cmd={cmd} map={map} token={token}
           pacing={arenas.some((a: any) => a.auto?.on) ? null : <PacingPanel d={d} token={token} refresh={live.refresh} arena={selArena || arenas.find((a: any) => a.phase === 'play') || arenas[0] || null} />} />}
         {section === 'squads' && <Squads d={d} teams={teams} arenas={arenas} cmd={cmd} token={token} map={map} />}
         {section === 'map' && map && <MapControl d={d} arenas={arenas} selArena={selArena} setArena={setArena} cmd={cmd} map={map} reloadMap={() => setMapKey((k) => k + 1)} />}
@@ -164,9 +164,19 @@ function Dashboard({ token, onLogout }: { token: string; onLogout: () => void })
 type Cmd = (arenaId: string | null, command: string, args?: any, reason?: string, quiet?: boolean) => Promise<any>;
 
 // ── Control ─────────────────────────────────────────────────────────────
-function Control({ d, arenas, arena, cmd, map, pacing }: { d: any; arenas: any[]; arena: string; cmd: Cmd; map: MapData | null; pacing: React.ReactNode }) {
+function Control({ d, arenas, arena, cmd, map, pacing, token }: { d: any; arenas: any[]; arena: string; cmd: Cmd; map: MapData | null; pacing: React.ReactNode; token: string }) {
   useNow(500);
   const list = arena === 'all' ? arenas : arenas.filter((a: any) => a.id === arena);
+  // online edition: the one Start button (automatic maps) is the main control; per-map buttons are advanced
+  if (ONLINE) return (
+    <>
+      <OnlinePanel d={d} token={token} />
+      <details className="manual-pacing"><summary>Per-map controls (advanced — not needed with automatic maps)</summary>
+        <div className="grid2">{list.map((a: any) => <ArenaCard key={a.id} a={a} d={d} cmd={cmd} />)}</div>
+      </details>
+      <div className="panel"><div className="panel-title">Live feed (all maps)</div><FeedList feed={d.feed} map={map} limit={14} /></div>
+    </>
+  );
   return (
     <>
       <AutoPanel d={d} list={list} all={arena === 'all'} cmd={cmd} />
