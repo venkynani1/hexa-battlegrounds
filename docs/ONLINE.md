@@ -1,4 +1,19 @@
-# Online edition (v8)
+# Online edition
+
+## v13 · Automatic maps (recommended for the event)
+1. Host console → event `HEXAONLINE` → Online tab → choose the length → **▶ Start — automatic maps**. That is the only button.
+2. Players keep checking in (employee ID + e-mail), create squads, join with codes or use matchmaking.
+   They fill **one map at a time** (15 squads ≈ 60 players).
+3. A map **takes off by itself** when it has 15 complete squads, or when its countdown ends:
+   3 minutes once the map has 4 players, cut to 45 seconds once all 15 squads are there.
+   Small squads on that map are merged at take-off; extra players move to the next map, which starts filling at once.
+4. Every match runs on its own (automatic match). The host console shows each map's countdown and has
+   **Launch now** (start the filling map early) and **Pause automatic starts**.
+5. Live test (13 Nov 2026, Neon): 300 players arriving over 2 minutes → 6 maps launched by themselves,
+   nobody left in a lobby, p95 0.35 s, while 120 in-person players played at the same time.
+
+The one-wave Start (everyone takes off together) is still under "Or start everyone at once".
+
 
 The same game, played from laptops by people on a Microsoft Teams call. It runs as a **second website**
 (its own Vercel project and its own free Supabase database) built from this same repository with

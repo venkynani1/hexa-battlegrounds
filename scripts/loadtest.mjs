@@ -50,7 +50,7 @@ async function rpc(fn, args, track = true) {
       method: 'POST', headers: { apikey: KEY, Authorization: `Bearer ${KEY}`, 'Content-Type': 'application/json' }, body: JSON.stringify(args),
     });
     body = await r.json().catch(() => null);
-  } catch (e) { failed++; throw new Error('NETWORK'); }
+  } catch (e) { failed++; errs.NETWORK_TESTER_SIDE = (errs.NETWORK_TESTER_SIDE || 0) + 1; throw new Error('NETWORK'); }
   if (track) (lat[fn] ||= []).push(performance.now() - t0);
   if (!r.ok) {
     const m = String(body?.message || r.status).split(':')[0];
