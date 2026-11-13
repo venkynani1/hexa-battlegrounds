@@ -31,12 +31,12 @@ exception when others then
   raise warning 'tick % failed: %', p_arena, sqlerrm;
 end $$;
 
-create or replace procedure hexa_tick_all()
+do $$ begin if exists (select 1 from pg_proc where proname = 'hexa_tick_all' and prokind = 'p') then drop procedure hexa_tick_all(); end if; end $$;
+create or replace function hexa_tick_all() returns void
 language plpgsql as $$
-declare r record; v_ids uuid[];
+declare v_ids uuid[];
 begin
   insert into tick_heartbeat(id, at) values (1, now()) on conflict (id) do update set at = excluded.at;
-  commit;
   -- maps that are running, or that someone looked at in the last 10 minutes
   select array_agg(a.id) into v_ids from arenas a
   where a.phase <> 'ended' and (a.autopilot or a.phase <> 'lobby')
@@ -45,7 +45,6 @@ begin
   if v_ids is null then return; end if;
   for i in 1 .. array_length(v_ids, 1) loop
     perform _tick_safe(v_ids[i]);
-    commit;
   end loop;
 end $$;
 
@@ -71,7 +70,7 @@ do $$
 begin
   if exists (select 1 from pg_extension where extname = 'pg_cron') then
     perform cron.unschedule(jobid) from cron.job where jobname = 'hexa-tick';
-    perform cron.schedule('hexa-tick', '1 seconds', 'call hexa_tick_all()');
+    perform cron.schedule('hexa-tick', '1 seconds', 'select hexa_tick_all()');
     raise notice 'Game clock scheduled: hexa-tick every second';
   end if;
 exception when others then
