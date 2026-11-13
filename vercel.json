@@ -40,5 +40,8 @@
     "api/admin.js": {
       "maxDuration": 300
     }
-  }
+  },
+  "regions": [
+    "sin1"
+  ]
 }
