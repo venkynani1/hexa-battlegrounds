@@ -102,12 +102,14 @@ export class AdaptiveResolution {
   private last = 0;
   private calm = 0;
   constructor(private apply: (scale: number) => void) {}
-  update(mon: FrameMonitor, p: Preset, now: number) {
+  /** baseDpr = the preset's pixel ratio on this screen; the scale never drops below 0.75 effective pixels */
+  update(mon: FrameMonitor, p: Preset, now: number, baseDpr = 1) {
+    const floor = Math.min(1, Math.max(p.minScale, 0.75 / Math.max(0.5, baseDpr)));
     if (mon.count < 60 || now - this.last < 1000) return;
     this.last = now;
     const p90 = mon.pct(0.9);
     let s = this.scale;
-    if (p90 > p.budgetMs * 1.15) { s = Math.max(p.minScale, s - 0.08); this.calm = 0; }
+    if (p90 > p.budgetMs * 1.15) { s = Math.max(floor, s - 0.08); this.calm = 0; }
     else if (p90 < p.budgetMs * 0.7) { this.calm++; if (this.calm >= 3) { s = Math.min(1, s + 0.05); this.calm = 0; } }
     else this.calm = 0;
     if (Math.abs(s - this.scale) > 0.001) { this.scale = s; this.apply(s); mon.reset(); }

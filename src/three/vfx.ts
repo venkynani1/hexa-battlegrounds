@@ -100,6 +100,7 @@ export class VFX {
   private pool: { tracer: THREE.Mesh; flash: THREE.Mesh; t0: number; dur: number; busy: boolean }[] = [];
   private emitters = new Map<string, { p: THREE.Vector3; acc: number; rate: number; kind: 'smoke' | 'flare' }>();
   private v = new THREE.Vector3();
+  private v2 = new THREE.Vector3();
   private c = new THREE.Color();
   /** 0..1 from the quality preset (reduced motion caps it) */
   density = 1;
@@ -157,8 +158,8 @@ export class VFX {
     const n = Math.round(28 * this.density);
     for (let k = 0; k < n; k++) {
       const th = (k / n) * Math.PI * 2;
-      this.v.set(Math.cos(th) * 5, 0.8 + Math.random(), Math.sin(th) * 5);
-      this.soft.spawn(at, this.v, this.c.setRGB(0.62, 0.57, 0.49), 1.1, 0.9 + Math.random() * 0.4, -1.5, 3, 1.6, 0.7);
+      this.v.set(Math.cos(th) * 7, 0.3 + Math.random() * 0.5, Math.sin(th) * 7);
+      this.soft.spawn(this.v2.copy(at).addScaledVector(this.v, 0.06).setY(at.y + 0.15), this.v, this.c.setRGB(0.6, 0.55, 0.47), 0.6, 0.8 + Math.random() * 0.4, -0.6, 3.2, 1.3, 0.42);
     }
   }
   /** loot crate pops open: sparkle fountain in the tier colour */

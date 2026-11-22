@@ -1,6 +1,7 @@
 // Lobby stage for the landing page: the squad buggy on a lit turntable in front of the campus
 // skyline at dusk. Drag to spin the buggy. Small scene, built from primitives, no assets to load.
 import * as THREE from 'three';
+import { currentQuality, PRESETS } from './quality';
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
 import { animateVehicle, makeVehicle, Vehicle } from './vehicle';
 
@@ -36,9 +37,9 @@ export class LobbyStage {
 
   constructor(private canvas: HTMLCanvasElement, heroColor = '#ffc23d') {
     this.still = typeof matchMedia !== 'undefined' && matchMedia('(prefers-reduced-motion: reduce)').matches;
-    const r = this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: false, powerPreference: 'high-performance' });
-    r.setPixelRatio(Math.min(2, window.devicePixelRatio || 1));
-    r.shadowMap.enabled = true; r.shadowMap.type = THREE.PCFSoftShadowMap;
+    const r = this.renderer = new THREE.WebGLRenderer({ canvas, antialias: PRESETS[currentQuality()].antialias, alpha: false, powerPreference: 'high-performance' });
+    r.setPixelRatio(Math.min(PRESETS[currentQuality()].maxDpr, window.devicePixelRatio || 1));
+    r.shadowMap.enabled = PRESETS[currentQuality()].shadows; r.shadowMap.type = THREE.PCFSoftShadowMap;
     r.toneMapping = THREE.ACESFilmicToneMapping; r.toneMappingExposure = 1.15;
     r.outputColorSpace = THREE.SRGBColorSpace;
 

@@ -8,4 +8,5 @@ export default defineConfig({
   build: { chunkSizeWarningLimit: 900 },
   // local development against scripts' API harness (VITE_API_RPC=1 + DEV_API=http://localhost:54399)
   server: process.env.DEV_API ? { proxy: { '/rest': process.env.DEV_API } } : undefined,
+  preview: process.env.DEV_API ? { proxy: { '/rest': process.env.DEV_API } } : undefined,
 });

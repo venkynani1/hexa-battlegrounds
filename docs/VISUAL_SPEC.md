@@ -27,7 +27,7 @@ their clues stay legible on a 6-inch phone in a noisy hall or a Teams call.
 
 Auto picks from GPU name (WEBGL_debug_renderer_info), cores, device memory and pointer type. Adaptive resolution
 steps the render scale down 8% when the 90th-percentile frame time is >115% of budget, and back up 5% after three
-calm seconds, at most once a second. Reduced motion (Settings → Motion, or the OS setting) disables camera shake,
+calm seconds, at most once a second, and never below 0.75 real pixels per CSS pixel (so it never turns blocky). Reduced motion (Settings → Motion, or the OS setting) disables camera shake,
 bobbing, flashes and confetti; every audio cue already has an on-screen equivalent.
 
 ## Assets and licensing

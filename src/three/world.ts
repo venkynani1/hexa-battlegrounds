@@ -1296,11 +1296,10 @@ export class WorldScene {
     this.raf = requestAnimationFrame(this.loop);
     if (document.hidden) return;
     const nowMs = performance.now();
-    if (this.lastFrame) { const ft = nowMs - this.lastFrame; if (ft < 250) this.monitor.push(ft); }
+    if (this.lastFrame) { const ft = nowMs - this.lastFrame; if (ft < 1500) this.monitor.push(Math.min(ft, 250)); } // > 1.5 s = tab was hidden
     this.lastFrame = nowMs;
     this.renderer.info.reset();
-    this.adaptive.update(this.monitor, this.preset, nowMs);
-    this.fpsOverlay?.update(this.monitor, this.adaptive.scale, this.quality, this.renderer.info, nowMs);
+    this.adaptive.update(this.monitor, this.preset, nowMs, this.baseDpr());
     const dt = Math.min(0.1, this.clock.getDelta());
     const t = this.clock.elapsedTime;
     const k = 1 - Math.pow(0.002, dt);
@@ -1579,6 +1578,7 @@ export class WorldScene {
     }
     if (this.composer) this.composer.render(dt); else this.renderer.render(this.scene, this.camera);
     if (shook) this.camera.position.copy(this.camPos);
+    this.fpsOverlay?.update(this.monitor, this.adaptive.scale, this.quality, this.renderer.info, nowMs);
   };
 
   private isInside(B: Bldg, p: THREE.Vector3) {
