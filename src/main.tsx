@@ -13,6 +13,7 @@ const Play = lazy(() => import('./pages/Play'));
 const Host = lazy(() => import('./pages/Host'));
 const Screen = lazy(() => import('./pages/Screen'));
 const Demo = lazy(() => import('./pages/Demo'));
+const Lab = import.meta.env.DEV ? lazy(() => import('./dev/Lab')) : null; // dev-only visual lab
 
 applyPrefs();
 
@@ -27,6 +28,7 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
           <Route path="/play" element={<Play />} />
           <Route path="/host" element={<Host />} />
           <Route path="/demo" element={<Demo />} />
+          {Lab && <Route path="/lab" element={<Lab />} />}
           <Route path="/screen/:token" element={<Screen />} />
           <Route path="*" element={<Home />} />
         </Routes>

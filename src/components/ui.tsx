@@ -5,6 +5,7 @@ import { feedText, MapData, ZONE_TEXT } from '../lib/game';
 import { sfx, setMuted, isMuted, setVolume, getVolume, unlockAudio } from '../lib/sound';
 import { store } from '../lib/api';
 import { applyPrefs } from '../lib/game';
+import { detectQuality, QUALITY_LABEL, qualityChoice, QualityChoice, setQualityChoice, setShowFps, showFps } from '../three/quality';
 
 // ── Toasts ────────────────────────────────────────────────────────────────
 type Toast = { id: number; text: string; tone: string };
@@ -192,6 +193,8 @@ export function SettingsSheet({ open, onClose }: { open: boolean; onClose: () =>
   const [vol, setV] = useState(getVolume());
   const [motion, setMotion] = useState(store.get('hb_motion') || 'auto');
   const [text, setText] = useState(store.get('hb_text') || 'normal');
+  const [quality, setQ] = useState<QualityChoice>(qualityChoice());
+  const [fps, setFps] = useState(showFps());
   return (
     <Sheet open={open} onClose={onClose} title="Settings">
       <div className="col" style={{ gap: 14 }}>
@@ -204,6 +207,13 @@ export function SettingsSheet({ open, onClose }: { open: boolean; onClose: () =>
             <option value="auto">Follow my device</option><option value="full">Full animations</option><option value="reduced">Reduced motion</option>
           </select>
         </div>
+        <div className="field"><label htmlFor="gfx">Graphics</label>
+          <select id="gfx" className="input" value={quality} onChange={(e) => { const v = e.target.value as QualityChoice; setQ(v); setQualityChoice(v); }}>
+            {(['auto', 'low', 'balanced', 'high'] as QualityChoice[]).map((k) => <option key={k} value={k}>{QUALITY_LABEL[k]}{k === 'auto' ? ` · ${detectQuality()}` : ''}</option>)}
+          </select>
+          <small className="muted">Low keeps the game smooth on older phones. The picture also lowers its resolution by itself if frames start to drop.</small>
+        </div>
+        <label className="check"><input type="checkbox" checked={fps} onChange={(e) => { setFps(e.target.checked); setShowFps(e.target.checked); }} /> Show frame rate</label>
         <div className="field"><label htmlFor="txt">Text size</label>
           <select id="txt" className="input" value={text} onChange={(e) => { setText(e.target.value); store.set('hb_text', e.target.value); applyPrefs(); }}>
             <option value="normal">Normal</option><option value="big">Large</option>

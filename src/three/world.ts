@@ -7,13 +7,19 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
-import { animateAvatar, animatePlane, Avatar, makeAvatar, makeChute, makePlane, makeTracer } from './people';
+import { animateAvatar, animatePlane, Avatar, disposeAvatar, makeAvatar, makeChute, makePlane } from './people';
 import { zoneNow } from '../lib/zone';
 import type { MapData, Building } from '../lib/game';
 import { squadHex } from '../lib/game';
 import { serverTime } from '../lib/time';
 import { BUILDINGS as LAYOUT_BUILDINGS, building as layoutBuilding, ROADS, LOTS, FEATURES, FLOOR_H } from '../../content/campus.mjs';
 import { animateVehicle, makeVehicle, Vehicle } from './vehicle';
+import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
+import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
+import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
+import { VFX } from './vfx';
+import { AdaptiveResolution, currentQuality, FpsOverlay, FrameMonitor, PRESETS, Preset, Quality, showFps } from './quality';
 
 export const S = 560; // campus width in world units (a buggy is ~4.5 long)
 export { FLOOR_H };
@@ -180,7 +186,8 @@ class Batch {
 }
 
 type SquadObj = { car: THREE.Group; veh: Vehicle; avatar: Avatar; chute: THREE.Group; parked: Vehicle | null; hpBar: THREE.Sprite; hpKey: string; aimRing: THREE.Mesh;
-  ring: THREE.Mesh; label: THREE.Sprite; target: THREE.Vector3; heading: number; turn: number; data: WorldSquad; sig: string; y: number };
+  ring: THREE.Mesh; label: THREE.Sprite; target: THREE.Vector3; heading: number; turn: number; data: WorldSquad; sig: string; y: number;
+  wasChute?: boolean; wasDown?: boolean };
 type Bldg = {
   b: Building; body: THREE.Mesh; extras: THREE.Object3D[]; mats: THREE.MeshStandardMaterial[]; fade: number;
   interior: THREE.Group | null; floors: THREE.Group[]; doors: { mesh: THREE.Mesh; open: number; x: number; y: number; level: number; axis: 'x' | 'z'; home: number }[];
@@ -221,6 +228,17 @@ export class WorldScene {
   private onPick?: (id: string) => void;
   private reduced: boolean;
   private lowEnd: boolean;
+  quality: Quality;
+  private preset: Preset;
+  private composer: EffectComposer | null = null;
+  private bloom: UnrealBloomPass | null = null;
+  private monitor = new FrameMonitor();
+  vfx!: VFX;
+  private adaptive: AdaptiveResolution;
+  private fpsOverlay: FpsOverlay | null = null;
+  private lastFrame = 0;
+  private onQuality = (e: Event) => this.applyQuality((e as CustomEvent).detail as Quality);
+  private onFps = () => this.syncFpsOverlay();
   private highlightRing!: THREE.Mesh;
   private hlId: string | null = null;
   private crateMats: Record<string, THREE.Material> | null = null;
@@ -241,7 +259,6 @@ export class WorldScene {
   private zoneT = 0;
   private plane: THREE.Group | null = null;
   private planeData: WorldState['plane'] = null;
-  private tracers: THREE.Group[] = [];
   private fpv = false;
   private pitch = -0.05;
   private targetKey: string | null = null;
@@ -253,19 +270,23 @@ export class WorldScene {
     this.onPick = opts.onPick;
     this.mode = opts.mode || 'follow';
     this.reduced = document.documentElement.classList.contains('reduced-motion');
-    this.lowEnd = !!(navigator as any).hardwareConcurrency && (navigator as any).hardwareConcurrency <= 4;
-    this.renderer = new THREE.WebGLRenderer({ canvas, antialias: !this.lowEnd, powerPreference: 'high-performance' });
-    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, this.lowEnd ? 1.25 : 2));
+    this.quality = currentQuality();
+    this.preset = PRESETS[this.quality];
+    this.lowEnd = this.quality === 'low';
+    this.renderer = new THREE.WebGLRenderer({ canvas, antialias: this.preset.antialias, powerPreference: 'high-performance' });
+    this.adaptive = new AdaptiveResolution((sc) => this.setRenderScale(sc));
+    this.renderer.info.autoReset = false; // count every pass of a frame (bloom included)
+    this.renderer.setPixelRatio(this.baseDpr());
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
     this.renderer.toneMappingExposure = 1.05;
-    this.renderer.shadowMap.enabled = !this.lowEnd;
+    this.renderer.shadowMap.enabled = this.preset.shadows;
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     this.camera = new THREE.PerspectiveCamera(55, 1, 0.3, 2600);
     this.camera.position.copy(this.camPos);
     const haze = 0xcfe3f2;
     this.scene.background = new THREE.Color(haze);
-    this.scene.fog = new THREE.Fog(haze, 380, 1500);
+    this.scene.fog = new THREE.Fog(haze, 380, this.preset.fogFar);
 
     this.buildSky();
     // soft reflections so car paint, glass and steel pick up light like the real things
@@ -273,8 +294,8 @@ export class WorldScene {
     this.scene.environment = pm.fromScene(new RoomEnvironment(), 0.04).texture; this.scene.environmentIntensity = 0.16; pm.dispose();
     this.scene.add(new THREE.HemisphereLight(0xcfe8ff, 0x5d7a3f, 1.1));
     this.sun = new THREE.DirectionalLight(0xfff0d6, 2.5);
-    this.sun.castShadow = !this.lowEnd;
-    this.sun.shadow.mapSize.set(2048, 2048);
+    this.sun.castShadow = this.preset.shadows;
+    this.sun.shadow.mapSize.set(this.preset.shadowSize || 1024, this.preset.shadowSize || 1024);
     this.sun.shadow.bias = -0.0006;
     this.sun.shadow.normalBias = 0.04;
     const sc = this.sun.shadow.camera as THREE.OrthographicCamera;
@@ -302,6 +323,13 @@ export class WorldScene {
     this.ro.observe(canvas.parentElement || canvas);
     this.resize();
     this.bindInput();
+    this.vfx = new VFX(this.scene);
+    this.vfx.density = this.reduced ? Math.min(0.3, this.preset.particles) : this.preset.particles;
+    this.setupPost();
+    window.addEventListener('hb:quality', this.onQuality);
+    window.addEventListener('hb:fps', this.onFps);
+    this.syncFpsOverlay();
+    (window as any).__hexaWorld = this; // dev/perf tooling: renderer.info, frame times
     this.loop();
   }
 
@@ -851,7 +879,7 @@ export class WorldScene {
     hinge.add(lid);
     const glow = new THREE.Mesh(new THREE.CylinderGeometry(0.7, 0.2, 2.6, 16, 1, true), M.glow); glow.position.y = 2.2; glow.visible = false;
     g.add(body, stripe, hinge, glow);
-    g.userData = { lid: hinge, glow };
+    g.userData = { lid: hinge, glow, gold };
     return g;
   }
 
@@ -922,9 +950,8 @@ export class WorldScene {
     const a = A.car.position.clone(); a.y += A.data.foot ? 1.5 : 1.8;
     const b = B.car.position.clone(); b.y += B.data.foot ? 1.2 : 1.3;
     if (!hit) b.add(new THREE.Vector3((Math.random() - 0.5) * 3, Math.random() * 1.5, (Math.random() - 0.5) * 3));
-    const tr = makeTracer(a, b, hit);
-    this.scene.add(tr); this.tracers.push(tr);
-    if (A.data.foot) A.avatar.userData.aimAt = performance.now();
+    this.vfx.shot(a, b, hit);
+    if (A.data.foot) { A.avatar.userData.aimAt = performance.now(); A.avatar.userData.firedAt = performance.now(); }
   }
 
   /** the safe zone: the blue wall closes in smoothly while it shrinks (Free Fire style); white circle = next zone */
@@ -954,12 +981,12 @@ export class WorldScene {
       seen.add(d.key);
       const sig = `${d.me}|${d.ally}|${d.label || ''}|${d.number}`;
       let o = this.squads.get(d.key);
-      if (o && o.sig !== sig) { this.scene.remove(o.car); if (o.parked) this.scene.remove(o.parked); o = undefined; }
+      if (o && o.sig !== sig) { this.scene.remove(o.car); disposeAvatar(o.avatar); if (o.parked) this.scene.remove(o.parked); o = undefined; }
       if (!o) { o = this.makeSquad(d); o.sig = sig; this.squads.set(d.key, o); }
       o.data = d;
       (o.ring.material as THREE.MeshBasicMaterial).opacity = d.down ? 0.35 : 0.9;
     }
-    for (const [k, o] of this.squads) if (!seen.has(k)) { this.scene.remove(o.car); if (o.parked) this.scene.remove(o.parked); this.squads.delete(k); }
+    for (const [k, o] of this.squads) if (!seen.has(k)) { this.scene.remove(o.car); disposeAvatar(o.avatar); if (o.parked) this.scene.remove(o.parked); this.squads.delete(k); }
     this.zoneData = st.zone || null;
     this.planeData = st.plane || null;
     this.fpv = !!st.fpv && this.mode === 'follow';
@@ -983,8 +1010,9 @@ export class WorldScene {
       g.userData.level = l.level || 0; g.userData.bldg = (l.level || 0) > 0 ? l.building : null;
       this.scene.add(g);
       this.drops.set(a.key, g);
+      if ((l.level || 0) === 0) this.vfx.setEmitter('drop:' + a.key, g.position.clone().add(new THREE.Vector3(1.4, 1.2, 0)), 'smoke');
     }
-    for (const [k, g] of this.drops) if (!dseen.has(k)) { this.scene.remove(g); this.drops.delete(k); }
+    for (const [k, g] of this.drops) if (!dseen.has(k)) { this.scene.remove(g); this.drops.delete(k); this.vfx.setEmitter('drop:' + k, null); }
 
     // loot on the ground
     const lseen = new Set<string>();
@@ -1098,6 +1126,55 @@ export class WorldScene {
     return g;
   }
 
+  // ── graphics quality: presets, post-processing, adaptive resolution (visual only) ──
+  private baseDpr() { return Math.min(window.devicePixelRatio || 1, this.preset.maxDpr); }
+  private setRenderScale(sc: number) {
+    this.renderer.setPixelRatio(this.baseDpr() * sc);
+    this.resize();
+  }
+  /** Selective bloom: only pixels brighter than the threshold glow (lamps, beacons, tracers, zone wall, VFX). */
+  private setupPost() {
+    this.composer?.dispose(); this.composer = null; this.bloom = null;
+    if (!this.preset.bloom) return;
+    const size = this.renderer.getDrawingBufferSize(new THREE.Vector2());
+    const rt = new THREE.WebGLRenderTarget(size.x, size.y, { type: THREE.HalfFloatType, samples: this.preset.antialias ? 4 : 0 });
+    this.composer = new EffectComposer(this.renderer, rt);
+    this.composer.addPass(new RenderPass(this.scene, this.camera));
+    const bs = this.preset.bloomScale;
+    const bloom = new UnrealBloomPass(new THREE.Vector2(size.x * bs, size.y * bs), 0.45, 0.35, 1.15);
+    const set = bloom.setSize.bind(bloom);
+    bloom.setSize = (w: number, h: number) => set(Math.max(64, Math.round(w * bs)), Math.max(64, Math.round(h * bs)));
+    this.bloom = bloom;
+    this.composer.addPass(bloom);
+    this.composer.addPass(new OutputPass());
+    this.resize();
+  }
+  applyQuality(q: Quality) {
+    if (!PRESETS[q] || this.disposed) return;
+    const had = this.preset.shadows;
+    this.quality = q; this.preset = PRESETS[q]; this.lowEnd = q === 'low';
+    this.adaptive.scale = 1; this.monitor.reset();
+    this.renderer.setPixelRatio(this.baseDpr());
+    if (this.scene.fog instanceof THREE.Fog) this.scene.fog.far = this.preset.fogFar;
+    this.renderer.shadowMap.enabled = this.preset.shadows;
+    this.sun.castShadow = this.preset.shadows;
+    if (this.preset.shadows) {
+      const n = this.preset.shadowSize;
+      if (this.sun.shadow.mapSize.x !== n) { this.sun.shadow.mapSize.set(n, n); this.sun.shadow.map?.dispose(); this.sun.shadow.map = null as any; }
+    }
+    if (had !== this.preset.shadows) this.scene.traverse((o: any) => { const ms = Array.isArray(o.material) ? o.material : o.material ? [o.material] : []; for (const m of ms) m.needsUpdate = true; });
+    if (this.vfx) this.vfx.density = this.reduced ? Math.min(0.3, this.preset.particles) : this.preset.particles;
+    this.setupPost();
+    this.resize();
+  }
+  private syncFpsOverlay() {
+    const want = showFps();
+    if (want && !this.fpsOverlay) this.fpsOverlay = new FpsOverlay(this.canvas.parentElement || document.body);
+    else if (!want && this.fpsOverlay) { this.fpsOverlay.dispose(); this.fpsOverlay = null; }
+  }
+  /** for perf tooling */
+  stats() { return { quality: this.quality, scale: this.adaptive.scale, fps: this.monitor.fps, p95: this.monitor.pct(0.95), calls: this.renderer.info.render.calls, tris: this.renderer.info.render.triangles }; }
+
   private resize() {
     const el = this.canvas.parentElement || this.canvas;
     const w = el.clientWidth || 360; const h = el.clientHeight || 640;
@@ -1105,6 +1182,9 @@ export class WorldScene {
     this.camera.aspect = w / h;
     this.camera.fov = w / h < 0.75 ? 62 : 50;
     this.camera.updateProjectionMatrix();
+    this.composer?.setSize(w, h);
+    this.vfx?.setViewport(h * this.renderer.getPixelRatio(), this.camera.fov);
+    this.composer?.setPixelRatio(this.renderer.getPixelRatio());
   }
 
   private bindInput() {
@@ -1154,6 +1234,12 @@ export class WorldScene {
     if (this.disposed) return;
     this.raf = requestAnimationFrame(this.loop);
     if (document.hidden) return;
+    const nowMs = performance.now();
+    if (this.lastFrame) { const ft = nowMs - this.lastFrame; if (ft < 250) this.monitor.push(ft); }
+    this.lastFrame = nowMs;
+    this.renderer.info.reset();
+    this.adaptive.update(this.monitor, this.preset, nowMs);
+    this.fpsOverlay?.update(this.monitor, this.adaptive.scale, this.quality, this.renderer.info, nowMs);
     const dt = Math.min(0.1, this.clock.getDelta());
     const t = this.clock.elapsedTime;
     const k = 1 - Math.pow(0.002, dt);
@@ -1195,6 +1281,10 @@ export class WorldScene {
       }
       o.car.rotation.y = o.heading;
       const foot = !!d.foot || !!d.chute;
+      // one-shot effects on state changes the server already made
+      if (o.wasChute && !d.chute && o.avatar.visible) this.vfx.landing(o.car.position);
+      if (o.wasDown !== undefined && o.wasDown !== !!d.down) this.vfx.pulse(o.car.position.clone().setY(o.car.position.y + 1), d.down ? 0xff4d5e : 0x2ee6ff);
+      o.wasChute = !!d.chute; o.wasDown = !!d.down;
       o.veh.visible = !foot;
       o.avatar.visible = foot && !(d.me && this.fpv);
       // free fall: body flat, arms out, no canopy; then the canopy pops open and the body hangs upright
@@ -1205,11 +1295,11 @@ export class WorldScene {
       const tilt = freefall ? -Math.PI / 2 * 0.85 : 0;
       o.avatar.rotation.x += (tilt - o.avatar.rotation.x) * Math.min(1, dt * 6);
       o.avatar.position.y = freefall ? 0.9 : 0;
-      if (foot) animateAvatar(o.avatar, dt, this.reduced || d.chute ? 0 : spd, performance.now() - (o.avatar.userData.aimAt || 0) < 900);
-      if (freefall) { const u = o.avatar.userData; if (u.armL) { u.armL.rotation.z = 1.3; u.armR.rotation.z = -1.3; u.legL.rotation.x = 0.25; u.legR.rotation.x = 0.25; } }
-      else if (d.chute) { const u = o.avatar.userData; if (u.armL) { u.armL.rotation.z = 0.25; u.armR.rotation.z = -0.25; u.armL.rotation.x = -2.6; u.armR.rotation.x = -2.6; } }
-      else if (o.avatar.userData.armL && o.avatar.userData.armL.rotation.z !== 0) { const u = o.avatar.userData; u.armL.rotation.z = 0; u.armR.rotation.z = 0; }
-      else animateVehicle(o.veh, t, dt, this.reduced ? 0 : spd, this.reduced ? 0 : turn, !!d.down);
+      if (foot) {
+        const aimAge = performance.now() - (o.avatar.userData.aimAt || 0);
+        animateAvatar(o.avatar, dt, { speed: d.chute ? 0 : spd / 1.15, fall: freefall, chute: !!d.chute && !freefall, aiming: aimAge < 900, down: !!d.down, reduced: this.reduced });
+      }
+      if (!foot) animateVehicle(o.veh, t, dt, this.reduced ? 0 : spd, this.reduced ? 0 : turn, !!d.down);
       // the buggy waits where it was parked (or in its parking bay) while the captain walks
       if (d.foot && d.buggy && !d.chute) {
         if (!o.parked) { o.parked = makeVehicle({ color: squadHex(d.number), number: d.number }); this.scene.add(o.parked); }
@@ -1297,11 +1387,7 @@ export class WorldScene {
       if (!this.reduced) animatePlane(this.plane, t);
     } else if (this.plane) this.plane.visible = false;
     // gun tracers fade in a blink
-    for (const tr of [...this.tracers]) {
-      const age = performance.now() - tr.userData.t0;
-      tr.children.forEach((c) => { ((c as THREE.Mesh).material as THREE.MeshBasicMaterial).opacity = Math.max(0, 1 - age / 180); });
-      if (age > 200) { this.scene.remove(tr); tr.children.forEach((c) => (c as THREE.Mesh).geometry.dispose()); this.tracers.splice(this.tracers.indexOf(tr), 1); }
-    }
+    this.vfx.update(dt);
     if (this.zoneData?.shrink_until && now - this.zoneT > 120) { this.zoneT = now; this.drawZone(); }
 
     // stairs walk in first person: follow the flight of steps up (or down) to the next floor
@@ -1416,11 +1502,13 @@ export class WorldScene {
       if (lid && box.visible) {
         const want = (ref && dd < 7) || this.hlId === pad.userData.id ? 1 : 0;
         box.userData.k = (box.userData.k || 0) + (want - (box.userData.k || 0)) * Math.min(1, dt * 5);
+        const was = box.userData.k0 || 0; box.userData.k0 = box.userData.k;
+        if (was < 0.5 && box.userData.k >= 0.5) this.vfx.loot(box.getWorldPosition(new THREE.Vector3()).add(new THREE.Vector3(0, 0.8, 0)), box.userData.gold ? 0xffc23d : 0x7fd0ff);
         lid.rotation.x = -box.userData.k * 1.9;
         (box.userData.glow as THREE.Mesh).visible = box.userData.k > 0.2;
       }
     }
-    this.renderer.render(this.scene, this.camera);
+    if (this.composer) this.composer.render(dt); else this.renderer.render(this.scene, this.camera);
   };
 
   private isInside(B: Bldg, p: THREE.Vector3) {
@@ -1500,10 +1588,17 @@ export class WorldScene {
     this.disposed = true;
     cancelAnimationFrame(this.raf);
     this.ro.disconnect();
+    window.removeEventListener('hb:quality', this.onQuality);
+    window.removeEventListener('hb:fps', this.onFps);
+    this.fpsOverlay?.dispose();
+    this.vfx?.dispose();
+    this.composer?.dispose();
+    if ((window as any).__hexaWorld === this) (window as any).__hexaWorld = null;
+    for (const o of this.squads.values()) disposeAvatar(o.avatar);
     this.scene.traverse((o: any) => {
-      o.geometry?.dispose?.();
+      if (!o.geometry?.userData?.shared) o.geometry?.dispose?.();
       const ms = Array.isArray(o.material) ? o.material : o.material ? [o.material] : [];
-      for (const m of ms) { m.map?.dispose?.(); m.dispose?.(); }
+      for (const m of ms) { if (m.userData?.shared) continue; m.map?.dispose?.(); m.dispose?.(); }
     });
     this.renderer.dispose();
   }

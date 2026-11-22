@@ -1,21 +1,12 @@
-// Captain on foot, parachute, the drop plane and gun tracers. Built from primitives (no assets).
+// Captain on foot (rigged character, see rig.ts), parachute, the drop plane and gun tracers. All built in code (no assets).
 // Scale: 1 world unit ≈ 1 m (a buggy is ~4.5 long, a person 1.8 tall).
 import * as THREE from 'three';
+import { Character } from './rig';
 
 const mat = (c: THREE.ColorRepresentation, o: { rough?: number; metal?: number; emissive?: number; ei?: number } = {}) =>
   new THREE.MeshStandardMaterial({ color: c, roughness: o.rough ?? 0.7, metalness: o.metal ?? 0.05, emissive: o.emissive ?? 0x000000, emissiveIntensity: o.ei ?? 0 });
 
-const G = {
-  torso: new THREE.CapsuleGeometry(0.26, 0.5, 4, 10),
-  head: new THREE.SphereGeometry(0.17, 14, 10),
-  hair: new THREE.SphereGeometry(0.175, 12, 8, 0, Math.PI * 2, 0, Math.PI * 0.55),
-  limb: new THREE.CapsuleGeometry(0.08, 0.5, 3, 8),
-  leg: new THREE.CapsuleGeometry(0.1, 0.62, 3, 8),
-  shoe: new THREE.BoxGeometry(0.16, 0.1, 0.3),
-  pack: new THREE.BoxGeometry(0.42, 0.5, 0.2),
-  gun: new THREE.BoxGeometry(0.08, 0.1, 0.55),
-  plate: new THREE.PlaneGeometry(0.34, 0.24),
-};
+
 
 const plateCache = new Map<string, THREE.Texture>();
 function numberTex(n: number, color: string) {
@@ -32,49 +23,25 @@ function numberTex(n: number, color: string) {
   return t;
 }
 
-export type Avatar = THREE.Group & { userData: { armL: THREE.Object3D; armR: THREE.Object3D; legL: THREE.Object3D; legR: THREE.Object3D; body: THREE.Object3D; phase: number } };
+export type Avatar = THREE.Group & { userData: { char: Character; aimAt?: number; firedAt?: number; lastFired?: number } };
 
-/** The squad's captain, walking. Shirt in the squad colour with the number on the back. */
+/** The squad's captain on foot: an original rigged character in the squad colour, number on the back. */
 export function makeAvatar(opts: { color: string; number: number }): Avatar {
-  const g = new THREE.Group() as Avatar;
-  const shirt = mat(opts.color, { rough: 0.8 });
-  const skin = mat(0xb07a52, { rough: 0.85 });
-  const dark = mat(0x23262d, { rough: 0.9 });
-  const body = new THREE.Group(); body.position.y = 0.95; g.add(body);
-  const torso = new THREE.Mesh(G.torso, shirt); torso.position.y = 0.42; body.add(torso);
-  const head = new THREE.Mesh(G.head, skin); head.position.y = 0.98; body.add(head);
-  const hair = new THREE.Mesh(G.hair, dark); hair.position.y = 1.0; hair.rotation.x = -0.25; body.add(hair);
-  const pack = new THREE.Mesh(G.pack, mat(0x3b4a2f, { rough: 0.9 })); pack.position.set(0, 0.48, 0.24); body.add(pack);
-  const plate = new THREE.Mesh(G.plate, new THREE.MeshBasicMaterial({ map: numberTex(opts.number, opts.color) }));
-  plate.position.set(0, 0.5, 0.345); body.add(plate);
-  const limb = (geo: THREE.BufferGeometry, m: THREE.Material, x: number, y: number) => {
-    const pivot = new THREE.Group(); pivot.position.set(x, y, 0);
-    const mesh = new THREE.Mesh(geo, m); mesh.position.y = -0.33; pivot.add(mesh);
-    return pivot;
-  };
-  const armL = limb(G.limb, shirt, -0.34, 0.72); const armR = limb(G.limb, shirt, 0.34, 0.72);
-  const gun = new THREE.Mesh(G.gun, mat(0x15171b, { rough: 0.4, metal: 0.6 })); gun.position.set(0, -0.62, -0.2); armR.add(gun);
-  body.add(armL, armR);
-  const legL = limb(G.leg, dark, -0.13, 0.02); const legR = limb(G.leg, dark, 0.13, 0.02);
-  for (const L of [legL, legR]) { const s = new THREE.Mesh(G.shoe, dark); s.position.set(0, -0.78, -0.06); L.add(s); }
-  body.add(legL, legR);
-  g.traverse((o) => { if ((o as THREE.Mesh).isMesh) o.castShadow = true; });
-  g.userData = { armL, armR, legL, legR, body, phase: 0 };
+  const char = new Character({ color: opts.color, number: opts.number, plate: numberTex(opts.number, opts.color) });
+  const g = char.root as Avatar;
+  g.userData = { char };
   return g;
 }
 
-/** speed in world units / s: walk cycle, a little bob and lean */
-export function animateAvatar(a: Avatar, dt: number, speed: number, aiming = false) {
+/** Drive the character from what the game already decided: ground speed (m/s), free fall, canopy, aiming, knocked. */
+export function animateAvatar(a: Avatar, dt: number, s: { speed: number; fall?: boolean; chute?: boolean; aiming?: boolean; down?: boolean; reduced?: boolean }) {
   const u = a.userData;
-  const run = Math.min(1, speed / 7);
-  u.phase += dt * (4 + run * 7) * (run > 0.05 ? 1 : 0);
-  const sw = Math.sin(u.phase) * 0.9 * run;
-  u.legL.rotation.x = sw; u.legR.rotation.x = -sw;
-  u.armL.rotation.x = -sw * 0.8;
-  u.armR.rotation.x = aiming ? -1.45 : sw * 0.8;
-  u.body.position.y = 0.95 + Math.abs(Math.cos(u.phase)) * 0.06 * run;
-  u.body.rotation.x = -0.12 * run;
+  const fired = !!u.firedAt && u.firedAt !== u.lastFired;
+  u.lastFired = u.firedAt;
+  u.char.update(dt, { ...s, fired });
 }
+
+export function disposeAvatar(a: Avatar) { a.userData.char?.dispose(); }
 
 /** Parachute canopy with lines, in the squad colour. Hang an avatar under it at y = 0. */
 export function makeChute(color: string) {
@@ -129,23 +96,4 @@ export function makePlane() {
 
 export function animatePlane(p: THREE.Object3D, t: number) {
   p.children.forEach((c) => { if (c.name === 'prop') c.rotation.z = t * 40; if (c.name === 'beacon') c.visible = Math.sin(t * 6) > 0.6; });
-}
-
-/** A short bright streak from a to b; caller fades and removes it. */
-export function makeTracer(a: THREE.Vector3, b: THREE.Vector3, hit: boolean) {
-  const g = new THREE.Group();
-  const len = a.distanceTo(b);
-  const line = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, len, 4, 1, true),
-    new THREE.MeshBasicMaterial({ color: 0xffe08a, transparent: true, opacity: 0.95, depthWrite: false, blending: THREE.AdditiveBlending }));
-  line.position.copy(a).add(b).multiplyScalar(0.5);
-  line.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), b.clone().sub(a).normalize());
-  g.add(line);
-  const flash = new THREE.Mesh(new THREE.SphereGeometry(0.35, 8, 6), new THREE.MeshBasicMaterial({ color: 0xfff1b0, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending }));
-  flash.position.copy(a); g.add(flash);
-  if (hit) {
-    const spark = new THREE.Mesh(new THREE.SphereGeometry(0.5, 8, 6), new THREE.MeshBasicMaterial({ color: 0xff3a3a, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending }));
-    spark.position.copy(b); g.add(spark);
-  }
-  g.userData.t0 = performance.now();
-  return g;
 }
