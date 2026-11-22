@@ -208,3 +208,27 @@ export class VFX {
     this.tracerGeo.dispose(); this.flashGeo.dispose();
   }
 }
+
+/** Safe-zone wall: brighter (HDR, so it blooms) where it meets the ground, scrolling scan bands and a cell shimmer.
+ *  Pass a shared { value: seconds } so the owner can animate it (or freeze it for reduced motion). */
+export function zoneWallMaterial(time: { value: number }) {
+  return new THREE.ShaderMaterial({
+      transparent: true, side: THREE.DoubleSide, depthWrite: false, toneMapped: false,
+      uniforms: { uTime: time, uRepeat: { value: 40 } },
+      vertexShader: 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }',
+      fragmentShader: `uniform float uTime; uniform float uRepeat; varying vec2 vUv;
+        void main(){
+          float h = vUv.y;                                   // 0 = ground, 1 = top
+          vec2 p = vec2(vUv.x * uRepeat * 6.0, h * 18.0);
+          vec2 q = vec2(p.x + 0.5 * floor(p.y), p.y);        // offset rows: hexagon-ish cells
+          vec2 f = abs(fract(q) - 0.5);
+          float cell = smoothstep(0.42, 0.5, max(f.x, f.y));
+          float band = smoothstep(0.0, 0.08, fract(h * 4.0 - uTime * 0.25)) * (1.0 - smoothstep(0.08, 0.2, fract(h * 4.0 - uTime * 0.25)));
+          float fade = 1.0 - smoothstep(0.0, 0.9, h);
+          vec3 base = vec3(0.32, 0.62, 1.0);
+          vec3 col = base * (0.45 + 0.6 * cell + 0.7 * band) + vec3(0.5, 0.8, 1.5) * pow(1.0 - h, 24.0) * 1.4;
+          float a = clamp(fade * (0.08 + 0.22 * cell + 0.28 * band) + pow(1.0 - h, 14.0) * 0.55, 0.0, 0.75);
+          gl_FragColor = vec4(col, a);
+        }`,
+  });
+}

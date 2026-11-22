@@ -4,7 +4,7 @@ import { useEffect, useRef } from 'react';
 import * as THREE from 'three';
 import { animateAvatar, makeAvatar, makeChute, Avatar } from '../three/people';
 import { squadHex } from '../lib/game';
-import { VFX } from '../three/vfx';
+import { VFX, zoneWallMaterial } from '../three/vfx';
 import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
@@ -52,6 +52,8 @@ export default function Lab() {
     const resize = () => { const w = canvas.clientWidth, h = canvas.clientHeight; r.setSize(w, h, false); comp.setSize(w, h); comp.setPixelRatio(r.getPixelRatio()); cam.aspect = w / h; cam.updateProjectionMatrix(); vfx.setViewport(h * r.getPixelRatio(), cam.fov); };
     const fx = hp.get('fx');
     if (fx) vfx.setEmitter('smoke', new THREE.Vector3(9, 0.5, -3), 'smoke');
+    const zt = { value: 0 };
+    if (hp.get('zone')) { const zw = new THREE.Mesh(new THREE.CylinderGeometry(14, 14, 30, 96, 1, true), zoneWallMaterial(zt)); (zw.material as THREE.ShaderMaterial).uniforms.uRepeat.value = (Math.PI * 2 * 14) / 36; zw.position.set(0, 15, -18); scene.add(zw); }
     resize(); window.addEventListener('resize', resize);
     const clock = new THREE.Clock(); let raf = 0; let fireT = 0;
     const loop = () => {
@@ -64,7 +66,7 @@ export default function Lab() {
         if (Math.random() > 0.7) vfx.loot(new THREE.Vector3(6.5, 0.8, 2));
       }
       if (fireT > 0.35) fireT = 0;
-      vfx.update(dt);
+      vfx.update(dt); zt.value += dt;
       comp.render(dt);
     };
     loop();

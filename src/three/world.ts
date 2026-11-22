@@ -6,7 +6,6 @@
 // Campus coordinates are 0..1 (x east, y south); world units = S per campus width; one storey = FLOOR_H.
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
-import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
 import { animateAvatar, animatePlane, Avatar, disposeAvatar, makeAvatar, makeChute, makePlane } from './people';
 import { zoneNow } from '../lib/zone';
 import type { MapData, Building } from '../lib/game';
@@ -18,7 +17,7 @@ import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer
 import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
-import { VFX } from './vfx';
+import { VFX, zoneWallMaterial } from './vfx';
 import { AdaptiveResolution, currentQuality, FpsOverlay, FrameMonitor, PRESETS, Preset, Quality, showFps } from './quality';
 
 export const S = 560; // campus width in world units (a buggy is ~4.5 long)
@@ -95,30 +94,52 @@ function labelSprite(text: string, color = '#ffffff', bg = 'rgba(10,16,28,0.72)'
   return sp;
 }
 
-function facadeTexture(wall: string, glass: string, floors: number, style: string) {
+/**
+ * Facade textures for one building style: a colour map and a matching roughness/metalness map
+ * (green = roughness, blue = metalness, as three.js reads them), so glass is smooth and reflects the sky
+ * while walls stay matte. Same layout in both maps.
+ */
+function facadeTexture(wall: string, glass: string, floors: number, style: string): THREE.CanvasTexture & { orm?: THREE.CanvasTexture } {
   const tower = style === 'tower'; const dc = style === 'datacenter';
-  return canvasTex(256, 64 * floors, (g) => {
-    g.fillStyle = wall; g.fillRect(0, 0, 256, 64 * floors);
+  const lit: boolean[] = Array.from({ length: floors * 6 }, () => Math.random() < 0.12);
+  const paint = (orm: boolean) => (g: CanvasRenderingContext2D) => {
+    const WALL = orm ? 'rgb(255,215,8)' : wall;            // rough, non-metal
+    const GLASS = orm ? 'rgb(255,26,165)' : null;           // smooth, fairly metallic
+    const FRAME = orm ? 'rgb(255,120,150)' : tower ? 'rgba(220,235,250,0.6)' : wall;
+    g.fillStyle = WALL; g.fillRect(0, 0, 256, 64 * floors);
     for (let f = 0; f < floors; f++) {
       const y = f * 64; const ground = f === floors - 1;
       if (dc) {
-        g.fillStyle = 'rgba(0,0,0,0.18)';
+        g.fillStyle = orm ? 'rgb(255,190,40)' : 'rgba(0,0,0,0.18)';
         for (let x = 10; x < 250; x += 16) g.fillRect(x, y + 14, 8, 36); // vents
-        g.fillStyle = 'rgba(0,0,0,0.25)'; g.fillRect(0, y + 60, 256, 4);
+        g.fillStyle = orm ? 'rgb(255,200,20)' : 'rgba(0,0,0,0.25)'; g.fillRect(0, y + 60, 256, 4);
         continue;
       }
-      const grd = g.createLinearGradient(0, y + 8, 0, y + 56);
-      grd.addColorStop(0, '#d8eeff'); grd.addColorStop(0.35, glass); grd.addColorStop(1, '#16304a');
-      g.fillStyle = grd;
+      if (orm) g.fillStyle = GLASS!;
+      else {
+        // sky reflected at the top of each pane, darker interior below, a soft diagonal sheen
+        const grd = g.createLinearGradient(0, y + 8, 0, y + 56);
+        grd.addColorStop(0, '#cfe6fb'); grd.addColorStop(0.3, glass); grd.addColorStop(1, '#122a42');
+        g.fillStyle = grd;
+      }
       if (tower) g.fillRect(2, y + 4, 252, 56);
       else g.fillRect(8, y + (ground ? 8 : 14), 240, ground ? 50 : 36);
-      g.fillStyle = tower ? 'rgba(220,235,250,0.6)' : wall;
+      if (!orm) {
+        g.save(); g.globalAlpha = 0.12; g.fillStyle = '#ffffff';
+        g.beginPath(); g.moveTo(40, y + 58); g.lineTo(90, y + 6); g.lineTo(110, y + 6); g.lineTo(60, y + 58); g.fill(); g.restore();
+        // interior hints: ceiling strip lights and a few lit offices
+        g.fillStyle = 'rgba(255,255,255,0.10)'; g.fillRect(8, y + (ground ? 10 : 16), 240, 2);
+        for (let k = 0; k < 6; k++) if (lit[f * 6 + k] && !ground) { g.fillStyle = 'rgba(255,226,160,0.32)'; g.fillRect(12 + k * 40, y + 18, 32, 28); }
+      }
+      g.fillStyle = FRAME;
       for (let x = 8; x <= 248; x += ground ? 80 : tower ? 32 : 40) g.fillRect(x - (tower ? 1 : 2), y + 4, tower ? 2 : 4, 56);
-      g.fillStyle = 'rgba(0,0,0,0.14)'; g.fillRect(0, y + 60, 256, 4);
-      // lit offices
-      for (let k = 0; k < 3; k++) if (Math.random() < 0.3 && !ground) { g.fillStyle = 'rgba(255,232,170,0.35)'; g.fillRect(16 + Math.floor(Math.random() * 6) * 40, y + 16, 30, 30); }
+      g.fillStyle = orm ? 'rgb(255,200,20)' : 'rgba(0,0,0,0.14)'; g.fillRect(0, y + 60, 256, 4); // slab edge
     }
-  });
+  };
+  const t = canvasTex(256, 64 * floors, paint(false)) as THREE.CanvasTexture & { orm?: THREE.CanvasTexture };
+  const orm = canvasTex(256, 64 * floors, paint(true)); orm.colorSpace = THREE.NoColorSpace;
+  t.orm = orm;
+  return t;
 }
 
 const noiseTex = (base: string, dots: string[], n: number, rep: [number, number], size = 256, dot = 3) => canvasTex(size, size, (g) => {
@@ -150,6 +171,26 @@ function grassTex(rep: [number, number]) {
   }, rep);
   t.anisotropy = 8;
   return t;
+}
+
+/** A small sky + sun + ground scene baked into a PMREM environment map (cached per renderer). */
+function skyEnvironment(renderer: THREE.WebGLRenderer) {
+  const sc = new THREE.Scene();
+  const dome = new THREE.Mesh(new THREE.SphereGeometry(50, 32, 16), new THREE.ShaderMaterial({
+    side: THREE.BackSide,
+    vertexShader: 'varying vec3 vP; void main(){ vP = normalize(position); gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }',
+    fragmentShader: `varying vec3 vP; void main(){ float h = vP.y;
+      vec3 top = vec3(0.10,0.32,0.72), mid = vec3(0.55,0.75,0.92), gnd = vec3(0.20,0.26,0.17);
+      vec3 c = h > 0.0 ? mix(mid, top, smoothstep(0.0, 0.6, h)) : mix(mid * 0.8, gnd, smoothstep(0.0, -0.25, h));
+      vec3 sd = normalize(vec3(-0.4, 0.55, 0.3)); float s = max(dot(vP, sd), 0.0);
+      c += vec3(1.0, 0.9, 0.7) * (pow(s, 300.0) * 40.0 + pow(s, 8.0) * 0.5);
+      gl_FragColor = vec4(c, 1.0); }`,
+  }));
+  sc.add(dome);
+  const pm = new THREE.PMREMGenerator(renderer);
+  const tex = pm.fromScene(sc, 0.02).texture;
+  pm.dispose(); dome.geometry.dispose(); (dome.material as THREE.Material).dispose();
+  return tex;
 }
 
 /** Collects static geometry per material and merges it: thousands of props, a few draw calls. */
@@ -234,6 +275,9 @@ export class WorldScene {
   private bloom: UnrealBloomPass | null = null;
   private monitor = new FrameMonitor();
   vfx!: VFX;
+  private shake = 0;
+  private zoneTime = { value: 0 };
+  private myHp: number | null = null;
   private adaptive: AdaptiveResolution;
   private fpsOverlay: FpsOverlay | null = null;
   private lastFrame = 0;
@@ -290,9 +334,9 @@ export class WorldScene {
 
     this.buildSky();
     // soft reflections so car paint, glass and steel pick up light like the real things
-    const pm = new THREE.PMREMGenerator(this.renderer);
-    this.scene.environment = pm.fromScene(new RoomEnvironment(), 0.04).texture; this.scene.environmentIntensity = 0.16; pm.dispose();
-    this.scene.add(new THREE.HemisphereLight(0xcfe8ff, 0x5d7a3f, 1.1));
+    // outdoor reflections: glass and car paint mirror this campus sky (blue above, warm sun, green-grey ground)
+    this.scene.environment = skyEnvironment(this.renderer); this.scene.environmentIntensity = 0.5;
+    this.scene.add(new THREE.HemisphereLight(0xcfe8ff, 0x5d7a3f, 0.85));
     this.sun = new THREE.DirectionalLight(0xfff0d6, 2.5);
     this.sun.castShadow = this.preset.shadows;
     this.sun.shadow.mapSize.set(this.preset.shadowSize || 1024, this.preset.shadowSize || 1024);
@@ -630,7 +674,7 @@ export class WorldScene {
         if (x > 0.02 && x < 0.98 && y > 0.02 && y < 0.98 && !blds.some((b) => inRect(x, y, b, 0.006)) && !LOTS.some((l: any) => inRect(x, y, l, 0.003))) spots.push({ x, y, palm: false });
       }
     }
-    const N = this.lowEnd ? 380 : 700;
+    const N = Math.round(700 * this.preset.decor);
     for (let i = 0; i < 6000 && spots.length < N; i++) {
       const x = 0.02 + rnd() * 0.96; const y = 0.02 + rnd() * 0.96;
       if (blocked(x, y)) continue;
@@ -641,7 +685,18 @@ export class WorldScene {
     // canopy: three overlapping lumps instead of one ball (one ball on slow phones)
     const lump = (r: number, x: number, y: number, z: number) => new THREE.IcosahedronGeometry(r, 1).translate(x, y, z);
     const crownGeo = this.lowEnd ? new THREE.IcosahedronGeometry(2.1, 1) : mergeGeometries([lump(1.75, 0, 0, 0), lump(1.3, 1.05, -0.45, 0.4), lump(1.2, -0.9, -0.3, -0.7), lump(1.05, 0.1, 0.95, 0.2)])!;
-    const crowns = new THREE.InstancedMesh(crownGeo, new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.95, flatShading: true }), spots.length);
+    // fake ambient occlusion + sun: crowns darken toward the inside/bottom and lighten on top
+    {
+      crownGeo.computeBoundingBox(); const bb = crownGeo.boundingBox!; const pa = crownGeo.getAttribute('position');
+      const cols = new Float32Array(pa.count * 3);
+      for (let i = 0; i < pa.count; i++) {
+        const h = (pa.getY(i) - bb.min.y) / Math.max(0.001, bb.max.y - bb.min.y);
+        const k = 0.5 + 0.75 * Math.pow(h, 0.8);
+        cols[i * 3] = k * 0.95; cols[i * 3 + 1] = k; cols[i * 3 + 2] = k * 0.85;
+      }
+      crownGeo.setAttribute('color', new THREE.BufferAttribute(cols, 3));
+    }
+    const crowns = new THREE.InstancedMesh(crownGeo, new THREE.MeshStandardMaterial({ color: 0xffffff, vertexColors: true, roughness: 0.95, flatShading: true }), spots.length);
     const palmT = new THREE.InstancedMesh(new THREE.CylinderGeometry(0.16, 0.26, 7, 6), new THREE.MeshStandardMaterial({ color: 0x8a6a48, roughness: 1 }), spots.length);
     const palmC = new THREE.InstancedMesh(new THREE.ConeGeometry(3.2, 1.6, 7, 1, true), new THREE.MeshStandardMaterial({ color: 0x3f8a3a, roughness: 0.9, flatShading: true, side: THREE.DoubleSide }), spots.length);
     let nt = 0; let np = 0;
@@ -702,10 +757,12 @@ export class WorldScene {
     const st = STYLE[b.style] || STYLE.office;
     const w = (b.x1 - b.x0) * S; const d = (b.y1 - b.y0) * S; const h = b.floors * FLOOR_H + 0.6;
     const c = W((b.x0 + b.x1) / 2, (b.y0 + b.y1) / 2);
-    const fx = facadeTexture(st.wall, st.glass, b.floors, b.style); fx.wrapS = THREE.RepeatWrapping; fx.repeat.set(Math.max(1, Math.round(w / 10)), 1);
-    const fz = facadeTexture(st.wall, st.glass, b.floors, b.style); fz.wrapS = THREE.RepeatWrapping; fz.repeat.set(Math.max(1, Math.round(d / 10)), 1);
-    const sideX = new THREE.MeshStandardMaterial({ map: fz, roughness: 0.5, metalness: b.style === 'tower' ? 0.35 : 0.1 });
-    const sideZ = new THREE.MeshStandardMaterial({ map: fx, roughness: 0.5, metalness: b.style === 'tower' ? 0.35 : 0.1 });
+    const facade = (len: number) => {
+      const t = facadeTexture(st.wall, st.glass, b.floors, b.style);
+      for (const x of [t, t.orm!]) { x.wrapS = THREE.RepeatWrapping; x.repeat.set(Math.max(1, Math.round(len / 10)), 1); }
+      return new THREE.MeshStandardMaterial({ map: t, roughnessMap: t.orm, metalnessMap: t.orm, roughness: 1, metalness: 1, envMapIntensity: b.style === 'tower' ? 1.3 : 1 });
+    };
+    const sideX = facade(d); const sideZ = facade(w);
     const roof = new THREE.MeshStandardMaterial({ map: noiseTex(`#${new THREE.Color(st.roof).getHexString()}`, ['rgba(0,0,0,0.08)', 'rgba(255,255,255,0.06)'], 800, [3, 3], 128), roughness: 0.95 });
     const body = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), [sideX, sideX, roof, roof, sideZ, sideZ]);
     body.position.set(c.x, h / 2, c.z);
@@ -836,7 +893,8 @@ export class WorldScene {
       for (let y = 0; y < 256; y += 16) g.fillRect(0, y, 64, 2);
     });
     this.wallTex.wrapS = this.wallTex.wrapT = THREE.RepeatWrapping; this.wallTex.repeat.set(40, 1);
-    this.zoneWall = new THREE.Mesh(new THREE.CylinderGeometry(1, 1, 120, 160, 1, true), new THREE.MeshBasicMaterial({ map: this.wallTex, transparent: true, side: THREE.DoubleSide, depthWrite: false, fog: false }));
+    // energy wall: brighter (HDR, so it blooms) where it meets the ground, scrolling scan bands and a hex shimmer
+    this.zoneWall = new THREE.Mesh(new THREE.CylinderGeometry(1, 1, 120, 160, 1, true), zoneWallMaterial(this.zoneTime));
     this.zoneWall.position.y = 60; this.zoneWall.visible = false; this.zoneWall.renderOrder = 5;
     this.zoneOutside = new THREE.Mesh(new THREE.RingGeometry(1, 3000, 160, 1), new THREE.MeshBasicMaterial({ color: 0x2f6bff, transparent: true, opacity: 0.22, depthWrite: false, side: THREE.DoubleSide }));
     this.zoneOutside.rotation.x = -Math.PI / 2; this.zoneOutside.position.y = 0.4; this.zoneOutside.visible = false;
@@ -962,6 +1020,7 @@ export class WorldScene {
       const c = W(cur[0], cur[1]);
       this.zoneWall.visible = this.zoneOutside.visible = true;
       this.zoneWall.position.set(c.x, 60, c.z); this.zoneWall.scale.set(cur[2] * S, 1, cur[2] * S);
+      (this.zoneWall.material as THREE.ShaderMaterial).uniforms.uRepeat.value = Math.max(4, (Math.PI * 2 * cur[2] * S) / 36); // ~6 m cells at any size
       if (Math.abs(this.zoneR - cur[2]) > 0.0006) {
         this.zoneR = cur[2];
         this.zoneOutside.geometry.dispose();
@@ -1172,6 +1231,8 @@ export class WorldScene {
     if (want && !this.fpsOverlay) this.fpsOverlay = new FpsOverlay(this.canvas.parentElement || document.body);
     else if (!want && this.fpsOverlay) { this.fpsOverlay.dispose(); this.fpsOverlay = null; }
   }
+  /** camera shake impulse (landing, taking a hit); none with reduced motion */
+  kick(amount: number) { if (!this.reduced) this.shake = Math.min(1, this.shake + amount); }
   /** for perf tooling */
   stats() { return { quality: this.quality, scale: this.adaptive.scale, fps: this.monitor.fps, p95: this.monitor.pct(0.95), calls: this.renderer.info.render.calls, tris: this.renderer.info.render.triangles }; }
 
@@ -1282,7 +1343,8 @@ export class WorldScene {
       o.car.rotation.y = o.heading;
       const foot = !!d.foot || !!d.chute;
       // one-shot effects on state changes the server already made
-      if (o.wasChute && !d.chute && o.avatar.visible) this.vfx.landing(o.car.position);
+      if (o.wasChute && !d.chute && o.avatar.visible) { this.vfx.landing(o.car.position); if (d.me) this.kick(0.5); }
+      if (d.me && d.hp != null) { if (this.myHp != null && d.hp < this.myHp) this.kick(Math.min(0.6, (this.myHp - d.hp) / 40)); this.myHp = d.hp; }
       if (o.wasDown !== undefined && o.wasDown !== !!d.down) this.vfx.pulse(o.car.position.clone().setY(o.car.position.y + 1), d.down ? 0xff4d5e : 0x2ee6ff);
       o.wasChute = !!d.chute; o.wasDown = !!d.down;
       o.veh.visible = !foot;
@@ -1388,6 +1450,7 @@ export class WorldScene {
     } else if (this.plane) this.plane.visible = false;
     // gun tracers fade in a blink
     this.vfx.update(dt);
+    if (!this.reduced) this.zoneTime.value = t;
     if (this.zoneData?.shrink_until && now - this.zoneT > 120) { this.zoneT = now; this.drawZone(); }
 
     // stairs walk in first person: follow the flight of steps up (or down) to the next floor
@@ -1508,7 +1571,14 @@ export class WorldScene {
         (box.userData.glow as THREE.Mesh).visible = box.userData.k > 0.2;
       }
     }
+    let shook = false;
+    if (this.shake > 0.01) {
+      const a = this.shake * this.shake * 0.35; shook = true;
+      this.camera.position.x += (Math.random() - 0.5) * a; this.camera.position.y += (Math.random() - 0.5) * a;
+      this.shake = Math.max(0, this.shake - dt * 2.2);
+    }
     if (this.composer) this.composer.render(dt); else this.renderer.render(this.scene, this.camera);
+    if (shook) this.camera.position.copy(this.camPos);
   };
 
   private isInside(B: Bldg, p: THREE.Vector3) {

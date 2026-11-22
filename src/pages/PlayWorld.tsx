@@ -756,6 +756,7 @@ export default function WorldTab({ s, token, map, refresh, openMission, openSqua
       {climbing && <div className="climb-flash" role="status">{climbing}</div>}
       {hurt && performance.now() - hurt.t < 700 && <div className="hurt-arc" style={{ transform: `rotate(${hurt.ang}rad)` }} aria-hidden />}
       {fpv && <div className="fpv-cross" aria-hidden />}
+      {hp > 0 && hp <= 30 && s.arena.phase === 'play' && <div className={`lowhp-vignette ${hp <= 15 ? 'crit' : ''}`} aria-hidden />}
       {target && canFight && (
         <div className={`aim ${hitFx && performance.now() - hitFx.t < 260 ? 'hit' : ''}`} aria-hidden>
           <i /><span>SQ {target.number}{typeof target.hp === 'number' ? ` · ${target.hp} HP` : ''} · {Math.round(target.d * METERS)} m</span>
@@ -839,6 +840,7 @@ export default function WorldTab({ s, token, map, refresh, openMission, openSqua
         )}
         <div className="hud-hp" aria-label={`Health ${hp} of 100${s.team.shield ? `, shield ${s.team.shield}` : ''}`}>
           <div className="hp-track">
+            <i className="hp-ghost" style={{ width: `${Math.max(0, Math.min(100, hp))}%` }} />
             <i className="hp-fill" style={{ width: `${Math.max(0, Math.min(100, hp))}%`, background: hp > 50 ? '#f2f5f8' : hp > 25 ? '#ffc23d' : '#ff4d5e' }} />
             {s.team.shield > 0 && <i className="hp-shield" style={{ width: `${Math.min(100, s.team.shield)}%` }} />}
           </div>

@@ -5,7 +5,8 @@ import { demoTab, friendly, GameError, newKey, rpc, store } from '../lib/api';
 import { useLive } from '../lib/live';
 import { API_MODE } from '../lib/supabase';
 import { msUntil, progress, secondsLeft, useNow, fmtClock, serverTime } from '../lib/time';
-import { FINALE_STAGES, MATCH_PHASES, KIND_LABEL, locName, MapData, ROLE_ORDER, ROLES, Role, TIER_COLOR, useMapData } from '../lib/game';
+import { FINALE_STAGES, MATCH_PHASES, KIND_LABEL, locName, MapData, ROLE_ORDER, ROLES, Role, squadHex, TIER_COLOR, useMapData } from '../lib/game';
+import { Celebrate } from '../components/Celebrate';
 import { buzz, sfx, unlockAudio } from '../lib/sound';
 import { SHORT } from '../components/CampusMap';
 import WorldTab from './PlayWorld';
@@ -808,6 +809,7 @@ function Results({ s }: { s: any }) {
   const champs = win && win.number === s.team.number;
   return (
     <div className={`panel center win-card ${champs ? 'good' : ''}`}>
+      <Celebrate color={win ? squadHex(win.number) : undefined} />
       <div className="kind-tag">{s.arena.name} · Winner</div>
       <div className="win-trophy" aria-hidden>🏆</div>
       <div className="mega gold" style={{ fontSize: 'clamp(34px, 10vw, 64px)' }}>Squad {win?.number}</div>

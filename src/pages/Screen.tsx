@@ -323,6 +323,7 @@ function ResultsScreen({ s }: { s: any }) {
   const tie = first?.tie;
   return (
     <div className="screen-full">
+      {step >= 4 && first && <div className="celebrate" aria-hidden><div className="celebrate-rays" /></div>}
       {step >= 6 && <Confetti />}
       <div className="up" style={{ fontSize: 26, color: 'var(--orange)' }}>{grand ? 'Grand champion · all maps' : `${s.arena.name} champion`}</div>
       {step >= 1 && step <= 3 && <div className="huge-timer">{4 - step}</div>}
