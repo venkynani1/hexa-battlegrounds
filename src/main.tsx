@@ -23,7 +23,7 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
       <Suspense fallback={<Loading text="Loading…" />}>
         <Routes>
           <Route path="/" element={<Home />} />
-          <Route path="/join" element={ONLINE ? <OnlineJoin /> : <Join />} />
+          <Route path="/join" element={<JoinRoute />} />
           <Route path="/play" element={<Play />} />
           <Route path="/host" element={<Host />} />
           <Route path="/demo" element={<Demo />} />
@@ -34,3 +34,9 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
     </BrowserRouter>
   </React.StrictMode>,
 );
+
+/** Printed squad cards (?c=) still open the card check-in; everything else uses squad-code check-in. */
+function JoinRoute() {
+  const card = new URLSearchParams(window.location.search).has('c');
+  return card && !ONLINE ? <Join /> : <OnlineJoin />;
+}
