@@ -5,7 +5,7 @@ import { useLive } from '../lib/live';
 import { msUntil, useNow } from '../lib/time';
 import { FINALE_STAGES, KIND_LABEL, locName, MapData, ROLE_ORDER, ROLES, Role, TIER_COLOR, useMapData, ZONE_TEXT } from '../lib/game';
 import CampusMap from '../components/CampusMap';
-import { PacingPanel, PhaseControls, rememberPins, RosterPanel } from './HostP0';
+import { PacingPanel, PhaseControls, RosterPanel } from './HostP0';
 import { Countdown, FeedList, Modal, QR, toast } from '../components/ui';
 
 type Section = 'control' | 'squads' | 'map' | 'missions' | 'production' | 'finale' | 'links' | 'settings' | 'log';
@@ -17,14 +17,16 @@ export default function Host() {
   return <Dashboard token={token} onLogout={() => { store.del('hb_host_token'); setToken(null); }} />;
 }
 
+/** events that use squad-code check-in (every new event; old card events keep their PIN tools) */
+const squadCodes = (d: any) => ONLINE || Number(d?.event?.settings?.online) === 1;
+
 // ── Login / create ─────────────────────────────────────────────────────
 function HostLogin({ onLogin }: { onLogin: (t: string) => void }) {
   const [mode, setMode] = useState<'login' | 'create'>('login');
   const [code, setCode] = useState(store.get('hb_host_code') || '');
   const [name, setName] = useState('Hexaware Battlegrounds × Operation Siruseri');
   const [secret, setSecret] = useState('');
-  const [maps, setMaps] = useState(ONLINE ? 1 : 3);
-  const [fixed, setFixed] = useState(!ONLINE);
+  const [audience, setAudience] = useState<'mavericks' | 'segue'>('mavericks');
   const [err, setErr] = useState('');
   const [busy, setBusy] = useState(false);
   async function submit(e: FormEvent) {
@@ -33,13 +35,10 @@ function HostLogin({ onLogin }: { onLogin: (t: string) => void }) {
     try {
       const r = mode === 'login'
         ? await rpc('host_login', { p_code: code, p_secret: secret })
-        : await rpc('host_create_event', { p_code: code, p_name: name, p_secret: secret, p_arenas: maps });
+        : await rpc('host_create_event', { p_code: code, p_name: name, p_secret: secret, p_arenas: 1 });
       store.set('hb_host_code', r.code);
-      if (mode === 'create' && ONLINE) await rpc('host_settings', { p_token: r.token, p_settings: { online: 1 } });
-      if (mode === 'create' && fixed) {
-        // create the squads with this host's fixed PINs straight away (same cards every time)
-        try { const c = await rpc<any>('host_fixed_cards', { p_token: r.token, p_secret: secret }); rememberPins(c.squads || []); } catch { /* can be done later in Links & PINs */ }
-      }
+      // every new event (in person and online) uses squad-code check-in; maps open by themselves
+      if (mode === 'create') await rpc('host_settings', { p_token: r.token, p_settings: { online: 1, segue: audience === 'segue' ? 1 : 0 } });
       onLogin(r.token);
     } catch (ex) { setErr(friendly(ex)); } finally { setBusy(false); }
   }
@@ -58,20 +57,24 @@ function HostLogin({ onLogin }: { onLogin: (t: string) => void }) {
             <input id="c" className="input mono" value={code} onChange={(e) => setCode(e.target.value.toUpperCase())} placeholder="HEXA26" required /></div>
           {mode !== 'login' && <>
             <div className="field"><label htmlFor="n">Event name</label><input id="n" className="input" value={name} onChange={(e) => setName(e.target.value)} /></div>
-            {ONLINE ? <p className="notice" style={{ margin: 0 }}>Online edition: maps open by themselves as squads check in (15 squads = 60 players per map). Players sign in with their employee ID and company e-mail.</p> : <div className="field"><label htmlFor="m">Parallel maps (max 15 squads = 60 players each)</label>
-              <select id="m" className="input" value={maps} onChange={(e) => setMaps(Number(e.target.value))}>
-                {[1, 2, 3, 4].map((n) => <option key={n} value={n}>{n} map{n > 1 ? 's' : ''} · up to {n * 60} players</option>)}
-              </select></div>}
+            <div className="field">
+              <span className="lbl" id="aud">Who is playing?</span>
+              <div className="mode-pick" role="radiogroup" aria-labelledby="aud">
+                <button type="button" role="radio" aria-checked={audience === 'mavericks'} className={audience === 'mavericks' ? 'on' : ''} onClick={() => setAudience('mavericks')}>
+                  <span aria-hidden>🏢</span><b>Mavericks</b><small>Employees sign in with employee ID, company e-mail and name.</small>
+                </button>
+                <button type="button" role="radio" aria-checked={audience === 'segue'} className={audience === 'segue' ? 'on' : ''} onClick={() => setAudience('segue')}>
+                  <span aria-hidden>🎓</span><b>Segue</b><small>Campus participants sign in with name, e-mail and college. No employee ID.</small>
+                </button>
+              </div>
+            </div>
+            <p className="notice" style={{ margin: 0 }}>Players check in with the event QR or link, then create a squad, join one with a squad code, or let matchmaking find one. No printed cards or PINs. Maps open by themselves (15 squads = 60 players per map).</p>
           </>}
           <div className="field"><label htmlFor="s">Host password</label>
             <input id="s" className="input" type="password" value={secret} onChange={(e) => setSecret(e.target.value)} minLength={6} required autoComplete="current-password" /></div>
           {err && <div className="chip bad" style={{ whiteSpace: 'normal', padding: 10 }}>{err}</div>}
           <button className="btn primary big" disabled={busy}>{mode === 'login' ? 'Enter control room' : 'Create event'}</button>
           <a href="/demo" className="btn ghost">No players yet? Watch a demo match with dummy squads</a>
-          {mode === 'create' && !ONLINE && (
-            <label className="check"><input type="checkbox" checked={fixed} onChange={(e) => setFixed(e.target.checked)} />
-              <span>Create the squads with my <b>fixed squad cards</b>: the same PINs and QR codes every time I use this host password.</span></label>
-          )}
           {mode === 'create' && <p className="muted" style={{ margin: 0, fontSize: 13 }}>Share the host password only with your co-host. Anyone with it controls the game.</p>}
         </form>
       </div>
@@ -120,7 +123,7 @@ function Dashboard({ token, onLogout }: { token: string; onLogout: () => void })
   const selArena = arenas.find((a: any) => a.id === arena) || null;
   const teams = d.teams.filter((t: any) => arena === 'all' || t.arena_id === arena);
   const nav: [Section, string][] = [['control', 'Game control'], ['squads', 'Squads'], ['map', 'Map & zone'], ['missions', 'Missions'],
-    ['production', 'Suspense'], ['finale', 'Finale & results'], [ 'links', ONLINE ? 'Players & attendance' : 'Links & PINs'], ['settings', 'Settings'], ['log', 'Logs']];
+    ['production', 'Suspense'], ['finale', 'Finale & results'], ['links', squadCodes(d) ? 'Players & attendance' : 'Links & PINs'], ['settings', 'Settings'], ['log', 'Logs']];
 
   return (
     <div className="host">
@@ -153,7 +156,7 @@ function Dashboard({ token, onLogout }: { token: string; onLogout: () => void })
         {section === 'missions' && <Missions token={token} />}
         {section === 'production' && <Production arena={arena === 'all' ? null : arena} cmd={cmd} />}
         {section === 'finale' && <Finale d={d} arenas={arenas} arena={arena} cmd={cmd} />}
-        {section === 'links' && (ONLINE ? <OnlinePanel d={d} token={token} /> : <Links d={d} token={token} refresh={live.refresh} cmd={cmd} />)}
+        {section === 'links' && (squadCodes(d) ? <OnlinePanel d={d} token={token} /> : <Links d={d} token={token} refresh={live.refresh} cmd={cmd} />)}
         {section === 'settings' && <Settings d={d} token={token} refresh={live.refresh} />}
         {section === 'log' && <Logs d={d} token={token} arenas={arenas} cmd={cmd} map={map} />}
       </main>
@@ -168,7 +171,7 @@ function Control({ d, arenas, arena, cmd, map, pacing, token }: { d: any; arenas
   useNow(500);
   const list = arena === 'all' ? arenas : arenas.filter((a: any) => a.id === arena);
   // online edition: the one Start button (automatic maps) is the main control; per-map buttons are advanced
-  if (ONLINE) return (
+  if (squadCodes(d)) return (
     <>
       <OnlinePanel d={d} token={token} />
       <details className="manual-pacing"><summary>Per-map controls (advanced — not needed with automatic maps)</summary>
@@ -900,7 +903,8 @@ function OnlinePanel({ d, token }: { d: any; token: string }) {
   async function attendance() {
     try {
       const rows = await rpc<any[]>('host_attendance', { p_token: token });
-      const cols = ['emp_id', 'name', 'email', 'map', 'squad', 'squad_name', 'squad_code', 'size', 'role', 'points', 'joined_at', 'last_seen_at'];
+      const segue = Number(d.event.settings.segue) === 1;
+      const cols = [...(segue ? ['name', 'email', 'college'] : ['emp_id', 'name', 'email']), 'map', 'squad', 'squad_name', 'squad_code', 'size', 'role', 'points', 'joined_at', 'last_seen_at'];
       const esc = (v: any) => { const t = v == null ? '' : String(v); return /[",\n]/.test(t) ? `"${t.replace(/"/g, '""')}"` : t; };
       // employee IDs keep their leading zeros in Excel
       const csv = [cols.join(','), ...rows.map((r) => cols.map((c) => (c === 'emp_id' ? `="${r[c]}"` : esc(r[c]))).join(','))].join('\r\n');
@@ -913,12 +917,12 @@ function OnlinePanel({ d, token }: { d: any; token: string }) {
     <>
       <div className="grid2">
         <div className="panel col" style={{ alignItems: 'center' }}>
-          <div className="panel-title" style={{ alignSelf: 'flex-start' }}>Online join link — paste it in the Teams call chat</div>
+          <div className="panel-title" style={{ alignSelf: 'flex-start' }}>{ONLINE ? 'Online join link — paste it in the Teams call chat' : 'Join QR — show it on the big screen'}</div>
           <QR value={joinUrl} size={180} />
           <code className="mono">{joinUrl}</code>
           <div className="row"><button className="btn sm" onClick={() => { navigator.clipboard?.writeText(joinUrl); toast('Copied', 'good'); }}>Copy link</button>
             <button className="btn sm gold" onClick={attendance}>⬇ Attendance (CSV)</button></div>
-          <p className="muted" style={{ fontSize: 13, margin: 0 }}>Event code <b className="mono">{d.event.code}</b>. Players sign in with their 10-digit employee ID and company e-mail.</p>
+          <p className="muted" style={{ fontSize: 13, margin: 0 }}>Event code <b className="mono">{d.event.code}</b>. {Number(d.event.settings.segue) === 1 ? 'Segue: players sign in with name, e-mail and college.' : 'Mavericks: players sign in with their 10-digit employee ID, company e-mail and name.'}</p>
         </div>
         <div className="panel col">
           <div className="panel-title">Check-in rules</div>
