@@ -3,6 +3,7 @@ import QRCode from 'qrcode';
 import { fmtClock, secondsLeft, msUntil, useNow, progress } from '../lib/time';
 import { feedText, MapData, ZONE_TEXT } from '../lib/game';
 import { sfx, setMuted, isMuted, setVolume, getVolume, unlockAudio } from '../lib/sound';
+import { ambienceOn, setAmbience } from '../lib/ambience';
 import { store } from '../lib/api';
 import { applyPrefs } from '../lib/game';
 import { detectQuality, QUALITY_LABEL, qualityChoice, QualityChoice, setQualityChoice, setShowFps, showFps } from '../three/quality';
@@ -191,6 +192,7 @@ export function FeedList({ feed, map, limit = 10, big = false }: { feed: any[]; 
 export function SettingsSheet({ open, onClose }: { open: boolean; onClose: () => void }) {
   const [muted, setM] = useState(isMuted());
   const [vol, setV] = useState(getVolume());
+  const [amb, setAmb] = useState(ambienceOn());
   const [motion, setMotion] = useState(store.get('hb_motion') || 'auto');
   const [text, setText] = useState(store.get('hb_text') || 'normal');
   const [quality, setQ] = useState<QualityChoice>(qualityChoice());
@@ -199,6 +201,7 @@ export function SettingsSheet({ open, onClose }: { open: boolean; onClose: () =>
     <Sheet open={open} onClose={onClose} title="Settings">
       <div className="col" style={{ gap: 14 }}>
         <label className="check"><input type="checkbox" checked={!muted} onChange={(e) => { unlockAudio(); setMuted(!e.target.checked); setM(!e.target.checked); sfx.tap(); }} /> Sound effects</label>
+        <label className="check"><input type="checkbox" checked={amb} onChange={(e) => { unlockAudio(); setAmbience(e.target.checked); setAmb(e.target.checked); }} /> Campus ambience <small className="muted">(wind, birds, engines, water)</small></label>
         <div className="field"><label htmlFor="vol">Volume</label>
           <input id="vol" type="range" min={0} max={1} step={0.1} value={vol} onChange={(e) => { setVolume(Number(e.target.value)); setV(Number(e.target.value)); sfx.tap(); }} />
         </div>

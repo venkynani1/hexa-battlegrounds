@@ -57,15 +57,56 @@ Each capture is a different moment of a live bot match, so ranges overlap; they 
 **Frame rates from this sandbox's software renderer (1–9 fps for both versions) say nothing about phones.**
 Real-device numbers still need measuring (see below).
 
-## Not done yet (honest gap list against the brief)
-1. **Campus geometry rebuild**: interiors, lifts, crates, vehicles, roads and landscaping are the same models; only
-   facades/glass, trees and the zone wall changed. No new architecture detail or instanced landscaping set yet.
-2. **Cinematic sequences**: the boarding/plane flyover and jump keep the existing scenes; no new camera rails for
-   the plane, deployment or airdrop arrival. Shake and the winner reveal are new.
-3. **Environmental audio**: unchanged (existing synthesized effects). No ambient campus soundscape or positional audio yet.
-4. **Asset pipeline**: textures are generated canvases, not an atlas or KTX2/Basis compressed set; no glTF assets.
-5. **Buildings LOD and instancing** beyond the existing batching; draw calls in landscape can still reach ~490.
-6. **Real-device testing**: not possible from this sandbox. Needs a midrange Android (e.g. Snapdragon 6-series or
+## Round 2: campus geometry, camera sequences, audio and performance
+
+### What changed
+- **Vehicles**: the squad buggy keeps its look but is baked from ~45 meshes into 12 shared meshes (paint, matte and metal
+  parts coloured per vertex, glass, lamps, plate, flag, 4 wheels); far away it drops to 5 (`setVehicleDetail`).
+  Parked cars are a rounded sedan shell, glass cabin and four wheels (3 instanced draws for every car on campus).
+  Shuttles have window bands, livery, a windscreen and wheels.
+- **Buildings**: coping, corner pilasters, rooftop plant (AC units with fan grilles, lift machine room, duct run, water
+  tank on legs, a mast and dish on towers), an entrance canopy on columns with planters and bollards, and clipped hedges
+  and shrubs round the base. All of it bakes into 2 meshes per building (`src/three/bake.ts`).
+- **Interiors and lifts**: workstation pods (desks, dividers, monitors with lit screens, chairs) between the pillars as
+  waist-high cover, corner planters, a reception desk with a lit sign on the ground floor; a glass lift cab with steel
+  posts, back panel and handrail, floor, lit roof strip, half-open glass doors and a call panel with up/down lights.
+  Baked to 3 meshes per floor.
+- **Streets and landscaping**: solid kerb lines, lamp posts with an arm and LED head, benches and bins along the
+  footpaths, and ~900 instanced shrubs and flower beds (one draw call).
+- **Crates**: challenge boxes gain steel corners and handles (trim switches off when far). Airdrops are slatted crates
+  with steel straps under a striped canopy on eight cords; they drift down from 140 m over 9 s, sway, land with a dust
+  burst and a camera nudge if you are close, and the canopy collapses.
+- **Camera sequences**:
+  - *On board*: opens side-on to the plane, swings round behind it over ~12 s, settles into the high chase view.
+  - *Free fall*: dives with the player, tight behind the shoulders, FOV widens for speed; the plane is hidden if the
+    lens would pass through it (the baseline capture showed the hull filling the screen).
+  - *Canopy*: a pull-back with an upward jolt as the lines take the weight, then the landing-spot view.
+  - *Airdrop (big screen)*: a 13 s cut that follows the crate down and holds on the landing, then back to the orbit.
+  - Reduced-motion turns off the swing, jolt, FOV change and the cut.
+- **Ambient and positional audio** (`src/lib/ambience.ts`, synthesised, no files): beds for outdoors (wind, traffic,
+  birdsong placed around you), indoors (air handling), on board (turboprop drone), free fall (wind roar) and canopy
+  (flutter); positional fountain, nearest buggy engines (pitch follows speed), rival gunshots, airdrop thuds, the drop
+  plane overhead. The camera is the listener. Settings → *Campus ambience* turns it off; the mute switch silences it.
+- **Textures**: name plates are packed into a shared atlas page (one upload for every label); buildings of the same style
+  share one facade image. Loot uses shared meshes (a coin stack is one mesh). Tap targets under places are no longer drawn.
+
+### Metrics: same staged views, previous build vs this build (`/lab/world`, headless software renderer)
+| View | Balanced: draw calls | Balanced: triangles | High: draw calls | High: triangles | GPU textures |
+|---|---|---|---|---|---|
+| Street level | 520 → 284 | 471k → 361k | 568 → 284 | 531k → 694k | 165 → 52 |
+| Interior floor | 131 → 138 | 452k → 339k | 142 → 149 | 511k → 673k | 160 → 53 |
+| Free fall | 185 → 159 | 452k → 342k | 189 → 164 | 511k → 675k | 159 → 52 |
+| On board | 774 → 306 | 470k → 356k | 772 → 342 | 529k → 695k | 179 → 53 |
+| Big screen, airdrop | 1,323 → 481 | 496k → 378k | 1,366 → 478 | 554k → 712k | 175 → 55 |
+| Parking yard | 380 → 147 | 460k → 341k | 382 → 148 | 520k → 675k | 162 → 51 |
+
+Geometries in memory fell from 300–380 to 112–144. High (desktop) trades more triangles for full-detail trees and the
+new props; Balanced and Low (phones) use 20-face tree lumps and shrubs, so they have fewer triangles than before.
+
+## Not done yet (honest gap list)
+1. **KTX2 / Basis compression**: not applicable as things stand. Every texture is drawn on a canvas at load time; there
+   are no image files to compress, and a KTX2 transcoder (~200 KB of WASM) would cost more than it saves. The texture
+   work went into atlasing and sharing instead (GPU textures 160–180 → 51–55). Revisit if photo-based assets are added.
+2. **Real-device testing**: not possible from this sandbox. Needs a mid-range Android (Snapdragon 6-series or
    Mali-G57/G68), an iPhone and a Teams laptop, each with Settings → Show frame rate on.
-7. **Deployment**: the branch is committed locally. GitHub sign-in for this session expired, so it could not be
-   pushed or given a Vercel preview yet. The live sites are unchanged.
+3. **Approval**: the branch has a Vercel preview; the live sites stay unchanged until it is merged into main.

@@ -1,6 +1,7 @@
 // Captain on foot (rigged character, see rig.ts), parachute, the drop plane and gun tracers. All built in code (no assets).
 // Scale: 1 world unit ≈ 1 m (a buggy is ~4.5 long, a person 1.8 tall).
 import * as THREE from 'three';
+import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { Character } from './rig';
 
 const mat = (c: THREE.ColorRepresentation, o: { rough?: number; metal?: number; emissive?: number; ei?: number } = {}) =>
@@ -83,10 +84,10 @@ export function makePlane() {
     const eng = new THREE.Mesh(new THREE.CylinderGeometry(0.9, 1.1, 4, 12), darkM); eng.rotation.x = Math.PI / 2; eng.position.set(x, -0.6, -2.5); g.add(eng);
     const prop = new THREE.Mesh(new THREE.BoxGeometry(4.4, 0.25, 0.12), darkM); prop.position.set(x, -0.6, -4.6); prop.name = 'prop'; g.add(prop);
   }
-  const winM = new THREE.MeshBasicMaterial({ color: 0x9fd8ff });
-  for (let i = 0; i < 9; i++) for (const sx of [-1, 1]) {
-    const w = new THREE.Mesh(new THREE.PlaneGeometry(0.6, 0.5), winM); w.position.set(sx * 2.62, 0.9, -9 + i * 2.2); w.rotation.y = sx * Math.PI / 2; g.add(w);
-  }
+  // cabin windows: 18 panes, one mesh
+  const panes: THREE.BufferGeometry[] = [];
+  for (let i = 0; i < 9; i++) for (const sx of [-1, 1]) panes.push(new THREE.PlaneGeometry(0.6, 0.5).rotateY(sx * Math.PI / 2).translate(sx * 2.62, 0.9, -9 + i * 2.2));
+  g.add(new THREE.Mesh(mergeGeometries(panes, false)!, new THREE.MeshBasicMaterial({ color: 0x9fd8ff })));
   const red = new THREE.Mesh(new THREE.SphereGeometry(0.35, 8, 6), new THREE.MeshBasicMaterial({ color: 0xff3333 })); red.position.set(-22, 0.6, -1); g.add(red);
   const grn = new THREE.Mesh(new THREE.SphereGeometry(0.35, 8, 6), new THREE.MeshBasicMaterial({ color: 0x33ff66 })); grn.position.set(22, 0.6, -1); g.add(grn);
   const beacon = new THREE.Mesh(new THREE.SphereGeometry(0.4, 8, 6), new THREE.MeshBasicMaterial({ color: 0xffffff })); beacon.position.set(0, -2.7, 0); beacon.name = 'beacon'; g.add(beacon);
