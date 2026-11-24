@@ -721,10 +721,17 @@ function SquadTab({ s, token, map, refresh }: { s: any; token: string; map: MapD
 // ── Comms tab (captain only) ───────────────────────────────────────────
 function CommsTab({ s, token, refresh }: { s: any; token: string; refresh: () => void }) {
   const others = (s.squads || []).filter((x: any) => x.id !== s.team.id);
-  const [to, setTo] = useState<number | null>(others[0]?.number ?? null);
+  const [to, setTo] = useState<number | null>(0); // 0 = all captains
   const [text, setText] = useState('');
   const [busy, setBusy] = useState(false);
-  const msgs = (s.comms?.messages || []).filter((m: any) => m.from_number === to || m.to_number === to);
+  const all = s.comms?.messages || [];
+  const msgs = to === 0
+    // broadcasts: everything starting with 📢; my own broadcast is stored once per squad, show it once
+    ? all.filter((m: any) => String(m.body).startsWith('📢')).filter((m: any, i: number, a: any[]) => !m.mine || a.findIndex((x: any) => x.mine && x.body === m.body) === i)
+    : all.filter((m: any) => (m.from_number === to || m.to_number === to) && !String(m.body).startsWith('📢'));
+  const QUICK = to === 0
+    ? ['Truce until the final circle?', 'Who wants an alliance?', 'Zone closing — move!', 'Airdrop incoming — race you!']
+    : ['Alliance?', 'Truce for now', 'Trade a medkit for intel?', 'Stay out of our building', 'Watch your back'];
   const endRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     const maxId = Math.max(0, ...(s.comms?.messages || []).map((m: any) => m.id));
@@ -732,7 +739,7 @@ function CommsTab({ s, token, refresh }: { s: any; token: string; refresh: () =>
   }, [s.comms?.messages?.length]);
   useEffect(() => { endRef.current?.scrollIntoView({ block: 'end' }); }, [msgs.length, to]);
   async function send(body = text) {
-    if (!to || !body.trim()) return;
+    if (to === null || !body.trim()) return;
     setBusy(true);
     try { await rpc('captain_chat', { p_token: token, p_to_team: to, p_body: body }); setText(''); sfx.tap(); }
     catch (e) { toast(friendly(e), 'bad'); }
@@ -758,6 +765,7 @@ function CommsTab({ s, token, refresh }: { s: any; token: string; refresh: () =>
       <div className="panel">
         <div className="panel-title">Captain channel</div>
         <div className="row wrap" style={{ gap: 6 }}>
+          <button className={`btn xs ${to === 0 ? 'primary' : 'ghost'}`} onClick={() => setTo(0)}>📢 All captains</button>
           {others.map((x: any) => (
             <button key={x.number} className={`btn xs ${to === x.number ? 'primary' : 'ghost'}`} onClick={() => setTo(x.number)}>
               #{x.number}{blocked.includes(x.number) ? ' 🚫' : ''}
@@ -765,25 +773,29 @@ function CommsTab({ s, token, refresh }: { s: any; token: string; refresh: () =>
           ))}
         </div>
       </div>
-      {to && (
+      {to !== null && (
         <div className="panel col">
-          <div className="row between"><b>Squad {to}</b>
-            <button className="btn xs ghost" onClick={async () => { await rpc('captain_block', { p_token: token, p_team: to, p_block: !blocked.includes(to) }).catch((e) => toast(friendly(e), 'bad')); refresh(); }}>
+          <div className="row between"><b>{to === 0 ? 'All captains · one message every 45 s' : `Squad ${to}`}</b>
+            {to !== 0 && <button className="btn xs ghost" onClick={async () => { await rpc('captain_block', { p_token: token, p_team: to, p_block: !blocked.includes(to) }).catch((e) => toast(friendly(e), 'bad')); refresh(); }}>
               {blocked.includes(to) ? 'Unblock' : 'Block'}
-            </button>
+            </button>}
           </div>
           <div className="col" style={{ gap: 6, maxHeight: '42vh', overflow: 'auto' }}>
             {msgs.length === 0 && <p className="muted" style={{ margin: 0 }}>No messages yet. Negotiate, trade intel, propose alliances.</p>}
             {msgs.map((m: any) => (
               <div key={m.id} style={{ alignSelf: m.mine ? 'flex-end' : 'flex-start', maxWidth: '85%' }}>
                 <div className="clue" style={{ padding: '8px 12px', fontSize: 15, background: m.mine ? 'rgba(42,140,255,0.2)' : undefined }}>{m.body}</div>
+                {to === 0 && !m.mine && <small className="muted">Squad {m.from_number}</small>}
                 {!m.mine && <button className="btn xs ghost" style={{ marginTop: 2 }} onClick={async () => { await rpc('captain_report', { p_token: token, p_message: m.id }).catch(() => {}); toast('Reported to the host', 'info'); }}>Report</button>}
               </div>
             ))}
             <div ref={endRef} />
           </div>
+          <div className="row wrap" style={{ gap: 6 }}>
+            {QUICK.map((q) => <button key={q} className="btn xs ghost" disabled={busy} onClick={() => send(q)}>{q}</button>)}
+          </div>
           <div className="answer-row">
-            <input className="input grow" value={text} maxLength={280} onChange={(e) => setText(e.target.value)} placeholder="Message to captain…" onKeyDown={(e) => e.key === 'Enter' && send()} aria-label="Message" />
+            <input className="input grow" value={text} maxLength={270} onChange={(e) => setText(e.target.value)} placeholder="Message to captain…" onKeyDown={(e) => e.key === 'Enter' && send()} aria-label="Message" />
             <button className="btn primary" disabled={busy || !text.trim()} onClick={() => send()}>Send</button>
           </div>
         </div>

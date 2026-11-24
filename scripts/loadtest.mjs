@@ -69,7 +69,7 @@ const PLAYERS = Number(process.env.PLAYERS || 200);
 const AUTO = ONLINE && process.env.AUTO === '1';
 const JOIN_SECONDS = Number(process.env.JOIN_SECONDS || 120);
 const host = (await rpc('host_create_event', { p_code: EVENT, p_name: 'Load test', p_secret: SECRET, p_arenas: ONLINE ? 1 : MAPS }, false)).token;
-await rpc('host_settings', { p_token: host, p_settings: { shuttle_seconds: 8, roles_seconds: 3, plane_seconds: 40, ...(ONLINE ? { online: 1, online_max_maps: 8 } : {}) } }, false);
+await rpc('host_settings', { p_token: host, p_settings: { shuttle_seconds: 8, roles_seconds: 3, plane_seconds: 40, ...(ONLINE ? { online: 1, online_max_maps: 8 } : {}), ...JSON.parse(process.env.SETTINGS || '{}') } }, false);
 const squads = [];
 if (AUTO) {
   await rpc('host_settings', { p_token: host, p_settings: { online_fill_seconds: Number(process.env.FILL_SECONDS || 60) } }, false);

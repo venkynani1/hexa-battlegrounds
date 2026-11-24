@@ -305,6 +305,54 @@ function lootAssets() {
   return LOOT;
 }
 
+// ── v16 field loot: guns, ammo crates, vests, helmets (level colours), jammers — baked, shared per kind ──
+const LEVEL_HEX = [0x9aa3ad, 0xc9ced6, 0x3ea5ff, 0xb07cff];
+const gearGeos = new Map<string, THREE.BufferGeometry>();
+function gearGeo(kind: string) {
+  let g = gearGeos.get(kind);
+  if (g) return g;
+  const k = new Baker(); const box = new THREE.BoxGeometry(1, 1, 1); const cyl = new THREE.CylinderGeometry(0.5, 0.5, 1, 10);
+  if (kind.startsWith('gun_')) {
+    const gun = kind.slice(4); const len = gun === 'sniper' ? 1.9 : gun === 'ar' ? 1.5 : gun === 'shotgun' ? 1.4 : 1.0;
+    const accent = gun === 'sniper' ? 0x6b4a2e : gun === 'shotgun' ? 0x8a5a36 : 0x3a3f46;
+    k.add('m', box, 0x2b2f36, [0, 0, 0], [0, 0, 0], [len * 0.55, 0.22, 0.16]);                       // receiver
+    k.add('m', cyl, 0x1b2028, [len * 0.45, 0.03, 0], [0, 0, Math.PI / 2], [0.07, len * 0.55, 0.07]); // barrel
+    k.add('m', box, accent, [-len * 0.38, -0.04, 0], [0, 0, -0.15], [len * 0.32, 0.2, 0.14]);        // stock
+    k.add('m', box, 0x1b2028, [-0.02, -0.22, 0], [0, 0, 0.25], [0.12, 0.28, 0.12]);                  // grip
+    if (gun !== 'shotgun') k.add('m', box, 0x1b2028, [0.18, -0.2, 0], [0, 0, -0.1], [0.12, 0.3, 0.1]); // magazine
+    if (gun === 'sniper' || gun === 'ar') k.add('m', cyl, 0x111418, [0.05, 0.2, 0], [0, 0, Math.PI / 2], [0.09, 0.42, 0.09]); // scope
+  } else if (kind.startsWith('ammo_')) {
+    const band = kind === 'ammo_shell' ? 0xd8423a : kind === 'ammo_rifle' ? 0xffc23d : 0x3ea5ff;
+    k.add('m', box, 0x4d5a36, [0, 0, 0], [0, 0, 0], [0.9, 0.5, 0.55]);
+    k.add('m', box, band, [0, 0.12, 0], [0, 0, 0], [0.92, 0.1, 0.57]);
+    k.add('m', box, 0x2b2f36, [0, 0.29, 0], [0, 0, 0], [0.3, 0.06, 0.1]);
+  } else if (kind.startsWith('vest')) {
+    const c = LEVEL_HEX[Number(kind.slice(-1))] || LEVEL_HEX[1];
+    k.add('m', box, c, [0, 0, 0], [0, 0, 0], [0.8, 0.95, 0.32]);
+    k.add('m', box, 0x2b2f36, [0, 0.1, 0.17], [0, 0, 0], [0.62, 0.22, 0.04]);
+    for (const sx of [-1, 1]) k.add('m', box, c, [sx * 0.28, 0.55, 0], [0, 0, 0], [0.18, 0.2, 0.3]);
+  } else if (kind.startsWith('helmet')) {
+    const c = LEVEL_HEX[Number(kind.slice(-1))] || LEVEL_HEX[1];
+    k.add('m', new THREE.SphereGeometry(0.45, 14, 8, 0, Math.PI * 2, 0, Math.PI / 2), c, [0, -0.1, 0]);
+    k.add('m', new THREE.CylinderGeometry(0.5, 0.52, 0.06, 14), 0x2b2f36, [0, -0.1, 0]);
+  } else { // jammer
+    k.add('m', box, 0x2b2f36, [0, 0, 0], [0, 0, 0], [0.55, 0.35, 0.4]);
+    k.add('m', cyl, 0xc9ced6, [0.15, 0.45, 0], [0, 0, 0], [0.04, 0.6, 0.04]);
+    k.add('m', box, 0x5dff9e, [-0.1, 0.18, 0.21], [0, 0, 0], [0.22, 0.08, 0.02]);
+  }
+  g = k.build().m; g.computeVertexNormals(); gearGeos.set(kind, g);
+  return g;
+}
+const gearGlows = new Map<string, THREE.Material>();
+function gearGlow(kind: string) {
+  let m = gearGlows.get(kind);
+  if (!m) {
+    const c = kind.startsWith('gun_') ? 0xff9d2e : kind.startsWith('ammo_') ? 0xd9c27a : kind === 'jammer' ? 0x5dff9e : LEVEL_HEX[Number(kind.slice(-1))] || 0xc9ced6;
+    m = sharedMat(new THREE.MeshBasicMaterial({ color: c, transparent: true, opacity: 0.6, depthWrite: false, side: THREE.DoubleSide })); gearGlows.set(kind, m);
+  }
+  return m;
+}
+
 /** shared vertex-coloured materials for baked props (buildings, interiors, lifts) */
 const VCM = {
   trim: sharedMat(new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.78, metalness: 0.05 })),
@@ -1479,9 +1527,10 @@ export class WorldScene {
   private makeLoot(kind: string) {
     const L = lootAssets();
     const g = new THREE.Group();
-    const k = kind === 'medkit' || kind === 'shield' ? kind : 'coins';
-    g.add(new THREE.Mesh(L.geo[k], L.mat[k]));
-    const glow = new THREE.Mesh(L.ring, L.glow[k]);
+    const k = kind === 'medkit' || kind === 'shield' ? kind : kind === 'coins' ? 'coins' : null;
+    if (k) g.add(new THREE.Mesh(L.geo[k], L.mat[k]));
+    else { const m = new THREE.Mesh(gearGeo(kind), VCM.metal); m.castShadow = true; g.add(m); }
+    const glow = new THREE.Mesh(L.ring, k ? L.glow[k] : gearGlow(kind));
     glow.rotation.x = -Math.PI / 2; glow.position.y = -0.8; glow.name = 'glow';
     g.add(glow);
     return g;
@@ -1717,7 +1766,9 @@ export class WorldScene {
     // loot bobs and spins; only what is on your floor shows inside buildings; never right in front of the lens
     for (const m of this.loot.values()) {
       const lvl = m.userData.level || 0;
-      m.visible = (this.mode !== 'follow' || lvl === this.myLevel) && m.position.distanceTo(this.camera.position) > 7;
+      const ld = m.position.distanceTo(this.camera.position);
+      // near the lens it would block the view; far away it is a speck: draw loot only in a useful band
+      m.visible = (this.mode !== 'follow' || lvl === this.myLevel) && ld > 7 && ld < (this.mode === 'follow' ? 95 : 140);
       if (!this.reduced) { m.rotation.y = t * 1.6; m.position.y = m.userData.base + Math.sin(t * 2.4 + m.position.x) * 0.2; }
     }
     if (!this.reduced) {

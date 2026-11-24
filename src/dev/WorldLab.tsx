@@ -27,6 +27,8 @@ export default function WorldLab() {
         board: { s: { squads: [me({ hidden: true }), ...others], plane: { a: [0.02, 0.3], b: [0.98, 0.7], t0: new Date(now - 4000).toISOString(), t1: new Date(now + 60000).toISOString() } } },
         drop: { s: { squads: others, airdrops: [{ key: 'd1', location: 'central_steps', tier: 'legendary' }] }, mode: 'orbit' },
         buggy: { s: { squads: [me({ x: 0.31, y: 0.585 }), { key: 'r9', number: 7, x: 0.325, y: 0.578, at: Date.now() }] }, yaw: 2.2, zoom: 0.55 },
+        loot: { s: { squads: [me({ foot: true, x: 0.194, y: 0.80 })], pickups: ['gun_ar', 'gun_sniper', 'gun_shotgun', 'ammo_rifle', 'ammo_shell', 'vest3', 'vest2', 'helmet2', 'helmet3', 'jammer', 'medkit', 'shield']
+          .map((k, i) => ({ id: k, k, x: 0.172 + (i % 6) * 0.009, y: 0.775 + Math.floor(i / 6) * 0.01, l: 0 })) }, yaw: 0, zoom: 0.8 },
         cars: { s: { squads: [me({ x: 0.3, y: 0.86 }), ...others] }, zoom: 2.2, yaw: 2.6 },
       };
       const cfg = st[shot] || st.street;
