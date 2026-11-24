@@ -1159,3 +1159,33 @@ html.demo-view.in-game .toasts { top: calc(110px + env(safe-area-inset-top, 0px)
 .win-trophy { animation: trophy-in 900ms cubic-bezier(.2, 1.4, .4, 1) both; filter: drop-shadow(0 0 24px rgba(255, 194, 61, .6)); }
 @keyframes trophy-in { from { transform: scale(.2) rotate(-25deg); opacity: 0; } to { transform: none; opacity: 1; } }
 .reduced-motion .celebrate-rays, .reduced-motion .win-trophy { animation: none; }
+
+/* v15: closing message on phones, host reveal panel */
+.welcome-note { margin-top: 18px; display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 16px 18px; border-radius: 16px;
+  background: linear-gradient(135deg, rgba(46,230,255,0.16), rgba(255,194,61,0.16)); border: 1px solid rgba(255,194,61,0.45); text-align: center;
+  animation: welcomeIn 0.8s cubic-bezier(.2,.8,.2,1) both 0.3s; }
+.welcome-note b { font-size: clamp(24px, 7vw, 38px); letter-spacing: 0.02em; background: linear-gradient(90deg, #3ef0ff, #ffc23d); -webkit-background-clip: text; background-clip: text; color: transparent; }
+.welcome-note span { font-size: 17px; opacity: 0.9; }
+@keyframes welcomeIn { from { opacity: 0; transform: translateY(12px) scale(0.96); } to { opacity: 1; transform: none; } }
+html.reduced-motion .welcome-note { animation: none; }
+.reveal-panel { border-color: rgba(255,194,61,0.6); display: flex; flex-direction: column; gap: 10px; }
+
+/* v15: cinematic projector */
+.cine-screen { position: fixed; inset: 0; background: #000; }
+.cine-screen > div:first-child { position: absolute !important; inset: 0; border-radius: 0 !important; }
+.cine-top { position: absolute; top: 0; left: 0; right: 0; display: flex; justify-content: space-between; align-items: flex-start; padding: 22px 28px 40px;
+  background: linear-gradient(180deg, rgba(0,0,0,0.65), transparent); pointer-events: none; }
+.cine-brand { display: flex; flex-direction: column; gap: 2px; }
+.cine-brand b { font-family: var(--display, inherit); font-size: clamp(26px, 2.6vw, 44px); letter-spacing: 0.06em; text-transform: uppercase; color: #fff; text-shadow: 0 2px 12px rgba(0,0,0,0.6); }
+.cine-brand span { color: var(--orange); font-size: 18px; letter-spacing: 0.08em; text-transform: uppercase; }
+.cine-side { position: absolute; right: 24px; top: 110px; width: min(420px, 32vw); }
+.cine-caption { position: absolute; left: 36px; bottom: 92px; display: flex; align-items: center; gap: 14px; padding: 12px 22px 12px 16px;
+  background: rgba(8,12,20,0.78); border-left: 5px solid var(--cyan, #2ee6ff); color: #fff; font-size: clamp(20px, 1.9vw, 32px); font-weight: 700;
+  letter-spacing: 0.02em; animation: capIn 0.5s cubic-bezier(.2,.8,.2,1) both; backdrop-filter: blur(6px); }
+.cine-caption i { width: 10px; height: 10px; border-radius: 50%; background: #ff3b4e; box-shadow: 0 0 12px #ff3b4e; animation: liveDot 1.2s infinite; }
+@keyframes capIn { from { opacity: 0; transform: translateX(-24px); } to { opacity: 1; transform: none; } }
+@keyframes liveDot { 50% { opacity: 0.25; } }
+.cine-ticker { position: absolute; left: 0; right: 0; bottom: 0; padding: 16px 36px; background: linear-gradient(0deg, rgba(0,0,0,0.75), transparent);
+  color: #fff; font-size: clamp(18px, 1.6vw, 26px); animation: capIn 0.5s both; }
+.cine-toggle { position: absolute; right: 12px; bottom: 12px; opacity: 0.5; }
+html.reduced-motion .cine-caption, html.reduced-motion .cine-ticker { animation: none; }

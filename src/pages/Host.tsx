@@ -27,6 +27,7 @@ function HostLogin({ onLogin }: { onLogin: (t: string) => void }) {
   const [name, setName] = useState('Hexaware Battlegrounds × Operation Siruseri');
   const [secret, setSecret] = useState('');
   const [audience, setAudience] = useState<'mavericks' | 'segue'>('mavericks');
+  const [minutes, setMinutes] = useState<60 | 90 | 120>(60);
   const [err, setErr] = useState('');
   const [busy, setBusy] = useState(false);
   async function submit(e: FormEvent) {
@@ -38,7 +39,7 @@ function HostLogin({ onLogin }: { onLogin: (t: string) => void }) {
         : await rpc('host_create_event', { p_code: code, p_name: name, p_secret: secret, p_arenas: 1 });
       store.set('hb_host_code', r.code);
       // every new event (in person and online) uses squad-code check-in; maps open by themselves
-      if (mode === 'create') await rpc('host_settings', { p_token: r.token, p_settings: { online: 1, segue: audience === 'segue' ? 1 : 0 } });
+      if (mode === 'create') await rpc('host_settings', { p_token: r.token, p_settings: { online: 1, segue: audience === 'segue' ? 1 : 0, game_minutes: minutes, auto_reveal: 0 } });
       onLogin(r.token);
     } catch (ex) { setErr(friendly(ex)); } finally { setBusy(false); }
   }
@@ -67,6 +68,17 @@ function HostLogin({ onLogin }: { onLogin: (t: string) => void }) {
                   <span aria-hidden>🎓</span><b>Segue</b><small>Campus participants sign in with name, e-mail and college. No employee ID.</small>
                 </button>
               </div>
+            </div>
+            <div className="field">
+              <span className="lbl" id="len">How long is the game?</span>
+              <div className="mode-pick three" role="radiogroup" aria-labelledby="len">
+                {([60, 90, 120] as const).map((m) => (
+                  <button key={m} type="button" role="radio" aria-checked={minutes === m} className={minutes === m ? 'on' : ''} onClick={() => setMinutes(m)}>
+                    <b>{m === 60 ? '1 hour' : m === 90 ? '1½ hours' : '2 hours'}</b><small>{m === 60 ? '3 finale battles' : m === 90 ? 'longer phases, more airdrops' : '4 finale battles, slowest zone'}</small>
+                  </button>
+                ))}
+              </div>
+              <small className="muted">Missions, zone shrinking, airdrops, lockdown alarms and the finale are all paced to fit. You can still change it before pressing Start.</small>
             </div>
             <p className="notice" style={{ margin: 0 }}>Players check in with the event QR or link, then create a squad, join one with a squad code, or let matchmaking find one. No printed cards or PINs. Maps open by themselves (15 squads = 60 players per map).</p>
           </>}
@@ -173,7 +185,7 @@ function Control({ d, arenas, arena, cmd, map, pacing, token }: { d: any; arenas
   // online edition: the one Start button (automatic maps) is the main control; per-map buttons are advanced
   if (squadCodes(d)) return (
     <>
-      <OnlinePanel d={d} token={token} />
+      <OnlinePanel d={d} token={token} cmd={cmd} />
       <details className="manual-pacing"><summary>Per-map controls (advanced — not needed with automatic maps)</summary>
         <div className="grid2">{list.map((a: any) => <ArenaCard key={a.id} a={a} d={d} cmd={cmd} />)}</div>
       </details>
@@ -864,7 +876,11 @@ function Logs({ d, token, arenas, cmd, map }: { d: any; token: string; arenas: a
 }
 
 // ── Online edition: join link, maps that open by themselves, attendance export ──
-function OnlinePanel({ d, token }: { d: any; token: string }) {
+const LEN_LABEL: Record<string, [string, string]> = {
+  '60': ['1 hour', '3 finale battles'], '90': ['1½ hours', 'longer phases'], '120': ['2 hours', '4 finale battles'],
+  quick: ['Quick test', 'about 10 minutes'],
+};
+function OnlinePanel({ d, token, cmd }: { d: any; token: string; cmd?: Cmd }) {
   const joinUrl = `${window.location.origin}/join?e=${d.event.code}`;
   const [sum, setSum] = useState<any>(null);
   const [maxMaps, setMaxMaps] = useState<string>(String(d.event.settings.online_max_maps ?? 8));
@@ -875,7 +891,8 @@ function OnlinePanel({ d, token }: { d: any; token: string }) {
     try { await rpc('host_settings', { p_token: token, p_settings: { online_max_maps: Math.max(1, Math.min(12, Number(maxMaps) || 1)), email_domain: domain.trim().toLowerCase() } }); toast('Saved', 'good'); }
     catch (e) { toast(friendly(e), 'bad'); }
   }
-  const [length, setLength] = useState<'quick' | 'standard' | 'full'>('standard');
+  const chosen = String(d.event.settings.game_minutes || '');
+  const [length, setLength] = useState<string>(['60', '90', '120'].includes(chosen) ? chosen : '60');
   const [starting, setStarting] = useState(false);
   async function startGame() {
     if (!sum) return;
@@ -913,8 +930,24 @@ function OnlinePanel({ d, token }: { d: any; token: string }) {
       toast(`${rows.length} players exported`, 'good');
     } catch (e) { toast(friendly(e), 'bad'); }
   }
+  const locked = (d.arenas || []).filter((a: any) => a.results_locked);
+  const played = (d.arenas || []).filter((a: any) => a.phase !== 'lobby');
   return (
     <>
+      {cmd && locked.length > 0 && (
+        <div className="panel reveal-panel">
+          <div className="panel-title">🏆 Results are locked — only you can reveal them</div>
+          <p className="muted" style={{ margin: 0 }}>Phones and the projector show “Results sealed” until you press Reveal. Put the projector on full screen first.</p>
+          <div className="row wrap" style={{ gap: 8 }}>
+            {locked.map((a: any) => a.winner_revealed
+              ? <span key={a.id} className="chip good">{a.name}: revealed</span>
+              : <button key={a.id} className="btn gold big" onClick={() => confirm(`Reveal the winner of ${a.name} on its projector and every phone?`) && cmd(a.id, 'reveal_winner')}>🏆 Reveal {a.name} winner</button>)}
+            {played.length > 1 && !d.event.grand_revealed && (
+              <button className="btn gold big" disabled={!played.every((a: any) => a.results_locked && a.winner_revealed)} onClick={() => confirm('Reveal the grand champion of all maps?') && cmd(null, 'reveal_grand')}>👑 Reveal grand champion</button>
+            )}
+          </div>
+        </div>
+      )}
       <div className="grid2">
         <div className="panel col" style={{ alignItems: 'center' }}>
           <div className="panel-title" style={{ alignSelf: 'flex-start' }}>{ONLINE ? 'Online join link — paste it in the Teams call chat' : 'Join QR — show it on the big screen'}</div>
@@ -963,9 +996,9 @@ function OnlinePanel({ d, token }: { d: any; token: string }) {
             <div><b>{Math.min(sum.maps_needed, sum.max_maps)}</b><small>map{sum.maps_needed > 1 ? 's' : ''} at start</small></div>
           </div>
           <div className="auto-lengths">
-            {(['quick', 'standard', 'full'] as const).map((l) => (
+            {['60', '90', '120', 'quick'].map((l) => (
               <button key={l} className={length === l ? 'on' : ''} onClick={() => setLength(l)}>
-                <b>{l === 'quick' ? 'Quick' : l === 'standard' ? 'Standard' : 'Full event'}</b><span>{l === 'quick' ? 'about 10 minutes' : l === 'standard' ? 'about 30 minutes' : '60–90 minutes'}</span>
+                <b>{LEN_LABEL[l][0]}</b><span>{LEN_LABEL[l][1]}</span>
               </button>
             ))}
           </div>

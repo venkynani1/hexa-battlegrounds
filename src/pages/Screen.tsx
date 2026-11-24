@@ -172,6 +172,8 @@ function ProjectorWorld({ s, map, zoneWarn }: { s: any; map: MapData; zoneWarn: 
   // gunfire on the big screen: the same broadcast the phones send
   const scene = useRef<WorldScene | null>(null);
   useShots(s.arena.id, (sh) => scene.current?.shot(sh.a, sh.b, sh.hit));
+  const [caption, setCaption] = useStateR('');
+  useEffect(() => { const t = setInterval(() => setCaption(scene.current?.shotLabel || ''), 400); return () => clearInterval(t); }, []);
   const state = {
     squads: squads.filter((q: any) => q.pos).map((q: any) => ({ key: String(q.number), number: q.number, x: q.pos[0], y: q.pos[1], ally: false, inBattle: q.in_battle, down: q.state === 'recovery', label: `SQ ${q.number}`,
       vx: q.vel?.[0] || 0, vy: q.vel?.[1] || 0, at: new Date(s.server_now).getTime(), level: q.level || 0, bldg: q.bldg,
@@ -189,6 +191,7 @@ function ProjectorWorld({ s, map, zoneWarn }: { s: any; map: MapData; zoneWarn: 
         ? <Suspense fallback={<div className="world-loading">Loading 3D campus…</div>}><World3D map={map} state={state} mode="orbit" sceneRef={scene} /></Suspense>
         : <CampusMap map={map} zoneStage={s.arena.zone_stage} zoneWarning={zoneWarn} interactive={false} height="100%" bigLabels zone={zone} red={red}
             squads={squads} airdrops={s.airdrops} battles={s.battles} />}
+      {view === '3d' && caption && <div className="cine-caption" key={caption}><i />{caption}</div>}
       <button className="btn xs ghost" style={{ position: 'absolute', right: 10, bottom: 10 }} onClick={() => setView((v) => (v === '3d' ? '2d' : '3d'))}>{view === '3d' ? '2D tactical' : '3D view'}</button>
     </div>
   );
@@ -197,6 +200,22 @@ function ProjectorWorld({ s, map, zoneWarn }: { s: any; map: MapData; zoneWarn: 
 function PlayScreen({ s, map }: { s: any; map: MapData }) {
   const zoneWarn = !!s.arena.zone_next_at && msUntil(s.arena.zone_next_at) > 0;
   const board = [...s.squads].filter((q: any) => q.ready).sort((a: any, b: any) => a.number - b.number);
+  // cinematic: the 3D campus fills the projector; the director camera cuts between live shots
+  const [cine, setCine] = useState(() => localStorage.getItem('hb_cine') !== '0');
+  const toggle = () => setCine((c) => { localStorage.setItem('hb_cine', c ? '0' : '1'); return !c; });
+  const latest = s.feed?.[0] ? feedText(s.feed[0].type, s.feed[0].payload, map) : null;
+  if (cine) return (
+    <div className="cine-screen">
+      <ProjectorWorld s={s} map={map} zoneWarn={zoneWarn} />
+      <div className="cine-top">
+        <div className="cine-brand"><b>Operation Siruseri</b><span>{s.arena.name} · {board.length} squads in the fight</span></div>
+        <span className={`chip ${zoneWarn ? 'bad' : 'warn'}`} style={{ fontSize: 20, padding: '8px 16px' }}>☢ Zone {s.arena.zone_stage}{zoneWarn && <> · collapse in <Countdown to={s.arena.zone_next_at} /></>}</span>
+      </div>
+      <div className="cine-side"><PhaseBanner overlay={s.arena.overlay} /></div>
+      {latest && <div className="cine-ticker" key={s.feed[0].id}>{typeof latest === 'string' ? latest : latest.text}</div>}
+      <button className="btn xs ghost cine-toggle" onClick={toggle}>Panels</button>
+    </div>
+  );
   return (
     <div className="screen">
       <Head s={s} right={<div className="row" style={{ gap: 10 }}>
@@ -204,6 +223,7 @@ function PlayScreen({ s, map }: { s: any; map: MapData }) {
       </div>} />
       <div className="screen-main">
         <ProjectorWorld s={s} map={map} zoneWarn={zoneWarn} />
+        <button className="btn xs ghost" style={{ position: 'absolute', left: 10, bottom: 10 }} onClick={toggle}>🎬 Cinematic</button>
 
       </div>
       <div className="screen-side">
@@ -337,6 +357,7 @@ function ResultsScreen({ s }: { s: any }) {
       {step >= 6 && (tie
         ? <div className="mega" style={{ color: 'var(--orange)', fontSize: 'clamp(30px,5vw,80px)' }}>Tie at the top — tiebreaker challenge!</div>
         : <div className="mega gold glitch" style={{ fontSize: 'clamp(36px,6.5vw,120px)' }}>Champions of Operation Siruseri!</div>)}
+      {step >= 6 && <div className="tagline" style={{ fontSize: 'clamp(18px,2vw,30px)', marginTop: 12 }}>Welcome to Hexaware!!! You can expect many more like this!!</div>}
     </div>
   );
 }

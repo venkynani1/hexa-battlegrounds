@@ -797,9 +797,10 @@ function Results({ s }: { s: any }) {
   if (!s.results) {
     return (
       <div className="panel center col" style={{ alignItems: 'center', padding: 30 }}>
-        <div className="kind-tag">Results sealed</div>
-        <div className="mega" style={{ fontSize: 48 }}>Eyes on the big screen</div>
-        <p className="muted">{s.arena?.overlay?.auto?.on ? 'The champion is revealed in a few seconds.' : 'The host will reveal the champion shortly.'}</p>
+        <div className="kind-tag">🔒 Results locked</div>
+        <div className="mega" style={{ fontSize: 44 }}>Eyes on the big screen</div>
+        <p className="muted">The host will reveal the champion on the projector.</p>
+        <WelcomeNote />
       </div>
     );
   }
@@ -817,6 +818,17 @@ function Results({ s }: { s: any }) {
       {champs
         ? <div className="mega" style={{ fontSize: 26, marginTop: 12, whiteSpace: 'normal' }}>You are the Champions of Siruseri!</div>
         : <p className="muted" style={{ marginTop: 12 }}>GG! Your squad finished with {mine?.points ?? 0} points, {mine?.missions ?? 0} missions and {mine?.battles ?? 0} fights won.</p>}
+      <WelcomeNote />
+    </div>
+  );
+}
+
+/** the closing message on every phone once the match is over */
+function WelcomeNote() {
+  return (
+    <div className="welcome-note">
+      <b>Welcome to Hexaware!!!</b>
+      <span>You can expect many more like this!!</span>
     </div>
   );
 }

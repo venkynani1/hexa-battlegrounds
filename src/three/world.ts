@@ -439,6 +439,10 @@ export class WorldScene {
   /** big-screen cut to a new airdrop: where and since when */
   private dropCut: { p: THREE.Vector3; t0: number } | null = null;
   private seenDrops = new Set<string>();
+  /** big-screen director: the current shot and its caption */
+  private cur: { kind: 'wide' | 'chase' | 'drop' | 'plane' | 'battle'; key?: string; p?: THREE.Vector3; t0: number; dur: number; cut: boolean } | null = null;
+  private lastShotKey = '';
+  shotLabel = '';
   private amb: Ambience;
   private ambAt = 0;
 
@@ -1690,7 +1694,8 @@ export class WorldScene {
       // squads on another floor of the building you are in are hidden; inside, outdoor squads are hidden
       const inMine = this.myLevel > 0;
       o.car.visible = d.me || (!inMine && (d.level || 0) === 0) || (inMine && d.bldg === this.myBldg && (d.level || 0) === this.myLevel) || this.mode !== 'follow';
-      o.car.scale.setScalar(this.mode === 'follow' ? 1 : 2);
+      // big map: squads are drawn larger so they read from far away, life-size in the director's close shots
+      o.car.scale.setScalar(this.mode === 'follow' ? 1 : Math.max(1, Math.min(2, o.car.position.distanceTo(this.camera.position) / 90)));
       if (d.me && this.mode === 'follow' && live && live.moving && !live.joy && step.lengthSq() > 0.0004) {
         const want = Math.atan2(step.x, -step.z);
         let dd = want - this.yaw; while (dd > Math.PI) dd -= Math.PI * 2; while (dd < -Math.PI) dd += Math.PI * 2;
@@ -1855,16 +1860,15 @@ export class WorldScene {
       this.camPos.lerp(new THREE.Vector3(0, 420 * this.zoom, 320 * this.zoom), k);
     } else if (this.dropCut && performance.now() - this.dropCut.t0 < DROP_CUT_MS) {
       // big screen: cut to a new airdrop — follow the crate down on its canopy, hold on the landing, then back
+      this.shotLabel = '📦 Airdrop incoming';
       const dc = this.dropCut; const g = [...this.drops.values()].find((x) => Math.hypot(x.position.x - dc.p.x, x.position.z - dc.p.z) < 6);
       const cy = g ? g.position.y : 0; const u = (performance.now() - dc.t0) / DROP_CUT_MS;
       const a = u * 0.9 + 0.6;
       this.camTarget.lerp(new THREE.Vector3(dc.p.x, cy + 2, dc.p.z), Math.min(1, k * 2.5));
       this.camPos.lerp(new THREE.Vector3(dc.p.x + Math.sin(a) * 42, Math.max(14, cy * 0.7 + 16), dc.p.z + Math.cos(a) * 42), Math.min(1, k * 2));
     } else {
-      this.dropCut = null;
-      const a = t * 0.04;
-      this.camTarget.lerp(new THREE.Vector3(0, 0, 0), k);
-      this.camPos.lerp(new THREE.Vector3(Math.sin(a) * 400, 300, Math.cos(a) * 400), k);
+      if (this.dropCut) { this.dropCut = null; this.cur = null; }
+      this.direct(t, k);
     }
     this.camera.position.copy(this.camPos);
     this.camera.lookAt(this.camTarget);
@@ -1960,6 +1964,81 @@ export class WorldScene {
     if (shook) this.camera.position.copy(this.camPos);
     this.fpsOverlay?.update(this.monitor, this.adaptive.scale, this.quality, this.renderer.info, nowMs);
   };
+
+  /**
+   * Projector director (orbit mode): cuts between live shots every few seconds so the big screen follows the
+   * action — the drop plane crossing the campus, squads parachuting in, buggies racing between buildings,
+   * duels, and wide establishing shots of the shrinking zone. Airdrops interrupt with their own cut.
+   */
+  private direct(t: number, k: number) {
+    const now = performance.now();
+    const sq = [...this.squads.values()].filter((o) => o.car.visible || o.data.hidden);
+    const planeLive = !!(this.planeData && this.plane?.visible);
+    const inPlane = sq.some((o) => o.data.hidden);
+    const chutes = sq.filter((o) => o.data.chute && !o.data.hidden && o.car.position.y > 28); // still high in the air
+    const movers = sq.filter((o) => !o.data.chute && !o.data.hidden && !o.data.down && (o.spd ?? 0) > 1.2);
+    const battles = [...this.battles.values()];
+    const valid = (sh: NonNullable<typeof this.cur>) => {
+      if (sh.kind === 'plane') return planeLive;
+      if (sh.kind === 'drop') { const o = this.squads.get(sh.key!); return !!o?.data.chute && o.car.position.y > 14; }
+      if (sh.kind === 'chase') { const o = this.squads.get(sh.key!); return !!o && o.car.visible && !o.data.chute; }
+      if (sh.kind === 'battle') return battles.some((g) => g.position.distanceTo(sh.p!) < 1);
+      return true;
+    };
+    if (!this.cur || now - this.cur.t0 > this.cur.dur || !valid(this.cur)) {
+      const pick = <T,>(a: T[]) => a[Math.floor(Math.random() * a.length)];
+      let next: NonNullable<typeof this.cur>;
+      const r = Math.random();
+      if (planeLive && inPlane && chutes.length === 0) next = { kind: 'plane', t0: now, dur: 9000, cut: true };
+      else if (chutes.length && r < 0.75) { const o = pick(chutes); next = { kind: 'drop', key: o.data.key, t0: now, dur: 7000, cut: true }; }
+      else if (battles.length && r < 0.55) { const g = pick(battles); next = { kind: 'battle', p: g.position.clone(), t0: now, dur: 8000, cut: true }; }
+      else if (movers.length && r < 0.85) {
+        const fresh = movers.filter((o) => o.data.key !== this.lastShotKey);
+        const o = pick(fresh.length ? fresh : movers); next = { kind: 'chase', key: o.data.key, t0: now, dur: 9000, cut: true };
+      } else if (planeLive && r < 0.95) next = { kind: 'plane', t0: now, dur: 7000, cut: true };
+      else next = { kind: 'wide', t0: now, dur: 10000, cut: false };
+      this.lastShotKey = next.key || next.kind;
+      this.cur = next;
+    }
+    const sh = this.cur;
+    const age = (now - sh.t0) / 1000;
+    let pos: THREE.Vector3; let look: THREE.Vector3;
+    if (sh.kind === 'plane' && this.plane) {
+      // tracking shot alongside the plane, slowly drifting from beside it to behind
+      const pp = this.plane.position; const fwd = new THREE.Vector3(-Math.sin(this.plane.rotation.y), 0, -Math.cos(this.plane.rotation.y));
+      const side = new THREE.Vector3(fwd.z, 0, -fwd.x); const ang = 1.1 - Math.min(1, age / 9) * 0.8;
+      pos = pp.clone().addScaledVector(fwd, -Math.cos(ang) * 70).addScaledVector(side, Math.sin(ang) * 70).add(new THREE.Vector3(0, 14, 0));
+      look = pp.clone().addScaledVector(fwd, 20).setY(pp.y - 30);
+      this.shotLabel = inPlane ? '✈ Drop plane over Hexaware Siruseri' : '✈ The drop plane heads out';
+    } else if (sh.kind === 'drop' && this.squads.get(sh.key!)) {
+      const o = this.squads.get(sh.key!)!; const f = o.car.position;
+      const a = sh.t0 / 997 + age * 0.12;
+      pos = f.clone().add(new THREE.Vector3(Math.sin(a) * 20, 1, Math.cos(a) * 20));
+      look = f.clone().add(new THREE.Vector3(0, -2, 0)); // the diver mid-frame, canopy above, campus far below
+      this.shotLabel = `🪂 SQ ${o.data.number} · ${o.wasFree ? 'free fall' : 'canopy open'}`;
+    } else if (sh.kind === 'chase' && this.squads.get(sh.key!)) {
+      const o = this.squads.get(sh.key!)!; const f = o.car.position;
+      const fwd = new THREE.Vector3(-Math.sin(o.heading), 0, -Math.cos(o.heading));
+      const sideOff = Math.sin(sh.t0) * 4; // each chase sits a little to one side
+      pos = f.clone().addScaledVector(fwd, -17).add(new THREE.Vector3(fwd.z * sideOff, 9, -fwd.x * sideOff));
+      look = f.clone().addScaledVector(fwd, 8).setY(f.y + 1);
+      this.shotLabel = `🚙 SQ ${o.data.number}${o.data.foot ? ' · on foot' : ' · on the move'}`;
+    } else if (sh.kind === 'battle' && sh.p) {
+      const a = sh.t0 / 991 + age * 0.18;
+      pos = sh.p.clone().add(new THREE.Vector3(Math.sin(a) * 34, 16, Math.cos(a) * 34));
+      look = sh.p.clone().setY(2);
+      this.shotLabel = '⚔ Duel in progress';
+    } else {
+      const a = t * 0.04;
+      pos = new THREE.Vector3(Math.sin(a) * 400, 300, Math.cos(a) * 400); look = new THREE.Vector3(0, 0, 0);
+      this.shotLabel = this.zoneData?.shrink_until && serverTime() < new Date(this.zoneData.shrink_until).getTime() ? '☢ The zone is closing in' : '🛰 Campus overview';
+    }
+    // never put the lens inside a building: lift it over the roof of any block it would sit in
+    for (const B of this.bldgs) if (this.isInside(B, pos)) pos.y = Math.max(pos.y, B.b.floors * FLOOR_H + 6);
+    if (sh.cut) { this.camPos.copy(pos); this.camTarget.copy(look); sh.cut = false; } // a clean cut, not a swoop across campus
+    else { this.camPos.lerp(pos, Math.min(1, k * 2.5)); this.camTarget.lerp(look, Math.min(1, k * 2.5)); }
+    if (this.reduced) { this.camPos.lerp(new THREE.Vector3(0, 300, 400), 0.02); }
+  }
 
   private isInside(B: Bldg, p: THREE.Vector3) {
     const x = p.x / S + 0.5; const y = p.z / S + 0.5;
