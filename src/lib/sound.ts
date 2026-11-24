@@ -22,6 +22,8 @@ export function unlockAudio() {
 }
 
 export const audioReady = () => !!ctx && ctx.state === 'running';
+/** the shared audio graph for the ambience layer (null until the player has tapped once) */
+export const audioGraph = () => (ctx && master && ctx.state === 'running' ? { ctx, master } : null);
 export const isMuted = () => muted;
 export const getVolume = () => volume;
 

@@ -27,6 +27,8 @@ function HostLogin({ onLogin }: { onLogin: (t: string) => void }) {
   const [name, setName] = useState('Hexaware Battlegrounds × Operation Siruseri');
   const [secret, setSecret] = useState('');
   const [audience, setAudience] = useState<'mavericks' | 'segue'>('mavericks');
+  const [minutes, setMinutes] = useState<60 | 90 | 120>(60);
+  const [oneMap, setOneMap] = useState(true);
   const [err, setErr] = useState('');
   const [busy, setBusy] = useState(false);
   async function submit(e: FormEvent) {
@@ -38,7 +40,7 @@ function HostLogin({ onLogin }: { onLogin: (t: string) => void }) {
         : await rpc('host_create_event', { p_code: code, p_name: name, p_secret: secret, p_arenas: 1 });
       store.set('hb_host_code', r.code);
       // every new event (in person and online) uses squad-code check-in; maps open by themselves
-      if (mode === 'create') await rpc('host_settings', { p_token: r.token, p_settings: { online: 1, segue: audience === 'segue' ? 1 : 0 } });
+      if (mode === 'create') await rpc('host_settings', { p_token: r.token, p_settings: { online: 1, segue: audience === 'segue' ? 1 : 0, game_minutes: minutes, auto_reveal: 0, ...(oneMap ? { arena_size: 35, online_max_maps: 1 } : { arena_size: 15, online_max_maps: 8 }) } });
       onLogin(r.token);
     } catch (ex) { setErr(friendly(ex)); } finally { setBusy(false); }
   }
@@ -67,6 +69,28 @@ function HostLogin({ onLogin }: { onLogin: (t: string) => void }) {
                   <span aria-hidden>🎓</span><b>Segue</b><small>Campus participants sign in with name, e-mail and college. No employee ID.</small>
                 </button>
               </div>
+            </div>
+            <div className="field">
+              <span className="lbl" id="mapmode">Maps</span>
+              <div className="mode-pick" role="radiogroup" aria-labelledby="mapmode">
+                <button type="button" role="radio" aria-checked={oneMap} className={oneMap ? 'on' : ''} onClick={() => setOneMap(true)}>
+                  <span aria-hidden>🗺</span><b>Everyone on one map</b><small>Up to 140 players (35 squads). You press Start when the lobby is full.</small>
+                </button>
+                <button type="button" role="radio" aria-checked={!oneMap} className={!oneMap ? 'on' : ''} onClick={() => setOneMap(false)}>
+                  <span aria-hidden>🗺🗺</span><b>60 players a map</b><small>15 squads a map; extra maps open and take off by themselves.</small>
+                </button>
+              </div>
+            </div>
+            <div className="field">
+              <span className="lbl" id="len">How long is the game?</span>
+              <div className="mode-pick three" role="radiogroup" aria-labelledby="len">
+                {([60, 90, 120] as const).map((m) => (
+                  <button key={m} type="button" role="radio" aria-checked={minutes === m} className={minutes === m ? 'on' : ''} onClick={() => setMinutes(m)}>
+                    <b>{m === 60 ? '1 hour' : m === 90 ? '1½ hours' : '2 hours'}</b><small>{m === 60 ? '3 finale battles' : m === 90 ? 'longer phases, more airdrops' : '4 finale battles, slowest zone'}</small>
+                  </button>
+                ))}
+              </div>
+              <small className="muted">Missions, zone shrinking, airdrops, lockdown alarms and the finale are all paced to fit. You can still change it before pressing Start.</small>
             </div>
             <p className="notice" style={{ margin: 0 }}>Players check in with the event QR or link, then create a squad, join one with a squad code, or let matchmaking find one. No printed cards or PINs. Maps open by themselves (15 squads = 60 players per map).</p>
           </>}
@@ -173,7 +197,7 @@ function Control({ d, arenas, arena, cmd, map, pacing, token }: { d: any; arenas
   // online edition: the one Start button (automatic maps) is the main control; per-map buttons are advanced
   if (squadCodes(d)) return (
     <>
-      <OnlinePanel d={d} token={token} />
+      <OnlinePanel d={d} token={token} cmd={cmd} />
       <details className="manual-pacing"><summary>Per-map controls (advanced — not needed with automatic maps)</summary>
         <div className="grid2">{list.map((a: any) => <ArenaCard key={a.id} a={a} d={d} cmd={cmd} />)}</div>
       </details>
@@ -864,7 +888,11 @@ function Logs({ d, token, arenas, cmd, map }: { d: any; token: string; arenas: a
 }
 
 // ── Online edition: join link, maps that open by themselves, attendance export ──
-function OnlinePanel({ d, token }: { d: any; token: string }) {
+const LEN_LABEL: Record<string, [string, string]> = {
+  '60': ['1 hour', '3 finale battles'], '90': ['1½ hours', 'longer phases'], '120': ['2 hours', '4 finale battles'],
+  quick: ['Quick test', 'about 10 minutes'],
+};
+function OnlinePanel({ d, token, cmd }: { d: any; token: string; cmd?: Cmd }) {
   const joinUrl = `${window.location.origin}/join?e=${d.event.code}`;
   const [sum, setSum] = useState<any>(null);
   const [maxMaps, setMaxMaps] = useState<string>(String(d.event.settings.online_max_maps ?? 8));
@@ -875,11 +903,12 @@ function OnlinePanel({ d, token }: { d: any; token: string }) {
     try { await rpc('host_settings', { p_token: token, p_settings: { online_max_maps: Math.max(1, Math.min(12, Number(maxMaps) || 1)), email_domain: domain.trim().toLowerCase() } }); toast('Saved', 'good'); }
     catch (e) { toast(friendly(e), 'bad'); }
   }
-  const [length, setLength] = useState<'quick' | 'standard' | 'full'>('standard');
+  const chosen = String(d.event.settings.game_minutes || '');
+  const [length, setLength] = useState<string>(['60', '90', '120'].includes(chosen) ? chosen : '60');
   const [starting, setStarting] = useState(false);
   async function startGame() {
     if (!sum) return;
-    if (!confirm(`Start the online game now?\n\n${sum.players} players · ${sum.squads} squads (${sum.short} still short).\nSmall squads are merged, squads are spread over the maps and every map takes off together. Nobody can create a new squad after this; late players fill open seats.`)) return;
+    if (!confirm(`Start the game now?\n\n${sum.players} players · ${sum.squads} squads (${sum.short} still short).\nSmall squads are merged, squads are spread over the maps and every map takes off together. Nobody can create a new squad after this; late players fill open seats.`)) return;
     setStarting(true);
     try {
       const r = await rpc<any>('host_online_start', { p_token: token, p_length: length });
@@ -900,6 +929,7 @@ function OnlinePanel({ d, token }: { d: any; token: string }) {
     catch (e) { toast(friendly(e), 'bad'); }
   }
   const fillMap = (sum?.maps || []).find((m: any) => !m.launched && m.players > 0);
+  const single = Number(d.event.settings.online_max_maps) === 1;
   async function attendance() {
     try {
       const rows = await rpc<any[]>('host_attendance', { p_token: token });
@@ -913,8 +943,24 @@ function OnlinePanel({ d, token }: { d: any; token: string }) {
       toast(`${rows.length} players exported`, 'good');
     } catch (e) { toast(friendly(e), 'bad'); }
   }
+  const locked = (d.arenas || []).filter((a: any) => a.results_locked);
+  const played = (d.arenas || []).filter((a: any) => a.phase !== 'lobby');
   return (
     <>
+      {cmd && locked.length > 0 && (
+        <div className="panel reveal-panel">
+          <div className="panel-title">🏆 Results are locked — only you can reveal them</div>
+          <p className="muted" style={{ margin: 0 }}>Phones and the projector show “Results sealed” until you press Reveal. Put the projector on full screen first.</p>
+          <div className="row wrap" style={{ gap: 8 }}>
+            {locked.map((a: any) => a.winner_revealed
+              ? <span key={a.id} className="chip good">{a.name}: revealed</span>
+              : <button key={a.id} className="btn gold big" onClick={() => confirm(`Reveal the winner of ${a.name} on its projector and every phone?`) && cmd(a.id, 'reveal_winner')}>🏆 Reveal {a.name} winner</button>)}
+            {played.length > 1 && !d.event.grand_revealed && (
+              <button className="btn gold big" disabled={!played.every((a: any) => a.results_locked && a.winner_revealed)} onClick={() => confirm('Reveal the grand champion of all maps?') && cmd(null, 'reveal_grand')}>👑 Reveal grand champion</button>
+            )}
+          </div>
+        </div>
+      )}
       <div className="grid2">
         <div className="panel col" style={{ alignItems: 'center' }}>
           <div className="panel-title" style={{ alignSelf: 'flex-start' }}>{ONLINE ? 'Online join link — paste it in the Teams call chat' : 'Join QR — show it on the big screen'}</div>
@@ -951,7 +997,26 @@ function OnlinePanel({ d, token }: { d: any; token: string }) {
           <p className="muted" style={{ fontSize: 13, margin: 0 }}>Nothing else to press. A map takes off when it has {sum.map_size} complete squads, or {Math.round((sum.fill_seconds ?? 180) / 60)} minutes after its first 4 players arrive (45 seconds once all its squads are there). Small squads on that map are merged at take-off; extra players go to the next map, which starts filling at once. Keep this page open.</p>
         </div>
       )}
-      {sum && !sum.started && !sum.auto && (
+      {sum && !sum.started && !sum.auto && single && (
+        <div className="panel online-start">
+          <div className="panel-title">Everyone on one map · {sum.players} players in the lobby</div>
+          <div className="os-stats">
+            <div><b>{sum.players}</b><small>players checked in</small></div>
+            <div><b>{sum.squads}</b><small>squads</small></div>
+            <div><b>{sum.full}</b><small>full (4)</small></div>
+            <div><b>{sum.three}</b><small>ready (3)</small></div>
+            <div className={sum.short ? 'warn' : ''}><b>{sum.short}</b><small>short (1–2) — merged at start</small></div>
+          </div>
+          <div className="auto-lengths">
+            {['60', '90', '120', 'quick'].map((l) => (
+              <button key={l} className={length === l ? 'on' : ''} onClick={() => setLength(l)}><b>{LEN_LABEL[l][0]}</b><span>{LEN_LABEL[l][1]}</span></button>
+            ))}
+          </div>
+          <button className="btn primary big auto-start" disabled={starting || sum.squads === 0} onClick={startGame}>{starting ? 'Starting…' : `▶ Start — all ${sum.squads} squads on one map`}</button>
+          <p className="muted" style={{ fontSize: 13, margin: 0 }}>Press when everyone is in the lobby. Small squads are merged, everybody boards the same plane, and the autopilot runs the whole match: flight, drop, challenges, zone, airdrops, lockdowns, finale. You only press Reveal at the end.</p>
+        </div>
+      )}
+      {sum && !sum.started && !sum.auto && !single && (
         <div className="panel online-start">
           <div className="panel-title">Start the online game</div>
           <div className="os-stats">
@@ -963,9 +1028,9 @@ function OnlinePanel({ d, token }: { d: any; token: string }) {
             <div><b>{Math.min(sum.maps_needed, sum.max_maps)}</b><small>map{sum.maps_needed > 1 ? 's' : ''} at start</small></div>
           </div>
           <div className="auto-lengths">
-            {(['quick', 'standard', 'full'] as const).map((l) => (
+            {['60', '90', '120', 'quick'].map((l) => (
               <button key={l} className={length === l ? 'on' : ''} onClick={() => setLength(l)}>
-                <b>{l === 'quick' ? 'Quick' : l === 'standard' ? 'Standard' : 'Full event'}</b><span>{l === 'quick' ? 'about 10 minutes' : l === 'standard' ? 'about 30 minutes' : '60–90 minutes'}</span>
+                <b>{LEN_LABEL[l][0]}</b><span>{LEN_LABEL[l][1]}</span>
               </button>
             ))}
           </div>

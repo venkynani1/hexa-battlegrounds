@@ -156,3 +156,36 @@ export function applyPrefs() {
     (store.get('hb_motion') !== 'full' && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches));
   root.classList.toggle('big-text', store.get('hb_text') === 'big');
 }
+
+// ── v16 loot ──────────────────────────────────────────────────────────────
+/** level colours like Free Fire: grey · blue · purple */
+export const LOOT_LEVEL = ['#9aa3ad', '#c9ced6', '#3ea5ff', '#b07cff'];
+export const GUNS: Record<string, { name: string; ammo: string | null; short: string }> = {
+  pistol: { name: 'Pistol', ammo: null, short: 'PST' }, smg: { name: 'SMG', ammo: 'ammo_light', short: 'SMG' },
+  shotgun: { name: 'Shotgun', ammo: 'ammo_shell', short: 'SG' }, ar: { name: 'Assault Rifle', ammo: 'ammo_rifle', short: 'AR' },
+  sniper: { name: 'Sniper', ammo: 'ammo_rifle', short: 'SNP' },
+};
+export const AMMO_NAME: Record<string, string> = { ammo_light: 'light ammo', ammo_rifle: 'rifle ammo', ammo_shell: 'shells' };
+/** what a picked-up item says on the phone */
+export function lootText(k: string): string {
+  if (k === 'medkit') return '+1 Med kit';
+  if (k === 'shield') return '+20 Shield';
+  if (k === 'coins') return '+15 coins';
+  if (k.startsWith('gun_')) return `🔫 ${GUNS[k.slice(4)]?.name || 'Gun'} picked up`;
+  if (k === 'ammo_shell') return '+10 shells';
+  if (k.startsWith('ammo_')) return `+40 ${AMMO_NAME[k]}`;
+  if (k.startsWith('vest')) return `🦺 Vest level ${k.slice(4)} on`;
+  if (k.startsWith('helmet')) return `⛑ Helmet level ${k.slice(6)} on`;
+  if (k === 'jammer') return '📡 Signal jammer';
+  return 'Picked up';
+}
+/** map dot colour for a loot kind */
+export function lootColor(k: string): string {
+  if (k === 'medkit') return '#ff6b6b';
+  if (k === 'shield') return '#3ea5ff';
+  if (k.startsWith('gun_')) return '#ff9d2e';
+  if (k.startsWith('ammo_')) return '#d9c27a';
+  if (k.startsWith('vest') || k.startsWith('helmet')) return LOOT_LEVEL[Number(k.slice(-1))] || '#c9ced6';
+  if (k === 'jammer') return '#5dff9e';
+  return '#ffc23d';
+}

@@ -2,17 +2,7 @@
 // number on the roof. Original low-poly design; replaces the four-person squads so 15 squads fit
 // on one screen without clutter.
 import * as THREE from 'three';
-
-const mats = new Map<string, THREE.Material>();
-function mat(color: number | string, o: { rough?: number; metal?: number; emissive?: number; ei?: number } = {}) {
-  const key = `${color}|${o.rough ?? 0.6}|${o.metal ?? 0}|${o.emissive ?? 0}|${o.ei ?? 0}`;
-  let m = mats.get(key);
-  if (!m) {
-    m = new THREE.MeshStandardMaterial({ color, roughness: o.rough ?? 0.6, metalness: o.metal ?? 0, emissive: o.emissive ?? 0, emissiveIntensity: o.ei ?? (o.emissive ? 1 : 0) });
-    mats.set(key, m);
-  }
-  return m;
-}
+import { Baker, shared, sharedMat } from './bake';
 
 // Body side profile (z = length, y = height), extruded across the width with rounded edges.
 function bodyGeo() {
@@ -71,28 +61,31 @@ function plate(number: number, color: string) {
   return t;
 }
 
-export type Vehicle = THREE.Group & { userData: { wheels: THREE.Object3D[]; steer: THREE.Object3D[]; body: THREE.Object3D; flag: THREE.Mesh; spin: number } };
+export type Vehicle = THREE.Group & { userData: { wheels: THREE.Object3D[]; steer: THREE.Object3D[]; body: THREE.Object3D; flag: THREE.Mesh; spin: number; detail: THREE.Object3D[]; near: boolean } };
 
-export function makeVehicle(opts: { color: string; number: number; dim?: boolean }): Vehicle {
-  const v = new THREE.Group() as Vehicle;
-  const paint = mat(opts.color, { rough: 0.32, metal: 0.45 });
-  const dark = mat(0x1b2028, { rough: 0.85 });
-  const cage = mat(0x2b2f36, { rough: 0.4, metal: 0.7 });
-  const chrome = mat(0xc9ced6, { rough: 0.25, metal: 0.9 });
-  const body = new THREE.Group();
-  body.add(new THREE.Mesh(G.body, paint));
-  const skid = new THREE.Mesh(G.skid, dark); skid.position.set(0, 0.4, -0.15); body.add(skid);
-  const grille = new THREE.Mesh(G.grille, dark); grille.position.set(0, 0.74, -2.2); body.add(grille);
-  // cabin: two seats, dashboard, steering wheel, windscreen
-  for (const sx of [-0.4, 0.4]) {
-    const st = new THREE.Mesh(G.seat, dark); st.position.set(sx, 1.02, 0.1); body.add(st);
-    const sb = new THREE.Mesh(G.seatBack, dark); sb.position.set(sx, 1.38, 0.42); sb.rotation.x = 0.14; body.add(sb);
-  }
-  const dash = new THREE.Mesh(G.dash, dark); dash.position.set(0, 1.14, -0.66); body.add(dash);
-  const sw = new THREE.Mesh(G.wheelRing, cage); sw.position.set(-0.4, 1.3, -0.45); sw.rotation.x = -0.5; body.add(sw);
-  const glass = new THREE.Mesh(G.glass, new THREE.MeshStandardMaterial({ color: 0x9fd4ff, transparent: true, opacity: 0.28, roughness: 0.05, metalness: 0.6, side: THREE.DoubleSide }));
-  glass.position.set(0, 1.5, -0.84); glass.rotation.x = -0.32; glass.castShadow = false; glass.userData.noShadow = true; body.add(glass);
-  // roll cage
+// ── baked parts: every buggy shares the same merged geometry; only the paint and the roof plate differ.
+// One buggy used to be ~45 meshes (≈90 draw calls with shadows); now it is 12.
+const MATTE = 'matte'; const METAL = 'metal'; const PAINT = 'paint';
+const VC = {
+  matte: sharedMat(new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.85 })),
+  metal: sharedMat(new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.32, metalness: 0.8 })),
+  glass: sharedMat(new THREE.MeshStandardMaterial({ color: 0x9fd4ff, transparent: true, opacity: 0.28, roughness: 0.05, metalness: 0.6, side: THREE.DoubleSide })),
+  head: sharedMat(new THREE.MeshStandardMaterial({ color: 0xfff6d8, emissive: 0xfff2c0, emissiveIntensity: 1.6 })),
+  tail: sharedMat(new THREE.MeshStandardMaterial({ color: 0xff2a3a, emissive: 0xff2a3a, emissiveIntensity: 1.3 })),
+  shadow: sharedMat(new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.28, depthWrite: false })),
+};
+
+let BAKED: { body: Record<string, THREE.BufferGeometry>; wheel: THREE.BufferGeometry; plate: THREE.BufferGeometry; flag: THREE.BufferGeometry; shadow: THREE.BufferGeometry } | null = null;
+function baked() {
+  if (BAKED) return BAKED;
+  const b = new Baker();
+  const DARK = 0x1b2028; const CAGE = 0x2b2f36; const CHROME = 0xc9ced6; const TYRE = 0x15171b;
+  b.add(PAINT, G.body, 0xffffff, [0, 0, 0]);
+  b.add(MATTE, G.skid, DARK, [0, 0.4, -0.15]);
+  b.add(MATTE, G.grille, DARK, [0, 0.74, -2.2]);
+  for (const sx of [-0.4, 0.4]) { b.add(MATTE, G.seat, DARK, [sx, 1.02, 0.1]); b.add(MATTE, G.seatBack, DARK, [sx, 1.38, 0.42], [0.14, 0, 0]); }
+  b.add(MATTE, G.dash, DARK, [0, 1.14, -0.66]);
+  b.add(METAL, G.wheelRing, CAGE, [-0.4, 1.3, -0.45], [-0.5, 0, 0]);
   const bars: [number, number, number, number, number, number][] = [
     [-0.72, 1.14, -0.75, -0.64, 2.15, -0.1], [0.72, 1.14, -0.75, 0.64, 2.15, -0.1],
     [-0.72, 1.18, 0.95, -0.64, 2.15, 0.7], [0.72, 1.18, 0.95, 0.64, 2.15, 0.7],
@@ -100,56 +93,89 @@ export function makeVehicle(opts: { color: string; number: number; dim?: boolean
     [-0.64, 2.15, -0.1, -0.64, 2.15, 0.7], [0.64, 2.15, -0.1, 0.64, 2.15, 0.7],
   ];
   for (const [x0, y0, z0, x1, y1, z1] of bars) {
-    const a = new THREE.Vector3(x0, y0, z0); const b = new THREE.Vector3(x1, y1, z1);
-    const m = new THREE.Mesh(G.bar, cage);
-    m.position.copy(a).add(b).multiplyScalar(0.5);
-    m.scale.y = a.distanceTo(b);
-    m.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), b.clone().sub(a).normalize());
-    body.add(m);
+    const A = new THREE.Vector3(x0, y0, z0); const B = new THREE.Vector3(x1, y1, z1);
+    const mid = A.clone().add(B).multiplyScalar(0.5);
+    const q = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 1, 0), B.clone().sub(A).normalize());
+    b.add(METAL, G.bar, CAGE, [mid.x, mid.y, mid.z], undefined, [1, A.distanceTo(B), 1], q);
   }
-  // roof panel with the squad number (readable from the follow camera and from above)
-  const roof = new THREE.Mesh(G.roof, [paint, paint, mat(0xffffff, { rough: 0.5 }), paint, paint, paint]);
-  (roof.material as THREE.Material[])[2] = new THREE.MeshStandardMaterial({ map: plate(opts.number, opts.color), roughness: 0.5 });
-  roof.position.set(0, 2.2, 0.38);
-  body.add(roof);
-  for (const y of [0.56, 0.8]) { const bp = new THREE.Mesh(G.bumper, cage); bp.position.set(0, y, -2.32); body.add(bp); }
-  const rb = new THREE.Mesh(G.bumper, cage); rb.position.set(0, 0.56, 1.86); body.add(rb);
-  const headM = mat(0xfff6d8, { emissive: 0xfff2c0, ei: 1.6 });
-  const tailM = mat(0xff2a3a, { emissive: 0xff2a3a, ei: 1.3 });
+  b.add(PAINT, G.roof, 0xffffff, [0, 2.2, 0.38]);
+  for (const y of [0.56, 0.8]) b.add(METAL, G.bumper, CAGE, [0, y, -2.32]);
+  b.add(METAL, G.bumper, CAGE, [0, 0.56, 1.86]);
   for (const sx of [-0.58, 0.58]) {
-    const h = new THREE.Mesh(G.lamp, headM); h.position.set(sx, 0.86, -2.2); body.add(h);
-    const rim = new THREE.Mesh(G.wheelRing, chrome); rim.position.set(sx, 0.86, -2.25); body.add(rim);
-    const t = new THREE.Mesh(G.tail, tailM); t.position.set(sx, 1.02, 1.84); body.add(t);
+    b.add('head', G.lamp, 0xffffff, [sx, 0.86, -2.2]);
+    b.add(METAL, G.wheelRing, CHROME, [sx, 0.86, -2.25]);
+    b.add('tail', G.tail, 0xffffff, [sx, 1.02, 1.84]);
   }
-  // spare wheel and a fuel can on the back
-  const spare = new THREE.Mesh(G.spare, mat(0x15171b, { rough: 0.95 })); spare.position.set(0, 1.02, 1.93); body.add(spare);
-  const jerry = new THREE.Mesh(G.jerry, mat(0x7a1f1f, { rough: 0.6, metal: 0.3 })); jerry.position.set(0.52, 1.44, 1.35); body.add(jerry);
-  // antenna with a pennant in the squad colour
-  const pole = new THREE.Mesh(G.pole, cage); pole.position.set(0.62, 2.9, 0.75); body.add(pole);
-  const flag = new THREE.Mesh(G.flag, mat(opts.color, { rough: 0.8 }));
-  (flag.material as THREE.MeshStandardMaterial).side = THREE.DoubleSide;
-  flag.position.set(0.62 + 0.25, 3.45, 0.75); body.add(flag);
-  v.add(body);
+  b.add(MATTE, G.spare, TYRE, [0, 1.02, 1.93]);
+  b.add(MATTE, G.jerry, 0x7a1f1f, [0.52, 1.44, 1.35]);
+  b.add(METAL, G.pole, CAGE, [0.62, 2.9, 0.75]);
+  b.add('glass', G.glass, 0xffffff, [0, 1.5, -0.84], [-0.32, 0, 0]);
+  for (const [x, z] of [[-0.95, -1.3], [0.95, -1.3], [-0.95, 1.15], [0.95, 1.15]]) b.add(MATTE, G.arch, DARK, [x * 0.98, 0.5, z], [0, 0, 0], [2.6, 1, 1]);
+  const body = b.build();
+  // one wheel: tyre, rim and three spokes in a single mesh
+  const w = new Baker();
+  w.add('w', G.tyre, TYRE, [0, 0, 0]); w.add('w', G.rim, 0x9aa1ab, [0, 0, 0]);
+  for (let k = 0; k < 3; k++) w.add('w', G.spoke, CAGE, [0, 0, 0], [(k / 3) * Math.PI, 0, 0], [1.02, 1, 1]);
+  const wheel = w.build().w;
+  const plateGeo = shared(new THREE.PlaneGeometry(1.4, 1.45).rotateX(-Math.PI / 2).translate(0, 2.234, 0.38));
+  const flagGeo = shared(G.flag.clone().translate(0.25, 0, 0)); // hinged at the pole
+  const shadowGeo = shared(G.shadow.clone().rotateX(-Math.PI / 2).scale(0.75, 1, 1.15).translate(0, 0.04, 0));
+  BAKED = { body, wheel, plate: plateGeo, flag: flagGeo, shadow: shadowGeo };
+  return BAKED;
+}
 
+const plateMats = new Map<string, THREE.Material>();
+function plateMat(n: number, color: string) {
+  const k = `${n}|${color}`; let m = plateMats.get(k);
+  if (!m) { m = sharedMat(new THREE.MeshStandardMaterial({ map: plate(n, color), roughness: 0.5, polygonOffset: true, polygonOffsetFactor: -1 })); plateMats.set(k, m); }
+  return m;
+}
+const paintMats = new Map<string, THREE.Material>();
+function paintMat(color: string) {
+  let m = paintMats.get(color);
+  if (!m) { m = sharedMat(new THREE.MeshStandardMaterial({ color, roughness: 0.32, metalness: 0.45 })); paintMats.set(color, m); }
+  return m;
+}
+const flagMats = new Map<string, THREE.Material>();
+function flagMat(color: string) {
+  let m = flagMats.get(color);
+  if (!m) { m = sharedMat(new THREE.MeshStandardMaterial({ color, roughness: 0.8, side: THREE.DoubleSide })); flagMats.set(color, m); }
+  return m;
+}
+
+export function makeVehicle(opts: { color: string; number: number; dim?: boolean }): Vehicle {
+  const B = baked();
+  const v = new THREE.Group() as Vehicle;
+  const body = new THREE.Group();
+  const mesh = (g: THREE.BufferGeometry, m: THREE.Material, shadow = true) => { const x = new THREE.Mesh(g, m); x.castShadow = shadow; x.receiveShadow = true; body.add(x); return x; };
+  mesh(B.body[PAINT], paintMat(opts.color));
+  const matte = mesh(B.body[MATTE], VC.matte);
+  const metal = mesh(B.body[METAL], VC.metal);
+  const glass = mesh(B.body.glass, VC.glass, false);
+  const head = mesh(B.body.head, VC.head, false);
+  const tail = mesh(B.body.tail, VC.tail, false);
+  const plateM = mesh(B.plate, plateMat(opts.number, opts.color), false);
+  const flag = new THREE.Mesh(B.flag, flagMat(opts.color)); flag.position.set(0.62, 3.45, 0.75); body.add(flag);
+  v.add(body);
   const wheels: THREE.Object3D[] = []; const steer: THREE.Object3D[] = [];
-  const tyre = mat(0x15171b, { rough: 0.95 });
   for (const [x, z] of [[-0.95, -1.3], [0.95, -1.3], [-0.95, 1.15], [0.95, 1.15]]) {
     const pivot = new THREE.Group(); pivot.position.set(x, 0.5, z);
-    const w = new THREE.Group();
-    w.add(new THREE.Mesh(G.tyre, tyre), new THREE.Mesh(G.rim, chrome));
-    for (let k = 0; k < 3; k++) { const sp = new THREE.Mesh(G.spoke, cage); sp.rotation.x = (k / 3) * Math.PI; sp.scale.set(1.02, 1, 1); w.add(sp); }
+    const w = new THREE.Mesh(B.wheel, VC.matte); w.castShadow = true;
     pivot.add(w); v.add(pivot);
     wheels.push(w);
     if (z < 0) steer.push(pivot);
-    // mudguard arch over each wheel, fixed to the body
-    const arch = new THREE.Mesh(G.arch, dark); arch.position.set(x * 0.98, 0.5, z); arch.scale.set(2.6, 1, 1); body.add(arch);
   }
-  const sh = new THREE.Mesh(G.shadow, new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.28, depthWrite: false }));
-  sh.rotation.x = -Math.PI / 2; sh.position.y = 0.04; sh.scale.set(0.75, 1.15, 1);
-  v.add(sh);
-  v.traverse((o) => { if ((o as THREE.Mesh).isMesh && o !== sh && !o.userData.noShadow) { o.castShadow = true; } });
-  v.userData = { wheels, steer, body, flag, spin: 0 };
+  const sh = new THREE.Mesh(B.shadow, VC.shadow); v.add(sh);
+  v.userData = { wheels, steer, body, flag, spin: 0, detail: [matte, metal, glass, head, tail, plateM, flag], near: true };
   return v;
+}
+
+/** far away a buggy keeps only its painted shell and wheels (5 meshes instead of 12) */
+export function setVehicleDetail(v: Vehicle, near: boolean) {
+  if (v.userData.near === near) return;
+  v.userData.near = near;
+  for (const o of v.userData.detail) o.visible = near;
+  for (const w of v.userData.wheels) (w as THREE.Mesh).castShadow = near;
 }
 
 /** Wheel spin, steering and suspension bob. speed in world units / s, turn in rad / s. */

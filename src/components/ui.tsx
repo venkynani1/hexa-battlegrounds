@@ -3,8 +3,10 @@ import QRCode from 'qrcode';
 import { fmtClock, secondsLeft, msUntil, useNow, progress } from '../lib/time';
 import { feedText, MapData, ZONE_TEXT } from '../lib/game';
 import { sfx, setMuted, isMuted, setVolume, getVolume, unlockAudio } from '../lib/sound';
+import { ambienceOn, setAmbience } from '../lib/ambience';
 import { store } from '../lib/api';
 import { applyPrefs } from '../lib/game';
+import { detectQuality, QUALITY_LABEL, qualityChoice, QualityChoice, setQualityChoice, setShowFps, showFps } from '../three/quality';
 
 // ── Toasts ────────────────────────────────────────────────────────────────
 type Toast = { id: number; text: string; tone: string };
@@ -190,12 +192,16 @@ export function FeedList({ feed, map, limit = 10, big = false }: { feed: any[]; 
 export function SettingsSheet({ open, onClose }: { open: boolean; onClose: () => void }) {
   const [muted, setM] = useState(isMuted());
   const [vol, setV] = useState(getVolume());
+  const [amb, setAmb] = useState(ambienceOn());
   const [motion, setMotion] = useState(store.get('hb_motion') || 'auto');
   const [text, setText] = useState(store.get('hb_text') || 'normal');
+  const [quality, setQ] = useState<QualityChoice>(qualityChoice());
+  const [fps, setFps] = useState(showFps());
   return (
     <Sheet open={open} onClose={onClose} title="Settings">
       <div className="col" style={{ gap: 14 }}>
         <label className="check"><input type="checkbox" checked={!muted} onChange={(e) => { unlockAudio(); setMuted(!e.target.checked); setM(!e.target.checked); sfx.tap(); }} /> Sound effects</label>
+        <label className="check"><input type="checkbox" checked={amb} onChange={(e) => { unlockAudio(); setAmbience(e.target.checked); setAmb(e.target.checked); }} /> Campus ambience <small className="muted">(wind, birds, engines, water)</small></label>
         <div className="field"><label htmlFor="vol">Volume</label>
           <input id="vol" type="range" min={0} max={1} step={0.1} value={vol} onChange={(e) => { setVolume(Number(e.target.value)); setV(Number(e.target.value)); sfx.tap(); }} />
         </div>
@@ -204,6 +210,13 @@ export function SettingsSheet({ open, onClose }: { open: boolean; onClose: () =>
             <option value="auto">Follow my device</option><option value="full">Full animations</option><option value="reduced">Reduced motion</option>
           </select>
         </div>
+        <div className="field"><label htmlFor="gfx">Graphics</label>
+          <select id="gfx" className="input" value={quality} onChange={(e) => { const v = e.target.value as QualityChoice; setQ(v); setQualityChoice(v); }}>
+            {(['auto', 'low', 'balanced', 'high'] as QualityChoice[]).map((k) => <option key={k} value={k}>{QUALITY_LABEL[k]}{k === 'auto' ? ` · ${detectQuality()}` : ''}</option>)}
+          </select>
+          <small className="muted">Low keeps the game smooth on older phones. The picture also lowers its resolution by itself if frames start to drop.</small>
+        </div>
+        <label className="check"><input type="checkbox" checked={fps} onChange={(e) => { setFps(e.target.checked); setShowFps(e.target.checked); }} /> Show frame rate</label>
         <div className="field"><label htmlFor="txt">Text size</label>
           <select id="txt" className="input" value={text} onChange={(e) => { setText(e.target.value); store.set('hb_text', e.target.value); applyPrefs(); }}>
             <option value="normal">Normal</option><option value="big">Large</option>

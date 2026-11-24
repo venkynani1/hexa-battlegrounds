@@ -3,7 +3,7 @@
 // marker (shows distance and run time), tap near a place to run there.
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { MapData } from '../lib/game';
-import { floorLabel, TIER_COLOR } from '../lib/game';
+import { floorLabel, TIER_COLOR, lootColor } from '../lib/game';
 import { ROADS, LOTS, FEATURES } from '../../content/campus.mjs';
 import { Countdown } from '../components/ui';
 import { msUntil } from '../lib/time';
@@ -193,7 +193,7 @@ export default function BigMap({ map, me, yaw, squads, zone, zoneNextAt, red, dr
           })}
           {/* loot on your floor */}
           {k >= 1.6 && pickups.filter((p) => (p.l || 0) === level).map((p) => (
-            <circle key={p.id} cx={p.x * V} cy={p.y * V} r={3.2 / Math.sqrt(k)} fill={p.k === 'medkit' ? '#ff6b6b' : p.k === 'shield' ? '#3ea5ff' : '#ffc23d'} stroke="#fff" strokeWidth={1 / Math.sqrt(k)} />
+            <circle key={p.id} cx={p.x * V} cy={p.y * V} r={3.2 / Math.sqrt(k)} fill={lootColor(p.k)} stroke="#fff" strokeWidth={1 / Math.sqrt(k)} />
           ))}
           {/* airdrops */}
           {drops.map((d) => { const l = byId.get(d.location); return l ? (

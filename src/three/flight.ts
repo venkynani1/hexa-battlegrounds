@@ -2,6 +2,7 @@
 // progress p (0 → 1): taxi and take-off on runway 07, climb out over the city, cruise above the
 // clouds along the coast (OMR), then descend towards the campus. Primitives only, no assets.
 import * as THREE from 'three';
+import { currentQuality, PRESETS } from './quality';
 import { animatePlane, makePlane } from './people';
 
 const LEN = 5200;          // runway start → campus, in world units
@@ -39,8 +40,8 @@ export class FlightStage {
   progress = 0;
 
   constructor(private canvas: HTMLCanvasElement) {
-    const r = this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' });
-    r.setPixelRatio(Math.min(2, window.devicePixelRatio || 1));
+    const r = this.renderer = new THREE.WebGLRenderer({ canvas, antialias: PRESETS[currentQuality()].antialias, powerPreference: 'high-performance' });
+    r.setPixelRatio(Math.min(PRESETS[currentQuality()].maxDpr, window.devicePixelRatio || 1));
     r.outputColorSpace = THREE.SRGBColorSpace; r.toneMapping = THREE.ACESFilmicToneMapping;
     const sc = this.scene;
     sc.background = new THREE.Color(0x9fc9ec);

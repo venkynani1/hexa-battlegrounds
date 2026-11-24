@@ -4,7 +4,7 @@
 // taps a place to auto-run there (captain_move). Buildings have floors: climb at the stairwell.
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import { friendly, rpc, store } from '../lib/api';
-import { feedText, floorLabel, floorName, locName, MapData, MATCH_PHASES, ROLES, ROLE_ORDER, Role, TIER_COLOR } from '../lib/game';
+import { feedText, floorLabel, floorName, locName, MapData, MATCH_PHASES, ROLES, ROLE_ORDER, Role, TIER_COLOR, lootText, GUNS, AMMO_NAME, LOOT_LEVEL } from '../lib/game';
 import { POLL_EXTRAPOLATE, predict, Shot, useRivals, useShots, useSquadLink } from '../lib/motion';
 import { inBuilding, walkBlocked } from '../lib/walls';
 import { zoneNow } from '../lib/zone';
@@ -419,7 +419,7 @@ export default function WorldTab({ s, token, map, refresh, openMission, openSqua
       if (r.vehicle) vehRef.current = r.vehicle;
       if (r.picked?.length) {
         sfx.pickup(); buzz(25);
-        for (const k of r.picked) toast(k === 'medkit' ? '+1 Med kit' : k === 'shield' ? '+20 Shield' : '+15 coins', 'good');
+        for (const k of r.picked) toast(lootText(k), 'good');
       }
       if (r.location !== lastLoc.current || r.picked) {
         if (r.location !== lastLoc.current && r.location) { sfx.gate(); buzz(20); }
@@ -566,6 +566,7 @@ export default function WorldTab({ s, token, map, refresh, openMission, openSqua
       if (sh.ko) { toast(`Squad ${sh.a} knocked your squad out!`, 'bad'); refresh(); }
     }
   });
+  const [elim, setElim] = useState<{ t: number; n: number; pts: number } | null>(null);
   async function fireOnce() {
     const tg = targetRef.current;
     if (!tg || fireBusy.current) return;
@@ -576,9 +577,10 @@ export default function WorldTab({ s, token, map, refresh, openMission, openSqua
       sfx.weapon(); buzz(10);
       sendShot({ a: s.team.number, b: tg.number, hit: r.hit, crit: r.crit, dmg: r.dmg, ko: r.knocked, w: r.weapon?.id });
       setAmmo(r.mag);
+      if (r.out_of_ammo) toast(`Out of ${AMMO_NAME[r.weapon?.ammo] || 'ammo'} — switched to ${r.weapon?.name || 'the pistol'}`, 'warn');
       if (r.reload_until) { setReloadAt(performance.now() + Math.max(300, msUntil(r.reload_until))); sfx.tap(); }
       if (r.hit) setHitFx({ t: performance.now(), crit: r.crit, dmg: r.dmg, ko: r.knocked });
-      if (r.knocked) { sfx.success(); buzz([80, 40, 120]); toast(`You knocked out Squad ${tg.number}! +points and loot`, 'good'); refresh(); }
+      if (r.knocked) { sfx.success(); buzz([80, 40, 120]); setElim({ t: performance.now(), n: tg.number, pts: r.elimination?.points ?? 100 }); toast(`ELIMINATED Squad ${tg.number}! +${r.elimination?.points ?? 100} points · their death box is on the ground`, 'good'); refresh(); }
     } catch (e: any) {
       const code = e?.code || '';
       if (!['TOO_FAST', 'RELOADING'].includes(code)) { firing.current = false; toast(friendly(e), 'bad'); }
@@ -594,6 +596,7 @@ export default function WorldTab({ s, token, map, refresh, openMission, openSqua
   useEffect(() => () => { firing.current = false; }, []);
   useEffect(() => { if (!target) firing.current = false; }, [target?.id]);
   const reloading = reloadAt > performance.now();
+  const elimOn = !!elim && performance.now() - elim.t < 2600;
   const ammoLeft = ammo ?? s.me.mag ?? weapon.mag;
 
   // ── the plane and the jump ──
@@ -696,7 +699,17 @@ export default function WorldTab({ s, token, map, refresh, openMission, openSqua
     onClick: () => act('captain_jump', {}).then((r) => { if (r) { sfx.go(); buzz([40, 30, 80]); toast('🪂 Jumped! Steer with the joystick — the parachute opens by itself', 'good'); setMarker(null); } }) };
   else if (isCaptain && here && here.kind !== 'stairs' && s.arena.phase === 'play') primary = { icon: 'box', label: 'OPEN BOX', sub: searchesLeft > 0 ? `${searchesLeft} left` : 'area empty', tone: 'primary', disabled: busy || searchesLeft <= 0 || s.team.state !== 'idle', onClick: () => act('captain_explore', {}).then((r) => r && openMission()) };
   const medkits = s.inventory?.medkit || 0;
-  const weapons = Object.entries(s.inventory || {}).filter(([k]) => ['pistol', 'smg', 'sniper'].includes(k)) as [string, number][];
+  const jammers = s.inventory?.jammer || 0;
+  const jammedUntil = s.team.jammed_until && msUntil(s.team.jammed_until) > 0 ? s.team.jammed_until : null;
+  const armor = s.team.armor || { vest: 0, helmet: 0 };
+  // the squad's guns: the pistol always, plus every gun in the bag (with its rounds)
+  const guns = ['pistol', ...['ar', 'smg', 'shotgun', 'sniper'].filter((g) => (s.inventory?.[g] || 0) > 0)];
+  const reserve = (g: string) => (GUNS[g]?.ammo ? s.inventory?.[GUNS[g].ammo!] || 0 : null);
+  async function equip(g: string) {
+    if (g === weapon.id) return;
+    const r = await act('squad_equip', { p_gun: g });
+    if (r) { setAmmo(null); sfx.tap(); buzz(15); toast(`${GUNS[g].name} ready`, 'info'); }
+  }
   const hp = s.team.hp;
 
   const webgl = hasWebGL();
@@ -756,6 +769,7 @@ export default function WorldTab({ s, token, map, refresh, openMission, openSqua
       {climbing && <div className="climb-flash" role="status">{climbing}</div>}
       {hurt && performance.now() - hurt.t < 700 && <div className="hurt-arc" style={{ transform: `rotate(${hurt.ang}rad)` }} aria-hidden />}
       {fpv && <div className="fpv-cross" aria-hidden />}
+      {hp > 0 && hp <= 30 && s.arena.phase === 'play' && <div className={`lowhp-vignette ${hp <= 15 ? 'crit' : ''}`} aria-hidden />}
       {target && canFight && (
         <div className={`aim ${hitFx && performance.now() - hitFx.t < 260 ? 'hit' : ''}`} aria-hidden>
           <i /><span>SQ {target.number}{typeof target.hp === 'number' ? ` · ${target.hp} HP` : ''} · {Math.round(target.d * METERS)} m</span>
@@ -839,10 +853,16 @@ export default function WorldTab({ s, token, map, refresh, openMission, openSqua
         )}
         <div className="hud-hp" aria-label={`Health ${hp} of 100${s.team.shield ? `, shield ${s.team.shield}` : ''}`}>
           <div className="hp-track">
+            <i className="hp-ghost" style={{ width: `${Math.max(0, Math.min(100, hp))}%` }} />
             <i className="hp-fill" style={{ width: `${Math.max(0, Math.min(100, hp))}%`, background: hp > 50 ? '#f2f5f8' : hp > 25 ? '#ffc23d' : '#ff4d5e' }} />
             {s.team.shield > 0 && <i className="hp-shield" style={{ width: `${Math.min(100, s.team.shield)}%` }} />}
           </div>
           <b>{hp}</b>
+          {(armor.vest > 0 || armor.helmet > 0) && <span className="armor-chips">
+            {armor.vest > 0 && <i style={{ borderColor: LOOT_LEVEL[armor.vest] }} title={`Vest level ${armor.vest}`}>🦺{armor.vest}</i>}
+            {armor.helmet > 0 && <i style={{ borderColor: LOOT_LEVEL[armor.helmet] }} title={`Helmet level ${armor.helmet}`}>⛑{armor.helmet}</i>}
+          </span>}
+          {jammedUntil && <span className="jam-chip">📡 Hidden <Countdown to={jammedUntil} /></span>}
         </div>
       </div>
 
@@ -862,8 +882,20 @@ export default function WorldTab({ s, token, map, refresh, openMission, openSqua
             onPointerDown={(e) => { e.preventDefault(); (e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId); startFire(); }}
             onPointerUp={stopFire} onPointerCancel={stopFire} onPointerLeave={stopFire} onContextMenu={(e) => e.preventDefault()}
             aria-label={target ? `Fire at squad ${target.number}` : 'No target in range'}>
-            <Icon name="pistol" /><span>{reloading ? 'RELOAD' : 'FIRE'}</span><small>{weapon.name} · {ammoLeft}/{weapon.mag}</small>
+            <Icon name="pistol" /><span>{reloading ? 'RELOAD' : 'FIRE'}</span><small>{weapon.name} · {ammoLeft}/{reserve(weapon.id) ?? '∞'}</small>
           </button>
+        )}
+        {canFight && guns.length > 1 && (
+          <div className="gun-strip" role="radiogroup" aria-label="Choose gun">
+            {guns.map((g) => (
+              <button key={g} role="radio" aria-checked={weapon.id === g} className={weapon.id === g ? 'on' : ''} disabled={busy || (g !== 'pistol' && !reserve(g))} onClick={() => equip(g)}>
+                <b>{GUNS[g].short}</b><small>{g === 'pistol' ? '∞' : reserve(g)}</small>
+              </button>
+            ))}
+          </div>
+        )}
+        {isCaptain && jammers > 0 && !jammedUntil && s.arena.phase === 'play' && s.team.state !== 'recovery' && (
+          <button className="act md jam" disabled={busy} onClick={() => act('captain_use_item', { p_item: 'jammer' }, 'Jammer on').then((r) => r && (sfx.transmission(), toast('📡 Jammer on — rivals cannot see your squad for 2 minutes', 'good')))} aria-label="Use signal jammer"><span aria-hidden>📡</span><small>JAM {jammers}</small></button>
         )}
         {isCaptain && onFoot && !inAir && canMove && (
           <button className={`act md run ${running ? 'on' : ''}`} onClick={() => { const v = !running; setRunning(v); store.set('hb_run', v ? '1' : '0'); sfx.tap(); }} aria-pressed={running} aria-label={running ? 'Running — tap to walk' : 'Walking — tap to run'}>
@@ -886,6 +918,7 @@ export default function WorldTab({ s, token, map, refresh, openMission, openSqua
         )}
       </div>
 
+      {elimOn && elim && <div className="elim-banner" key={elim.t}><b>ELIMINATED</b><span>Squad {elim.n} · +{elim.pts}</span></div>}
       <Coach isCaptain={isCaptain} />
 
       {mapOpen && map && (
