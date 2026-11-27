@@ -1,5 +1,6 @@
 import { ONLINE } from '../lib/edition';
 import { FormEvent, useCallback, useEffect, useMemo, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { friendly, GameError, rpc, store } from '../lib/api';
 import { useLive } from '../lib/live';
 import { msUntil, useNow } from '../lib/time';
@@ -771,7 +772,8 @@ function Links({ d, token, refresh, cmd }: { d: any; token: string; refresh: () 
           <div className="panel-title" style={{ alignSelf: 'flex-start' }}>Player join link (no secrets inside)</div>
           <QR value={joinUrl} size={200} />
           <code className="mono">{joinUrl}</code>
-          <button className="btn sm" onClick={() => { navigator.clipboard?.writeText(joinUrl); toast('Copied', 'good'); }}>Copy</button>
+          <div className="row"><button className="btn sm" onClick={() => { navigator.clipboard?.writeText(joinUrl); toast('Copied', 'good'); }}>Copy</button>
+            <BigQR url={joinUrl} code={d.event.code} name={d.event.name} /></div>
         </div>
         {d.arenas.map((a: any) => {
           const url = `${window.location.origin}/screen/${a.spectator_token}`;
@@ -967,6 +969,7 @@ function OnlinePanel({ d, token, cmd }: { d: any; token: string; cmd?: Cmd }) {
           <QR value={joinUrl} size={180} />
           <code className="mono">{joinUrl}</code>
           <div className="row"><button className="btn sm" onClick={() => { navigator.clipboard?.writeText(joinUrl); toast('Copied', 'good'); }}>Copy link</button>
+            <BigQR url={joinUrl} code={d.event.code} name={d.event.name} />
             <button className="btn sm gold" onClick={attendance}>⬇ Attendance (CSV)</button></div>
           <p className="muted" style={{ fontSize: 13, margin: 0 }}>Event code <b className="mono">{d.event.code}</b>. {Number(d.event.settings.segue) === 1 ? 'Segue: players sign in with name, e-mail and college.' : 'Mavericks: players sign in with their 10-digit employee ID, company e-mail and name.'}</p>
         </div>
@@ -1053,4 +1056,27 @@ function OnlinePanel({ d, token, cmd }: { d: any; token: string; cmd?: Cmd }) {
       </div>
     </>
   );
+}
+
+/** Full-screen join QR for the projector: big enough to scan from the back of the room. */
+function BigQR({ url, code, name }: { url: string; code: string; name: string }) {
+  const [open, setOpen] = useState(false);
+  const size = typeof window === 'undefined' ? 600 : Math.floor(Math.min(window.innerWidth * 0.8, window.innerHeight * 0.72));
+  useEffect(() => {
+    if (!open) return;
+    const k = (e: KeyboardEvent) => { if (e.key === 'Escape') setOpen(false); };
+    window.addEventListener('keydown', k); document.documentElement.requestFullscreen?.().catch(() => {});
+    return () => { window.removeEventListener('keydown', k); if (document.fullscreenElement) document.exitFullscreen?.().catch(() => {}); };
+  }, [open]);
+  return <>
+    <button className="btn sm primary" onClick={() => setOpen(true)}>⛶ Show big QR</button>
+    {open && createPortal(
+      <div className="bigqr" role="dialog" aria-label="Join QR" onClick={() => setOpen(false)}>
+        <div className="bigqr-title">{name} · scan to join</div>
+        <QR value={url} size={size} />
+        <div className="bigqr-code">Code <b>{code}</b> · {url.replace(/^https?:\/\//, '')}</div>
+        <small>Tap or press Esc to close</small>
+      </div>, document.body,
+    )}
+  </>;
 }
