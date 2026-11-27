@@ -27,9 +27,17 @@ export default function Play() {
   const map = useMapData();
   // lean polling: send the hashes of what this phone already holds; the server leaves those sections out
   const lean = useRef<{ tok: string | null; h: Record<string, string>; d: any }>({ tok: null, h: {}, d: null });
+  const leanOff = useRef(false);
   const fetcher = useCallback(async () => {
     const L = lean.current.tok === token ? lean.current : { tok: token, h: {}, d: null };
-    let r: any = await rpc('player_state', { p_token: token, p_have: L.h });
+    // a database without the lean version (0995) still works: fall back to the plain call
+    if (leanOff.current) return rpc('player_state', { p_token: token });
+    let r: any;
+    try { r = await rpc('player_state', { p_token: token, p_have: L.h }); }
+    catch (e: any) {
+      if (/not found|does not exist|42883|404/i.test(`${e?.code} ${e?.detail} ${e?.message}`)) { leanOff.current = true; return rpc('player_state', { p_token: token }); }
+      throw e;
+    }
     if (!r || typeof r !== 'object' || !r.h) { lean.current = { tok: token, h: {}, d: null }; return r; }
     const missing = Object.keys(r.h).some((k) => !(k in r) && !(L.d && k in L.d));
     if (missing) r = await rpc('player_state', { p_token: token, p_have: {} });
