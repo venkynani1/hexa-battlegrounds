@@ -64,7 +64,21 @@ export function useSquadLink(teamId: string | null | undefined, isCaptain: boole
   return { latest, send };
 }
 
-/** Rival squads' positions + velocity, refreshed every ~2 s while `enabled`. */
+/** Positions feed (arena_positions, or `rivals` inside player_state for teammates) → prediction map. */
+export function rivalMap(squads: any[] | null | undefined) {
+  const t = serverTime();
+  const next = new Map<string, Motion>();
+  for (const q of squads || []) {
+    if (!q?.pos) continue;
+    const v = q.vel || [0, 0];
+    // `age` = how long ago the server recorded this position: start the prediction from then
+    const age = q.vel && typeof q.age === 'number' ? Math.min(3, Math.max(0, q.age)) * 1000 : 0;
+    next.set(q.id, { x: q.pos[0], y: q.pos[1], vx: v[0] || 0, vy: v[1] || 0, l: q.level || 0, b: q.bldg ?? null, t: t - age, moving: !!q.vel, q });
+  }
+  return next;
+}
+
+/** Rival squads' positions + velocity, polled while `enabled` (the captain); teammates get them inside player_state. */
 export function useRivals(token: string | null, enabled: boolean, fast = false) {
   const rivals = useRef(new Map<string, Motion>());
   useEffect(() => {
@@ -75,16 +89,7 @@ export function useRivals(token: string | null, enabled: boolean, fast = false) 
       if (document.visibilityState === 'visible') {
         try {
           const r = await rpc<any>('arena_positions', { p_token: token });
-          const t = serverTime();
-          const next = new Map<string, Motion>();
-          for (const q of r.squads || []) {
-            if (!q.pos) continue;
-            const v = q.vel || [0, 0];
-            // `age` = how long ago the server recorded this position: start the prediction from then
-            const age = q.vel && typeof q.age === 'number' ? Math.min(3, Math.max(0, q.age)) * 1000 : 0;
-            next.set(q.id, { x: q.pos[0], y: q.pos[1], vx: v[0] || 0, vy: v[1] || 0, l: q.level || 0, b: q.bldg, t: t - age, moving: !!q.vel, q });
-          }
-          rivals.current = next;
+          rivals.current = rivalMap(r.squads);
         } catch { /* the full state refresh still covers positions */ }
       }
       // the captain steers and fights: every ~3.8 s; teammates watch: every ~7.5 s (positions are extrapolated in between)

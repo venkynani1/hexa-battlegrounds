@@ -1209,3 +1209,14 @@ html.reduced-motion .cine-caption, html.reduced-motion .cine-ticker { animation:
 .elim-banner span { font-size: 18px; font-weight: 800; color: #ffc23d; text-shadow: 0 2px 6px #000; }
 @keyframes elimIn { 0% { opacity: 0; transform: translateX(-50%) scale(1.6); } 12% { opacity: 1; transform: translateX(-50%) scale(1); } 80% { opacity: 1; } 100% { opacity: 0; transform: translateX(-50%) translateY(-20px); } }
 html.reduced-motion .elim-banner { animation: none; }
+
+/* narrow phones (≤ 440 px, portrait): stack the action buttons above FIRE so nothing leaves the screen */
+@media (max-width: 440px) and (orientation: portrait) {
+  .hud-actions { flex-direction: column-reverse; align-items: flex-end; gap: 8px; }
+  .hud-actions .gun-strip { flex-wrap: wrap; justify-content: flex-end; max-width: calc(100vw - 24px); }
+  .hud-bl-hint { max-width: calc(100vw - 150px); }
+}
+@media (max-width: 370px) and (orientation: portrait) {
+  .act.fire { width: 80px; height: 80px; }
+  .gun-strip button { min-width: 40px; padding: 4px 5px; }
+}

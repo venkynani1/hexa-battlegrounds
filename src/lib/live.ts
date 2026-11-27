@@ -44,7 +44,9 @@ export function useLive<T = any>(fetcher: () => Promise<T>, opts: Options) {
       // schedule a refresh just after the next deadline
       clearTimeout(deadlineTimer.current);
       const dl = (optsRef.current.deadlines?.(d) || [])
+        .filter((x): x is string => typeof x === 'string' && x.length > 0) // msUntil(null) is 0: an empty slot must not count as "due now"
         .map((x) => msUntil(x))
+        .filter((ms) => Number.isFinite(ms))
         .filter((ms) => ms > -2000 && ms < 15 * 60 * 1000)
         .sort((a, b) => a - b)[0];
       if (dl !== undefined) {

@@ -5,7 +5,7 @@
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import { friendly, rpc, store } from '../lib/api';
 import { feedText, floorLabel, floorName, locName, MapData, MATCH_PHASES, ROLES, ROLE_ORDER, Role, TIER_COLOR, lootText, GUNS, AMMO_NAME, LOOT_LEVEL } from '../lib/game';
-import { POLL_EXTRAPOLATE, predict, Shot, useRivals, useShots, useSquadLink } from '../lib/motion';
+import { POLL_EXTRAPOLATE, predict, rivalMap, Shot, useRivals, useShots, useSquadLink } from '../lib/motion';
 import { inBuilding, walkBlocked } from '../lib/walls';
 import { zoneNow } from '../lib/zone';
 import { ROADS, LOTS } from '../../content/campus.mjs';
@@ -352,7 +352,10 @@ export default function WorldTab({ s, token, map, refresh, openMission, openSqua
   const [busy, setBusy] = useState(false);
   const [climbing, setClimbing] = useState<string | null>(null);
   const link = useSquadLink(s.team.id, isCaptain);
-  const rivals = useRivals(token, s.arena.phase === 'play', s.me.role === 'captain');
+  // the captain polls positions fast; teammates get them inside their regular state refresh (one call, not two)
+  const feedRivals = s.me.role !== 'captain' && Array.isArray(s.rivals);
+  const rivals = useRivals(token, s.arena.phase === 'play' && !feedRivals, s.me.role === 'captain');
+  useEffect(() => { if (feedRivals) rivals.current = rivalMap(s.rivals); }, [feedRivals, s.rivals]);
 
   // ── own position: prediction while steering (captain), the captain's live feed (teammates), server truth otherwise ──
   const serverPos = travelPos(s, map);
@@ -390,6 +393,12 @@ export default function WorldTab({ s, token, map, refresh, openMission, openSqua
   }, []);
   const steering = useRef(false);
   const lastSend = useRef(0);
+  // steering reaches the server about once a second (free-tier budget); sooner when the captain
+  // walks onto loot (so pickups feel instant) or turns sharply (so rivals see the new heading)
+  const lootRef = useRef<any[]>([]);
+  lootRef.current = s.pickups || [];
+  const lootTried = useRef(new Set<string>());
+  const sentDir = useRef(0);
   const inflight = useRef(false);
   const lastLoc = useRef<string | null>(s.team.location);
   const wallToast = useRef(0);
@@ -480,7 +489,17 @@ export default function WorldTab({ s, token, map, refresh, openMission, openSqua
           L.vx = (L.vx || 0) * 0.75 + ivx * 0.25; L.vy = (L.vy || 0) * 0.75 + ivy * 0.25;
           L.x = nx; L.y = ny; L.moving = true; L.joy = true;
           link.send({ x: L.x, y: L.y, vx: L.vx, vy: L.vy, l: level, h: yaw });
-          if (t - lastSend.current > 500) sendSteer();
+          const since = t - lastSend.current;
+          let soon = false;
+          if (!air && since > 200) {
+            for (const p of lootRef.current) {
+              if ((p.l || 0) !== level || lootTried.current.has(p.id)) continue;
+              if ((p.x - nx) ** 2 + (p.y - ny) ** 2 < 0.0115 ** 2) { lootTried.current.add(p.id); soon = true; }
+            }
+          }
+          const dir = Math.atan2(L.vy || 0, L.vx || 0);
+          const turn = Math.abs(Math.atan2(Math.sin(dir - sentDir.current), Math.cos(dir - sentDir.current)));
+          if (since > 1000 || soon || (turn > 0.6 && since > 400)) { sentDir.current = dir; sendSteer(); }
         } else {
           L.joy = false;
           if (steering.current) {

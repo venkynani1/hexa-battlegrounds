@@ -4,7 +4,7 @@
 -- Supabase → SQL Editor → New query → paste this whole file → Run. That's all.
 --   • Works on a brand-new project and on every earlier version (setup, upgrade 1/2/3, half-run upgrades).
 --   • Keeps every event, squad, PIN and score. Everything runs in ONE transaction: all or nothing.
---   • It downloads the full script (1362 KB, too big to paste) from GitHub, checks its
+--   • It downloads the full script (1366 KB, too big to paste) from GitHub, checks its
 --     SHA-256 fingerprint so nothing else can run, then executes it.
 -- Expected result: "Success. No rows returned" and a notice: Hexa Battlegrounds database is up to date (v16).
 -- If your project blocks outbound HTTP, run supabase/full/hexa-battlegrounds-v16.sql instead
@@ -16,7 +16,7 @@ create extension if not exists pgcrypto with schema extensions;
 do $hexa$
 declare
   v_url text := 'https://raw.githubusercontent.com/venkynani1/hexa-battlegrounds/main/supabase/full/hexa-battlegrounds-v16.sql';
-  v_sha text := 'c36584bdeff16f45e516f8bdd5007f9dcb17dc646565f6559f7c1b2f8f929f6d';
+  v_sha text := '253f26177e2ab3d40db30eb81851c2d50d33e173bf563b38230d4be3f9eb7db8';
   v_status int;
   v_sql text;
 begin

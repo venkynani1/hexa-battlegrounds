@@ -371,7 +371,7 @@ function cricket(n, kind, tags) {
     objective: 'The sports-zone scoreboard hides a code. Calculate it and enter the number.',
     clues: {
       scout: { title: 'Ball-by-ball board', body: overs.map((o, i) => `Over ${i + 1}:  ${o.join('  ')}`).join('\n'), mono: true },
-      decoder: { title: 'League scoring legend', body: '• = dot ball (0)\nNumber = runs scored\nW = wicket: this league DEDUCTS 5 runs\nWd = wide: 1 run' },
+      decoder: { title: 'League scoring legend', body: '• = dot ball (0)\nNumber = runs scored\nW = wicket: this league DEDUCTS 5 runs\nWd = wide: 1 run\nA total below zero is entered without the minus sign.' },
       intel: { title: 'Code rule', body: `The code is the total of overs ${choose[0]} and ${choose[1]} only.` },
     },
     parts: [{ label: 'Code', accept: [String(total)] }],

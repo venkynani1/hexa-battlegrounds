@@ -25,7 +25,20 @@ export default function Play() {
   const nav = useNavigate();
   const token = store.get('hb_token');
   const map = useMapData();
-  const fetcher = useCallback(() => rpc('player_state', { p_token: token }), [token]);
+  // lean polling: send the hashes of what this phone already holds; the server leaves those sections out
+  const lean = useRef<{ tok: string | null; h: Record<string, string>; d: any }>({ tok: null, h: {}, d: null });
+  const fetcher = useCallback(async () => {
+    const L = lean.current.tok === token ? lean.current : { tok: token, h: {}, d: null };
+    let r: any = await rpc('player_state', { p_token: token, p_have: L.h });
+    if (!r || typeof r !== 'object' || !r.h) { lean.current = { tok: token, h: {}, d: null }; return r; }
+    const missing = Object.keys(r.h).some((k) => !(k in r) && !(L.d && k in L.d));
+    if (missing) r = await rpc('player_state', { p_token: token, p_have: {} });
+    const out: any = { ...r };
+    for (const k of Object.keys(r.h || {})) if (!(k in r) && L.d && k in L.d) out[k] = L.d[k];
+    delete out.h;
+    lean.current = { tok: token, h: r.h || {}, d: out };
+    return out;
+  }, [token]);
   const [topics, setTopics] = useState<string[]>([]);
   const live = useLive<any>(fetcher, {
     topics,
